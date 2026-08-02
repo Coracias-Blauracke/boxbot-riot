@@ -1,0 +1,18 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+.fennara/
+
+
+# Mono / C# (jeśli kiedyś użyjesz)
+.mono/
+data_*/
+mono_crash.*.json
+
+# Eksporty / buildy
+/builds/
+export_presets.cfg
+
+# OS / edytor
+.DS_Store
+*.tmp
