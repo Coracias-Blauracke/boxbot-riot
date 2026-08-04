@@ -185,8 +185,32 @@ func set_hp(value: float) -> void:
 		notify(Hooks.Hook.ON_DEATH, EventPayload.new())
 		died.emit()
 
-func heal(amount: float) -> void:
-	set_hp(current_hp + amount)
+## Goes through CALCULATE_HEAL so effects can scale or block healing, then
+## notifies ON_HEAL with what actually landed. Previously this called set_hp()
+## directly and both hooks were unreachable.
+func heal(amount: float, source: EntityModel = null) -> float:
+	if amount <= 0.0:
+		return 0.0
+
+	var event := HealEvent.new()
+	event.source = source
+	event.target = self
+	event.amount = amount
+
+	pipeline(Hooks.Hook.CALCULATE_HEAL, event)
+	if event.cancelled:
+		return 0.0
+
+	var before := current_hp
+	set_hp(current_hp + event.amount)
+	event.applied = current_hp - before
+
+	if event.applied > 0.0:
+		notify(Hooks.Hook.ON_HEAL, event)
+		if source != null and source != self:
+			source.notify(Hooks.Hook.ON_HEAL, event)
+
+	return event.applied
 
 ## current_hp is STATE, so it does not recompute itself from the stats - a
 ## change of MAX_HP has to be reacted to explicitly. An increase tops up the

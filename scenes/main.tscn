@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=10 format=3 uid="uid://ypmpa6ofxxh2"]
 
 [ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
@@ -8,13 +8,14 @@
 [ext_resource type="Resource" path="res://content/weapons/pistol.tres" id="6_pistol"]
 [ext_resource type="Resource" path="res://content/weapons/shotgun.tres" id="7_shotgun"]
 [ext_resource type="Script" path="res://core/data/weapon_data.gd" id="8_wdata"]
+[ext_resource type="Resource" path="res://content/weapons/sword.tres" id="9_sword"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 world_data = ExtResource("3_world")
 character_data = ExtResource("4_char")
 wave_table = ExtResource("5_waves")
-starting_weapons = Array[ExtResource("8_wdata")]([ExtResource("6_pistol"), ExtResource("7_shotgun")])
+starting_weapons = Array[ExtResource("8_wdata")]([ExtResource("6_pistol"), ExtResource("9_sword")])
 
 [node name="Arena" type="Node2D" parent="."]
 script = ExtResource("2_arena")

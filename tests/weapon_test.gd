@@ -27,6 +27,11 @@ func _initialize() -> void:
 	_test_crit_is_rolled_once_per_shot()
 	_test_pipeline_can_force_a_crit()
 	_test_falloff()
+	_test_swing_arc_sweeps()
+	_test_swing_mirroring()
+	_test_swing_thrust_goes_out_and_back()
+	_test_swing_windup_is_not_live()
+	_test_swing_curve_override()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -326,6 +331,78 @@ func _test_falloff() -> void:
 	var flat := ShotSnapshot.new()
 	flat.amount = 100.0
 	_check("falloff disabled by default", flat.to_damage_event(9999.0).amount, 100.0)
+
+# --- melee swings ----------------------------------------------------------
+
+func _make_swing(motion: SwingPattern.Motion) -> SwingPattern:
+	var swing := SwingPattern.new()
+	swing.motion = motion
+	swing.arc_degrees = 160.0
+	swing.reach = 50.0
+	swing.duration = 0.3
+	swing.windup_ratio = 0.4
+	return swing
+
+func _test_swing_arc_sweeps() -> void:
+	var swing := _make_swing(SwingPattern.Motion.ARC)
+	var half := deg_to_rad(160.0) * 0.5
+
+	# The blow starts at one edge of the arc and finishes at the other.
+	_check("arc starts at the near edge", swing.angle_at(swing.windup_ratio, false), -half)
+	_check("arc finishes at the far edge", swing.angle_at(1.0, false), half)
+	_check("arc passes through centre midway", swing.angle_at(0.7, false), 0.0)
+
+	# Monotonic through the live window - a swing must not wobble backwards.
+	var previous := -INF
+	var monotonic := true
+	for i in 20:
+		var t := lerpf(swing.windup_ratio, 1.0, float(i) / 19.0)
+		var angle := swing.angle_at(t, false)
+		if angle < previous - 0.0001:
+			monotonic = false
+		previous = angle
+	_check_bool("arc sweeps one way only", monotonic, true)
+
+func _test_swing_mirroring() -> void:
+	var swing := _make_swing(SwingPattern.Motion.ARC)
+	# Alternating sides is just a sign flip, so a repeated swing does not read
+	# as a loop.
+	_check("mirrored swing is the exact opposite", swing.angle_at(1.0, true), -swing.angle_at(1.0, false))
+	_check("mirroring does not change reach", swing.reach_at(0.8), swing.reach_at(0.8))
+
+func _test_swing_thrust_goes_out_and_back() -> void:
+	var swing := _make_swing(SwingPattern.Motion.THRUST)
+
+	_check("thrust does not rotate", swing.angle_at(0.7, false), 0.0)
+	# Fully extended halfway through the live window, retracted at both ends.
+	var midpoint := lerpf(swing.windup_ratio, 1.0, 0.5)
+	_check("thrust extends fully at the midpoint", swing.reach_at(midpoint), 50.0)
+	_check("thrust is retracted at the end", swing.reach_at(1.0), 0.0)
+
+func _test_swing_windup_is_not_live() -> void:
+	var swing := _make_swing(SwingPattern.Motion.ARC)
+
+	# The telegraph deals no damage - it is what makes a heavy weapon read as
+	# heavy rather than merely slow.
+	_check_bool("no damage during the windup", swing.is_active(0.2), false)
+	_check_bool("live once the windup ends", swing.is_active(0.5), true)
+	_check_bool("live at the last instant", swing.is_active(1.0), true)
+
+	# And the weapon draws in before it goes out.
+	_check_bool("weapon pulls back first", swing.reach_at(0.35) < swing.reach_at(0.05), true)
+
+func _test_swing_curve_override() -> void:
+	var swing := _make_swing(SwingPattern.Motion.ARC)
+
+	# A Curve replaces the built-in easing, which is how the feel gets tuned in
+	# the Inspector without touching code.
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 1.0))
+	curve.add_point(Vector2(1.0, 1.0))
+	swing.angle_curve = curve
+
+	var half := deg_to_rad(160.0) * 0.5
+	_check("curve overrides the default easing", swing.angle_at(swing.windup_ratio, false), half)
 
 # --- test-only effect ------------------------------------------------------
 

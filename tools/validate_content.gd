@@ -57,10 +57,40 @@ func _validate(path: String) -> void:
 		_validate_item(path, resource)
 	elif resource is WaveTable:
 		_validate_wave_table(path, resource)
+	elif resource is WeaponData:
+		_validate_weapon(path, resource)
 	elif resource is EntityData:
 		_validate_entity(path, resource)
 	else:
 		_warnings.append("%s : unrecognised resource type (%s)" % [path, resource.get_class()])
+
+## Catches weapons that load fine and then silently do nothing - the delivery
+## kind and its payload have to agree.
+func _validate_weapon(path: String, weapon: WeaponData) -> void:
+	_validate_entity(path, weapon)
+
+	if weapon.firing == null:
+		_errors.append("%s : weapon has no firing pattern, it will never attack" % path)
+	if weapon.targeting == null:
+		_errors.append("%s : weapon has no target selector, it will never find anything" % path)
+
+	match weapon.delivery:
+		WeaponData.DeliveryKind.PROJECTILE:
+			if weapon.projectile == null:
+				_errors.append("%s : PROJECTILE delivery with no projectile data" % path)
+			if not weapon.melee_combo.is_empty():
+				_warnings.append("%s : melee_combo set on a projectile weapon, it is ignored" % path)
+		WeaponData.DeliveryKind.MELEE_SWEEP:
+			if weapon.melee_combo.is_empty():
+				_errors.append("%s : MELEE_SWEEP delivery with an empty melee_combo" % path)
+			for i in weapon.melee_combo.size():
+				var swing: SwingPattern = weapon.melee_combo[i]
+				if swing == null:
+					_errors.append("%s : melee_combo[%d] is null" % [path, i])
+				elif swing.duration <= 0.0:
+					_errors.append("%s : melee_combo[%d] has non-positive duration" % [path, i])
+				elif swing.reach <= 0.0:
+					_errors.append("%s : melee_combo[%d] has no reach, it can never connect" % [path, i])
 
 func _validate_wave_table(path: String, table: WaveTable) -> void:
 	if table.entries.is_empty():

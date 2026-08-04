@@ -142,6 +142,8 @@ func _maybe_start_capture() -> void:
 			capture.shot_count = int(arg.substr("--capture-shots=".length()))
 		elif arg.begins_with("--capture-interval="):
 			capture.interval = float(arg.substr("--capture-interval=".length()))
+		elif arg.begins_with("--capture-delay="):
+			capture.start_delay = float(arg.substr("--capture-delay=".length()))
 	capture.state_provider = _describe_state
 	capture.finished.connect(func() -> void: get_tree().quit())
 	add_child(capture)
@@ -165,7 +167,11 @@ func _count_projectiles() -> int:
 func _describe_state() -> String:
 	if player == null or not is_instance_valid(player):
 		return "player is dead, enemies=%d" % _count_enemies()
-	return "w%d t-%.0fs hp=%.0f/%.0f cur=%d enemies=%d nearest=%.0f shots=%d" % [
+	var swings := ""
+	for weapon in player.get_weapons():
+		swings += weapon.debug_swing_state()
+
+	return "w%d t-%.0fs hp=%.0f/%.0f cur=%d enemies=%d nearest=%.0f shots=%d swing=[%s]" % [
 		run.wave_number,
 		run.wave_time_remaining(),
 		player.model.current_hp,
@@ -174,4 +180,5 @@ func _describe_state() -> String:
 		_count_enemies(),
 		_nearest_enemy_distance(),
 		_count_projectiles(),
+		swings,
 	]

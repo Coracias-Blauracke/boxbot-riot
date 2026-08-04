@@ -32,6 +32,15 @@ enum DeliveryKind {
 @export var projectile: ProjectileData
 @export var projectile_scene: PackedScene
 
+## Used when delivery is MELEE_SWEEP. More than one entry makes a combo: each
+## attack advances through the list, so "slash, slash, heavy thrust" is authored
+## rather than coded. One entry simply repeats.
+@export var melee_combo: Array[SwingPattern] = []
+
+## Alternate left and right between attacks. Cheap, and it stops a repeated
+## swing looking like a loop.
+@export var alternate_swing_sides: bool = true
+
 @export_group("Heat")
 ## 0 disables heat entirely, which is how most weapons will be configured.
 ## Capacity and dissipation are stats, so items can widen or vent them.

@@ -13,6 +13,10 @@ signal finished
 @export var output_dir: String = ""
 @export var interval: float = 0.5
 @export var shot_count: int = 4
+## Wait before the first shot. Needed to catch anything that only happens once
+## the situation develops - a melee swing cannot be photographed while the
+## enemies are still walking in from the rim.
+@export var start_delay: float = 0.0
 
 ## Returns a one-line description of the world state, printed alongside each
 ## shot. Set by whoever owns the scene.
@@ -22,6 +26,9 @@ func start() -> void:
 	_run()
 
 func _run() -> void:
+	if start_delay > 0.0:
+		await get_tree().create_timer(start_delay).timeout
+
 	for index in shot_count:
 		await get_tree().create_timer(interval).timeout
 		# The viewport holds no image until a frame has actually been drawn.
