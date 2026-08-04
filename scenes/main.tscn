@@ -15,7 +15,7 @@ script = ExtResource("1_main")
 world_data = ExtResource("3_world")
 character_data = ExtResource("4_char")
 wave_table = ExtResource("5_waves")
-starting_weapons = Array[ExtResource("8_wdata")]([ExtResource("6_pistol"), ExtResource("9_sword")])
+starting_weapons = Array[ExtResource("8_wdata")]([ExtResource("9_sword")])
 
 [node name="Arena" type="Node2D" parent="."]
 script = ExtResource("2_arena")
