@@ -16,6 +16,9 @@ func _ready() -> void:
 	placeholder_color = Color(0.35, 0.78, 1.0)
 	super()
 
+	# What enemies search when picking whom to chase.
+	add_to_group(&"players")
+
 	# The hurtbox is what enemy hitboxes look for; it mirrors the body radius.
 	var circle := CircleShape2D.new()
 	circle.radius = data.collider_radius if data != null else 8.0

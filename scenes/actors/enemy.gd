@@ -5,7 +5,15 @@ extends Actor
 ## a swappable MovementBehavior on one axis, dynamic effects on the other.
 
 var behavior: MovementBehavior
+
+## Chosen from the players group rather than assigned once, because in local
+## co-op there are up to four of them and they move apart.
 var target: Node2D
+
+## Retargeting every frame for a few hundred enemies is wasted work, and
+## flip-flopping between two equidistant players looks like indecision.
+const RETARGET_INTERVAL := 0.25
+var _retarget_timer: float = 0.0
 
 var _contact_interval: float = 0.6
 var _contact_timer: float = 0.0
@@ -49,12 +57,32 @@ func _ready() -> void:
 	_hitbox.area_exited.connect(_on_hitbox_area_exited)
 
 func _get_move_direction(delta: float) -> Vector2:
+	_retarget_timer -= delta
+	if _retarget_timer <= 0.0 or target == null or not is_instance_valid(target):
+		_retarget_timer = RETARGET_INTERVAL
+		target = _nearest_player()
+
 	if behavior == null or target == null:
 		return Vector2.ZERO
 
 	var steer := behavior.get_direction(model, global_position, target.global_position, delta)
 	var combined := steer + _separation_direction() * _separation_weight
 	return combined.normalized() if combined.length() > 0.001 else Vector2.ZERO
+
+## Nearest LIVING player. A dead one must stop attracting the horde, or in co-op
+## the swarm would pile onto a corpse while the survivors are ignored.
+func _nearest_player() -> Node2D:
+	var best: Node2D = null
+	var best_distance := INF
+	for node in get_tree().get_nodes_in_group(&"players"):
+		var player := node as Actor
+		if player == null or player.model == null or not player.model.is_alive:
+			continue
+		var distance := global_position.distance_squared_to(player.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = player
+	return best
 
 ## Pushes away from nearby enemies, with the push fading to nothing at the edge
 ## of the separation radius. Without this a swarm converges on one point and

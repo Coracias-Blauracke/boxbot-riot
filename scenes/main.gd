@@ -13,7 +13,14 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 @export var wave_table: WaveTable
 @export var starting_weapons: Array[WeaponData] = []
 
+## Local co-op, up to four. Player 0 takes keyboard and the first gamepad;
+## the rest take a gamepad each.
+@export_range(1, 4) var player_count: int = 1
+
 var run: RunModel
+var players: Array[Character] = []
+
+## Player 0. Kept for the debug readout and the scripted capture runs.
 var player: Character
 
 var _circle_mode: bool = false
@@ -29,7 +36,9 @@ func _ready() -> void:
 	_arena.bind(run.world)
 	_camera.bind(run.world)
 
-	player = _spawn_player()
+	for index in player_count:
+		players.append(_spawn_player(index))
+	player = players[0]
 
 	run.start_wave()
 	print("wave %d started, boss=%s, duration=%.0fs" % [
@@ -51,14 +60,25 @@ func _on_wave_ended(_wave_number: int) -> void:
 		(node as Node).queue_free()
 	print("wave %d ended, currency=%d" % [run.wave_number, player.model.get_currency() if is_instance_valid(player) else 0])
 
-func _spawn_player() -> Character:
+func _spawn_player(index: int) -> Character:
 	var model := EntityModel.new(character_data)
 	run.add_player(model)
 
 	var node := CHARACTER_SCENE.instantiate() as Character
 	# bind() before add_child(): _ready() sizes the colliders from the data.
 	node.bind(model, character_data, run.world)
-	node.position = Vector2.ZERO
+	node.player_index = index
+
+	# Player 0 keeps keyboard plus the first pad; everyone else gets one pad.
+	if index > 0:
+		node.motion = MotionSource.Device.new(index)
+
+	# Spread them out so they do not start stacked on one another.
+	node.position = (
+		Vector2.ZERO
+		if player_count == 1
+		else Vector2.RIGHT.rotated(TAU * float(index) / float(player_count)) * 60.0
+	)
 	_actors.add_child(node)
 
 	for weapon_data in starting_weapons:
@@ -76,7 +96,8 @@ func _spawn_enemy(enemy_data: EnemyData) -> Enemy:
 
 	var node := ENEMY_SCENE.instantiate() as Enemy
 	node.bind(model, enemy_data, run.world)
-	node.target = player
+	# No target assigned: the enemy picks the nearest living player itself, and
+	# keeps re-picking as they move apart.
 	node.position = run.world.random_point_on_edge(run.rng)
 	_actors.add_child(node)
 	return node
@@ -133,7 +154,16 @@ func _maybe_start_capture() -> void:
 	var direction := Vector2.ZERO if args.has("--capture-still") else Vector2(1.0, -0.35).normalized()
 	if _circle_mode:
 		direction = Vector2.RIGHT
-	player.motion = MotionSource.Scripted.new(direction)
+
+	# --capture-scatter drives every player towards a different corner, which is
+	# how the co-op framing gets checked: if the camera only held one of them,
+	# the others would leave the frame.
+	if args.has("--capture-scatter"):
+		for index in players.size():
+			var away := Vector2.RIGHT.rotated(TAU * float(index) / float(players.size()) + 0.6)
+			players[index].motion = MotionSource.Scripted.new(away)
+	else:
+		player.motion = MotionSource.Scripted.new(direction)
 
 	var capture := DebugCapture.new()
 	capture.output_dir = output_dir
@@ -169,18 +199,27 @@ func _count_projectiles() -> int:
 func _describe_state() -> String:
 	if player == null or not is_instance_valid(player):
 		return "player is dead, enemies=%d" % _count_enemies()
-	var swings := ""
-	for weapon in player.get_weapons():
-		swings += weapon.debug_swing_state()
+	# One entry per player: position, health and their own currency, so co-op
+	# runs show whether anything is shared that should not be.
+	var per_player := ""
+	for index in players.size():
+		var entry := players[index]
+		if entry == null or not is_instance_valid(entry):
+			per_player += " p%d=DEAD" % index
+			continue
+		per_player += " p%d=(%.0f,%.0f)hp%.0f$%d" % [
+			index,
+			entry.global_position.x,
+			entry.global_position.y,
+			entry.model.current_hp,
+			entry.model.get_currency(),
+		]
 
-	return "w%d t-%.0fs hp=%.0f/%.0f cur=%d enemies=%d nearest=%.0f shots=%d swing=[%s]" % [
+	return "w%d t-%.0fs enemies=%d shots=%d zoom=%.2f%s" % [
 		run.wave_number,
 		run.wave_time_remaining(),
-		player.model.current_hp,
-		player.model.get_max_hp(),
-		player.model.get_currency(),
 		_count_enemies(),
-		_nearest_enemy_distance(),
 		_count_projectiles(),
-		swings,
+		_camera.zoom.x,
+		per_player,
 	]
