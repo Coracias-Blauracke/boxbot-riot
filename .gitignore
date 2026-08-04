@@ -16,3 +16,6 @@ export_presets.cfg
 # OS / edytor
 .DS_Store
 *.tmp
+
+# Lokalna konfiguracja MCP (zawiera sciezki tej maszyny)
+.mcp.json

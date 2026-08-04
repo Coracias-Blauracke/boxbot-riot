@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="WorldData" format=3]
+
+[ext_resource type="Script" path="res://core/data/world_data.gd" id="1_world"]
+
+[resource]
+script = ExtResource("1_world")
+display_key = "ARENA_TEST"
+collider_radius = 8.0
+base_extents = Vector2(480, 270)
+default_shape = 0

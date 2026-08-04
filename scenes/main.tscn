@@ -1,6 +1,21 @@
-[gd_scene format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=6 format=3 uid="uid://ypmpa6ofxxh2"]
 
-[ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_o5qli"]
+[ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
+[ext_resource type="Resource" path="res://content/worlds/test_arena.tres" id="3_world"]
+[ext_resource type="Resource" path="res://content/characters/test_character.tres" id="4_char"]
+[ext_resource type="Resource" path="res://content/enemies/chaser.tres" id="5_enemy"]
 
-[node name="Main" type="Node2D" unique_id=926365682]
-script = ExtResource("1_o5qli")
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+world_data = ExtResource("3_world")
+character_data = ExtResource("4_char")
+enemy_data = ExtResource("5_enemy")
+enemy_count = 8
+
+[node name="Arena" type="Node2D" parent="."]
+script = ExtResource("2_arena")
+
+[node name="Actors" type="Node2D" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="."]
