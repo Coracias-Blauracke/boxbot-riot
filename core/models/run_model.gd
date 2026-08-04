@@ -13,6 +13,7 @@ signal wave_ended(wave_number: int)
 var rng: RunRandom
 var world: WorldModel
 var overrides: WorldOverrides
+var director: WaveDirector
 
 var players: Array[EntityModel] = []
 var wave_number: int = 0
@@ -23,11 +24,14 @@ var phase: WorldTypes.Phase = WorldTypes.Phase.PREPARING
 ## spawner reads this rather than having to catch the signal.
 var spawn_boss_this_wave: bool = false
 
-func _init(run_seed: int = 0, world_data: WorldData = null) -> void:
+func _init(run_seed: int = 0, world_data: WorldData = null, wave_table: WaveTable = null) -> void:
 	rng = RunRandom.new(run_seed)
 	world = WorldModel.new(world_data)
 	overrides = WorldOverrides.new(rng)
 	overrides.resolved.connect(_on_override_resolved)
+
+	director = WaveDirector.new()
+	director.table = wave_table
 
 ## Players share one RunRandom so the whole run stays reproducible from one seed.
 func add_player(player: EntityModel) -> int:
@@ -58,6 +62,7 @@ func start_wave() -> void:
 		player.pipeline(Hooks.Hook.CALCULATE_WAVE, event)
 
 	spawn_boss_this_wave = event.spawn_boss
+	director.begin(wave_number)
 
 	for player in players:
 		player.notify(Hooks.Hook.ON_WAVE_STARTED, event)
@@ -94,8 +99,25 @@ func close_shop() -> void:
 	phase = WorldTypes.Phase.PREPARING
 	phase_changed.emit(phase)
 
-## Statuses advance for everyone from one place.
-func tick(delta: float) -> void:
+## Advances the wave and returns whatever should spawn this frame. Ends the wave
+## on its own once the timer runs out.
+##
+## Note it does NOT tick statuses: in the running game each actor ticks its own,
+## and doing it here as well would advance every player's statuses twice.
+func advance_wave(delta: float) -> Array[EnemyData]:
+	if phase != WorldTypes.Phase.COMBAT:
+		return []
+
+	var spawns := director.advance(delta, rng)
+	if director.is_finished():
+		end_wave()
+	return spawns
+
+func wave_time_remaining() -> float:
+	return director.time_remaining()
+
+## For headless tests, where there are no actor nodes to tick themselves.
+func tick_statuses(delta: float) -> void:
 	for player in players:
 		player.tick_statuses(delta)
 

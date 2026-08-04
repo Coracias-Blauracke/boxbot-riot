@@ -58,6 +58,9 @@ func _acquire_target() -> Actor:
 		models.append(enemy.model)
 		actors.append(enemy)
 
+	# Deliberately the WEAPON's position, not the wielder's centre. Weapons on
+	# opposite sides of the mount then cover different directions on their own,
+	# which turned out to feel good - do not "fix" this to use the character.
 	var index := data.targeting.select(
 		global_position, positions, models, model.stats.get_stat(StatTypes.Stat.RANGE)
 	)
@@ -109,7 +112,7 @@ func _fire_projectiles(shot: ShotSnapshot, directions: PackedVector2Array) -> vo
 
 	for direction in directions:
 		var projectile := scene.instantiate() as Projectile
-		projectile.launch(data.projectile, shot, direction, pierce, bounce, speed_multiplier)
+		projectile.launch(data.projectile, shot, direction, pierce, bounce, speed_multiplier, wielder.world)
 		projectile.global_position = global_position
 		# Parented to the level, not the weapon: a bullet must not follow the
 		# barrel once it has left it.

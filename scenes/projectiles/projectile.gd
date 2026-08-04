@@ -11,6 +11,7 @@ extends Area2D
 var data: ProjectileData
 var snapshot: ShotSnapshot
 var shooter: EntityModel
+var world: WorldModel
 
 var direction: Vector2 = Vector2.RIGHT
 var speed: float = 420.0
@@ -31,11 +32,13 @@ func launch(
 	p_direction: Vector2,
 	p_pierce: int,
 	p_bounce: int,
-	speed_multiplier: float
+	speed_multiplier: float,
+	p_world: WorldModel = null
 ) -> void:
 	data = p_data
 	snapshot = p_snapshot
 	shooter = p_snapshot.source
+	world = p_world
 	direction = p_direction.normalized()
 	pierce_left = p_pierce
 	bounce_left = p_bounce
@@ -56,6 +59,12 @@ func _physics_process(delta: float) -> void:
 
 	_lifetime -= delta
 	if _lifetime <= 0.0:
+		queue_free()
+		return
+
+	# Enemies are clamped inside the arena, so a projectile past the wall can
+	# never hit anything again - and drawing it outside the floor looks wrong.
+	if world != null and not world.is_inside(global_position):
 		queue_free()
 
 func _on_area_entered(area: Area2D) -> void:

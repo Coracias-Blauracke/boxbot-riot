@@ -22,6 +22,10 @@ func _initialize() -> void:
 	_test_overrides_release()
 	_test_wave_loop()
 	_test_boss_chance_is_independent_per_player()
+	_test_wave_table_curves()
+	_test_director_respects_availability()
+	_test_director_spreads_spawns_across_the_wave()
+	_test_director_ends_on_the_timer()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -254,6 +258,97 @@ func _boss_spawned(seed_value: int, player_count: int) -> bool:
 	# lost. That mistake made this test report a flat "no boss ever".
 	run.start_wave()
 	return run.spawn_boss_this_wave
+
+# --- wave director ---------------------------------------------------------
+
+func _make_enemy(hp: float) -> EnemyData:
+	var data := EnemyData.new()
+	data.display_key = "TEST_ENEMY"
+	var modifier := StatModifier.new()
+	modifier.stat = StatTypes.Stat.MAX_HP
+	modifier.modifier_type = StatTypes.Modifier.BASE
+	modifier.value = hp
+	data.base_stats = [modifier]
+	return data
+
+func _make_entry(enemy: EnemyData, min_wave: int, cost: float, group: int) -> WaveEntry:
+	var entry := WaveEntry.new()
+	entry.enemy = enemy
+	entry.min_wave = min_wave
+	entry.cost = cost
+	entry.group_size = group
+	entry.weight = 1.0
+	return entry
+
+func _make_table() -> WaveTable:
+	var table := WaveTable.new()
+	table.entries = [
+		_make_entry(_make_enemy(10.0), 1, 1.0, 3),
+		_make_entry(_make_enemy(90.0), 3, 4.0, 1),
+	]
+	table.base_duration = 20.0
+	table.duration_per_wave = 2.0
+	table.max_duration = 30.0
+	table.base_budget = 24.0
+	table.budget_per_wave = 8.0
+	table.budget_growth = 1.0
+	table.spawn_events = 12
+	return table
+
+func _test_wave_table_curves() -> void:
+	var table := _make_table()
+	_check("wave 1 duration", table.duration_for(1), 20.0)
+	_check("duration grows", table.duration_for(3), 24.0)
+	_check("duration is capped", table.duration_for(50), 30.0)
+
+	_check("wave 1 budget", table.budget_for(1), 24.0)
+	_check("budget grows", table.budget_for(3), 40.0)
+	_check_bool("later waves are harder", table.budget_for(10) > table.budget_for(9), true)
+
+func _test_director_respects_availability() -> void:
+	var table := _make_table()
+	_check_int("only the early enemy on wave 1", table.available_entries(1).size(), 1)
+	_check_int("the heavy one joins on wave 3", table.available_entries(3).size(), 2)
+
+func _test_director_spreads_spawns_across_the_wave() -> void:
+	var director := WaveDirector.new()
+	director.table = _make_table()
+	director.begin(1)
+
+	var rng := RunRandom.new(4242)
+	var first_half := 0
+	var second_half := 0
+	var total := 0
+
+	var step := 0.1
+	var elapsed := 0.0
+	while elapsed < director.duration:
+		var spawned := director.advance(step, rng).size()
+		total += spawned
+		if elapsed < director.duration * 0.5:
+			first_half += spawned
+		else:
+			second_half += spawned
+		elapsed += step
+
+	_check_bool("the wave actually spawns something (%d)" % total, total > 0, true)
+	# The bug this guards: with a fixed event count a small budget is spent in
+	# the opening seconds and the rest of the wave is empty.
+	_check_bool("spawns continue past the halfway point (%d then %d)" % [first_half, second_half], second_half > 0, true)
+	_check_bool("neither half is starved", first_half > 0 and second_half > 0, true)
+
+func _test_director_ends_on_the_timer() -> void:
+	var director := WaveDirector.new()
+	director.table = _make_table()
+	director.begin(1)
+
+	var rng := RunRandom.new(7)
+	director.advance(director.duration - 0.5, rng)
+	_check_bool("still running just before time", director.is_finished(), false)
+
+	director.advance(1.0, rng)
+	_check_bool("finishes on the timer, not on a clear arena", director.is_finished(), true)
+	_check("no time left", director.time_remaining(), 0.0)
 
 # --- assertions ------------------------------------------------------------
 

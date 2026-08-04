@@ -10,9 +10,8 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 
 @export var world_data: WorldData
 @export var character_data: CharacterData
-@export var enemy_data: EnemyData
+@export var wave_table: WaveTable
 @export var starting_weapons: Array[WeaponData] = []
-@export var enemy_count: int = 8
 
 var run: RunModel
 var player: Character
@@ -24,17 +23,31 @@ var _elapsed: float = 0.0
 @onready var _actors: Node2D = $Actors
 
 func _ready() -> void:
-	run = RunModel.new(20260804, world_data)
+	run = RunModel.new(20260804, world_data, wave_table)
+	run.wave_ended.connect(_on_wave_ended)
 	_arena.bind(run.world)
 
 	player = _spawn_player()
-	for i in enemy_count:
-		_spawn_enemy()
 
 	run.start_wave()
-	print("wave %d started, boss=%s" % [run.wave_number, run.spawn_boss_this_wave])
+	print("wave %d started, boss=%s, duration=%.0fs" % [
+		run.wave_number, run.spawn_boss_this_wave, run.director.duration
+	])
 
 	_maybe_start_capture()
+
+func _physics_process(delta: float) -> void:
+	if run == null:
+		return
+	for enemy_data in run.advance_wave(delta):
+		_spawn_enemy(enemy_data)
+
+## The wave ends on its timer, so whatever is still standing is cleared rather
+## than left for the player to hunt down one straggler at a time.
+func _on_wave_ended(_wave_number: int) -> void:
+	for node in get_tree().get_nodes_in_group(&"enemies"):
+		(node as Node).queue_free()
+	print("wave %d ended, currency=%d" % [run.wave_number, player.model.get_currency() if is_instance_valid(player) else 0])
 
 func _spawn_player() -> Character:
 	var model := EntityModel.new(character_data)
@@ -52,7 +65,10 @@ func _spawn_player() -> Character:
 
 	return node
 
-func _spawn_enemy() -> Enemy:
+func _spawn_enemy(enemy_data: EnemyData) -> Enemy:
+	if enemy_data == null or player == null or not is_instance_valid(player):
+		return null
+
 	var model := EntityModel.new(enemy_data)
 	model.rng = run.rng
 
@@ -149,14 +165,13 @@ func _count_projectiles() -> int:
 func _describe_state() -> String:
 	if player == null or not is_instance_valid(player):
 		return "player is dead, enemies=%d" % _count_enemies()
-	return "player=(%.0f,%.0f) hp=%.0f/%.0f cur=%d enemies=%d nearest=%.0f gap=%.0f shots=%d" % [
-		player.global_position.x,
-		player.global_position.y,
+	return "w%d t-%.0fs hp=%.0f/%.0f cur=%d enemies=%d nearest=%.0f shots=%d" % [
+		run.wave_number,
+		run.wave_time_remaining(),
 		player.model.current_hp,
 		player.model.get_max_hp(),
 		player.model.get_currency(),
 		_count_enemies(),
 		_nearest_enemy_distance(),
-		_min_enemy_gap(),
 		_count_projectiles(),
 	]

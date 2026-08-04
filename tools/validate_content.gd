@@ -55,10 +55,42 @@ func _validate(path: String) -> void:
 
 	if resource is ItemData:
 		_validate_item(path, resource)
+	elif resource is WaveTable:
+		_validate_wave_table(path, resource)
 	elif resource is EntityData:
 		_validate_entity(path, resource)
 	else:
 		_warnings.append("%s : unrecognised resource type (%s)" % [path, resource.get_class()])
+
+func _validate_wave_table(path: String, table: WaveTable) -> void:
+	if table.entries.is_empty():
+		_errors.append("%s : wave table has no entries" % path)
+	if table.base_duration <= 0.0:
+		_errors.append("%s : base_duration must be positive" % path)
+	if table.spawn_events <= 0:
+		_errors.append("%s : spawn_events must be positive" % path)
+
+	var reachable_at_one := false
+	for i in table.entries.size():
+		var entry: WaveEntry = table.entries[i]
+		if entry == null:
+			_errors.append("%s : entry[%d] is null" % [path, i])
+			continue
+		if entry.enemy == null:
+			_errors.append("%s : entry[%d] has no enemy (deleted resource?)" % [path, i])
+			continue
+		if entry.weight <= 0.0:
+			_errors.append("%s : entry[%d] has non-positive weight, it can never be drawn" % [path, i])
+		if entry.cost <= 0.0:
+			_errors.append("%s : entry[%d] has non-positive cost, it would spawn forever" % [path, i])
+		if entry.max_wave > 0 and entry.max_wave < entry.min_wave:
+			_errors.append("%s : entry[%d] has max_wave below min_wave, it never appears" % [path, i])
+		if entry.is_available(1):
+			reachable_at_one = true
+
+	# A table with nothing available on wave one produces an empty first wave.
+	if not reachable_at_one and not table.entries.is_empty():
+		_errors.append("%s : no entry is available on wave 1" % path)
 
 func _validate_item(path: String, item: ItemData) -> void:
 	if item.display_key.is_empty():
