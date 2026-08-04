@@ -39,10 +39,13 @@ enum Motion {
 ## eye sees the wind-up and the release as one motion.
 @export var windup_overshoot_degrees: float = 40.0
 
-## Rotation of the blade itself, on top of where it is positioned. 90 makes the
-## edge lead the sweep; 0 keeps it pointing away from the wielder, which is what
-## a thrust wants.
-@export var blade_tilt_degrees: float = 90.0
+## EXTRA rotation on top of the blade's natural orientation, which is implied by
+## the motion: an arc holds the blade across the sweep so the edge leads, a
+## thrust holds it along the line so the point leads. Leave at 0 unless a weapon
+## wants something deliberately odd - a lunging slash, say.
+##
+## This used to be a flat 90 applied to both, which made a spear stab sideways.
+@export var blade_tilt_offset_degrees: float = 0.0
 @export var tilt_curve: Curve
 
 @export_group("Curves (optional)")
@@ -99,13 +102,18 @@ func angle_at(t: float, mirrored: bool) -> float:
 ## can lead the sweep rather than the whole thing sliding around rigidly.
 func tilt_at(t: float, mirrored: bool) -> float:
 	var progress := _active_progress(t)
-	var lead := deg_to_rad(blade_tilt_degrees)
+
+	# Natural orientation comes from the motion, not from a constant: across the
+	# sweep for an arc so the edge leads, along the line for a thrust so the
+	# point leads.
+	var natural := 0.0 if motion == Motion.THRUST else deg_to_rad(90.0)
+	var lead := natural + deg_to_rad(blade_tilt_offset_degrees)
 
 	if tilt_curve != null:
 		lead *= tilt_curve.sample_baked(progress)
 	elif motion == Motion.ARC:
-		# Tilts hardest through the middle of the sweep, easing off at both
-		# ends - the blade rolls over rather than staying rigid.
+		# Rolls hardest through the middle of the sweep, easing off at both
+		# ends - the blade turns over rather than staying rigid.
 		lead *= 0.6 + 0.4 * sin(PI * progress)
 
 	return angle_at(t, mirrored) + (-lead if mirrored else lead)

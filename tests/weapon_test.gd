@@ -33,6 +33,7 @@ func _initialize() -> void:
 	_test_swing_windup_is_not_live()
 	_test_swing_curve_override()
 	_test_swing_blade_tilts()
+	_test_thrust_leads_with_its_point()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -426,6 +427,20 @@ func _test_swing_blade_tilts() -> void:
 		"mirrored swing tilts the other way",
 		swing.tilt_at(midpoint, true),
 		-swing.tilt_at(midpoint, false)
+	)
+
+## Natural orientation follows the motion. A flat 90 for both made a spear stab
+## sideways instead of leading with its point.
+func _test_thrust_leads_with_its_point() -> void:
+	var thrust := _make_swing(SwingPattern.Motion.THRUST)
+	var midpoint := lerpf(thrust.windup_ratio, 1.0, 0.5)
+	_check("thrust blade lies along the thrust line", thrust.tilt_at(midpoint, false), 0.0)
+
+	var arc := _make_swing(SwingPattern.Motion.ARC)
+	_check_bool(
+		"arc blade lies across the sweep",
+		absf(arc.tilt_at(midpoint, false) - arc.angle_at(midpoint, false)) > deg_to_rad(45.0),
+		true
 	)
 
 # --- test-only effect ------------------------------------------------------

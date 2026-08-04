@@ -9,6 +9,9 @@ extends Node2D
 
 @export var radius: float = 18.0
 
+## DEBUG. Passed to every weapon mounted here - see Weapon.time_scale.
+@export var weapon_time_scale: float = 1.0
+
 var _weapons: Array[Weapon] = []
 
 func slot_count(owner_model: EntityModel) -> int:
@@ -21,6 +24,7 @@ func equip(weapon_data: WeaponData, wielder: Actor) -> Weapon:
 
 	var weapon := Weapon.new()
 	weapon.bind(weapon_data, wielder)
+	weapon.time_scale = weapon_time_scale
 	add_child(weapon)
 	_weapons.append(weapon)
 	_reposition()

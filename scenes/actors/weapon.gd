@@ -14,6 +14,11 @@ var model: WeaponModel
 var data: WeaponData
 var wielder: Actor
 
+## DEBUG. Scales the weapon's whole sense of time - swing animation and rate of
+## fire together, so the rhythm stays coherent - without slowing the world. Set
+## below 1.0 to watch a swing frame by frame; 1.0 is normal play.
+var time_scale: float = 1.0
+
 var _target: Actor
 
 # --- melee swing state -----------------------------------------------------
@@ -34,6 +39,10 @@ func bind(p_data: WeaponData, p_wielder: Actor) -> void:
 func _physics_process(delta: float) -> void:
 	if model == null or data == null or wielder == null:
 		return
+
+	# One multiplier drives both the animation and the firing pattern, so a
+	# slowed weapon does not start overlapping its own swings.
+	delta *= time_scale
 
 	model.cool(delta)
 	_target = _acquire_target()
