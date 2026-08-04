@@ -6,5 +6,5 @@
 script = ExtResource("1_world")
 display_key = "ARENA_TEST"
 collider_radius = 8.0
-base_extents = Vector2(480, 270)
+base_extents = Vector2(1150, 650)
 default_shape = 0

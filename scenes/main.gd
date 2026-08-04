@@ -98,9 +98,37 @@ func _spawn_enemy(enemy_data: EnemyData) -> Enemy:
 	node.bind(model, enemy_data, run.world)
 	# No target assigned: the enemy picks the nearest living player itself, and
 	# keeps re-picking as they move apart.
-	node.position = run.world.random_point_on_edge(run.rng)
+	node.position = _enemy_spawn_position()
 	_actors.add_child(node)
 	return node
+
+## Just beyond the edge of what is on screen, not at the arena wall.
+##
+## The arena is much larger than the view now, so spawning at the wall would
+## have enemies walking in from off-map for ten seconds before they threatened
+## anybody. They should arrive from just out of sight instead.
+func _enemy_spawn_position() -> Vector2:
+	var view := _camera.visible_world_size()
+	var centre := _camera.global_position
+	# Past the corner of the view, so nothing pops into existence on screen.
+	var ring := view.length() * 0.5 * 1.12
+
+	for attempt in 8:
+		var angle := run.rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, TAU)
+		var candidate := centre + Vector2.RIGHT.rotated(angle) * ring
+
+		if run.world.is_inside(candidate):
+			return candidate
+
+		# Outside the arena: pull it back to the wall and take it only if that
+		# still leaves it off screen. Near a corner most angles fail this.
+		var clamped := run.world.clamp_to_bounds(candidate)
+		var offset := clamped - centre
+		if absf(offset.x) > view.x * 0.5 or absf(offset.y) > view.y * 0.5:
+			return clamped
+
+	# Boxed in on every side - fall back to the arena rim.
+	return run.world.random_point_on_edge(run.rng)
 
 func _count_enemies() -> int:
 	var total := 0
