@@ -47,10 +47,17 @@ func _physics_process(delta: float) -> void:
 	model.cool(delta)
 	_target = _acquire_target()
 
-	# A swing is committed once started: retargeting mid-blow would make the
-	# weapon snap around in the middle of its own animation.
-	if _swing == null and _target != null:
-		rotation = (_target.global_position - global_position).angle()
+	if _target != null:
+		var desired := (_target.global_position - global_position).angle()
+		if _swing == null:
+			rotation = desired
+		elif _swing.tracking_degrees_per_second > 0.0:
+			# Keeps turning towards the target mid-swing, but at a capped rate.
+			# Snapping would break the animation; not turning at all makes every
+			# blow miss a target that has taken two steps since it began.
+			rotation = rotate_toward(
+				rotation, desired, deg_to_rad(_swing.tracking_degrees_per_second) * delta
+			)
 
 	if _swing != null:
 		_advance_swing(delta)
@@ -115,6 +122,12 @@ func _reach_scale() -> float:
 # --- firing ----------------------------------------------------------------
 
 func _fire() -> void:
+	# Never restart a swing that is still running. The cooldown fix should keep
+	# this from happening, but a weapon whose swing outlasts its own interval
+	# would otherwise cancel itself mid-blow every time.
+	if data.delivery == WeaponData.DeliveryKind.MELEE_SWEEP and _swing != null:
+		return
+
 	# ONE snapshot per shot, shared by every projectile - that is what makes all
 	# eight pellets of a shotgun crit or not crit together.
 	var shot := model.build_shot(data)

@@ -53,6 +53,14 @@ enum Motion {
 @export var angle_curve: Curve
 @export var reach_curve: Curve
 
+## How fast the attack may keep turning towards its target once it has begun,
+## in degrees per second. 0 commits the blow to the direction it started in.
+##
+## Fully committing looks decisive but whiffs constantly on a moving target,
+## which is most of them. High values track like a turret and feel weightless.
+## Heavy attacks want a low number, quick precise ones a high one.
+@export var tracking_degrees_per_second: float = 150.0
+
 @export_group("Hit rules")
 ## 0 means a swing may hit everything it touches.
 @export var max_targets: int = 0

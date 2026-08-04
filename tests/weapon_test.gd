@@ -13,6 +13,7 @@ func _initialize() -> void:
 	_test_neutral_attack_speed()
 	_test_attack_speed_scales_every_pattern()
 	_test_fire_rate_is_capped()
+	_test_idling_does_not_bank_shots()
 	_test_windup_gates_and_ramps()
 	_test_burst_finishes_once_started()
 	_test_channel_duration_and_recovery()
@@ -95,6 +96,25 @@ func _test_fire_rate_is_capped() -> void:
 	# One second at the cap, so at most 1 / MIN_INTERVAL shots.
 	var shots := _simulate(weapon, pattern, 1.0, 0.01)
 	_check_bool("absurd haste stays bounded (%d shots)" % shots, shots <= 26, true)
+
+## Regression: a weapon with no target used to tick its cooldown ever further
+## negative, so the moment something walked into range it fired every frame
+## until the debt was paid off. On a melee weapon each of those restarted the
+## swing on top of the last, which read as the first attack being cancelled.
+func _test_idling_does_not_bank_shots() -> void:
+	for pattern in [FiringInstant.new(), FiringWindup.new()] as Array[FiringPattern]:
+		var weapon := _make_weapon(1.0)
+		var label: String = pattern.get_script().resource_path.get_file()
+
+		# Ten seconds with nothing to shoot at.
+		_simulate(weapon, pattern, 10.0, 0.02, false)
+		_check_bool("%s banks no cooldown debt" % label, weapon.cooldown >= 0.0, true)
+
+		# A target appears: a short burst of frames must not empty a magazine.
+		var fired := 0
+		for i in 8:
+			fired += pattern.advance(weapon, 0.02, true)
+		_check_bool("%s fires at most once on acquisition (%d)" % [label, fired], fired <= 1, true)
 
 func _test_attack_speed_scales_every_pattern() -> void:
 	var pattern := FiringInstant.new()

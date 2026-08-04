@@ -9,7 +9,7 @@ extends FiringPattern
 @export var shot_interval: float = 0.07
 
 func advance(weapon: WeaponModel, delta: float, wants_to_fire: bool) -> int:
-	weapon.cooldown -= delta
+	tick_cooldown(weapon, delta, wants_to_fire or weapon.burst_remaining > 0)
 
 	if weapon.burst_remaining > 0:
 		if not weapon.can_fire():

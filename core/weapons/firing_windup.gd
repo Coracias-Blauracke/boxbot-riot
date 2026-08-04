@@ -26,12 +26,12 @@ func advance(weapon: WeaponModel, delta: float, wants_to_fire: bool) -> int:
 	else:
 		weapon.spin = maxf(0.0, weapon.spin - delta / maxf(0.01, spin_down_time))
 
-	weapon.cooldown -= delta
+	tick_cooldown(weapon, delta, firing and weapon.spin >= min_spin_to_fire)
 	if not firing or weapon.spin < min_spin_to_fire:
 		return 0
 	if weapon.cooldown > 0.0:
 		return 0
 
 	var rate := lerpf(1.0, rate_at_full_spin, weapon.spin)
-	weapon.cooldown += interval_for(weapon) / maxf(0.01, rate)
+	weapon.cooldown = maxf(0.0, weapon.cooldown) + interval_for(weapon) / maxf(0.01, rate)
 	return 1

@@ -13,7 +13,7 @@ extends FiringPattern
 @export var recovery: float = 0.8
 
 func advance(weapon: WeaponModel, delta: float, wants_to_fire: bool) -> int:
-	weapon.cooldown -= delta
+	tick_cooldown(weapon, delta, wants_to_fire or weapon.channel_remaining > 0.0)
 
 	if weapon.channel_remaining > 0.0:
 		weapon.channel_remaining -= delta

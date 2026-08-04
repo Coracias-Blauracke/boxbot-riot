@@ -28,3 +28,15 @@ const MIN_INTERVAL := 0.04
 func interval_for(weapon: WeaponModel) -> float:
 	var scaled := base_interval / maxf(0.05, weapon.stats.get_stat(StatTypes.Stat.ATTACK_SPEED))
 	return maxf(MIN_INTERVAL, scaled)
+
+## Ticks the cooldown down, but never below zero.
+##
+## Letting it run negative banks up "debt": a weapon idle for ten seconds
+## reaches -10, and the moment a target appears every `cooldown += interval`
+## still leaves it negative, so it fires every frame for dozens of frames. On a
+## melee weapon each of those restarted the swing on top of the last one, which
+## looked like the first attack being cancelled mid-windup.
+func tick_cooldown(weapon: WeaponModel, delta: float, wants_to_fire: bool) -> void:
+	weapon.cooldown -= delta
+	if not wants_to_fire:
+		weapon.cooldown = maxf(weapon.cooldown, 0.0)
