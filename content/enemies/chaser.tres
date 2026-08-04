@@ -32,5 +32,7 @@ display_key = "ENEMY_CHASER"
 collider_radius = 9.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("Resource_hp"), SubResource("Resource_speed"), SubResource("Resource_damage")])
 movement = SubResource("Resource_chase")
+separation_radius_scale = 2.6
+separation_weight = 0.9
 contact_damage_interval = 0.6
 gold_reward = 1

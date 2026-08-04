@@ -32,6 +32,22 @@ class Device extends MotionSource:
 		return raw if raw.length() > 0.2 else Vector2.ZERO
 
 
+## First source that reports movement wins. Lets player 1 use the keyboard and
+## a gamepad interchangeably without picking one at startup.
+class Combined extends MotionSource:
+	var sources: Array[MotionSource] = []
+
+	func _init(p_sources: Array[MotionSource] = []) -> void:
+		sources = p_sources
+
+	func get_direction() -> Vector2:
+		for source in sources:
+			var direction := source.get_direction()
+			if direction != Vector2.ZERO:
+				return direction
+		return Vector2.ZERO
+
+
 ## Fixed direction, used by the debug capture so a recorded run is deterministic.
 class Scripted extends MotionSource:
 	var direction: Vector2 = Vector2.ZERO

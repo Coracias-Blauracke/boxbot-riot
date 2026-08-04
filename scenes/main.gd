@@ -16,6 +16,9 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 var run: RunModel
 var player: Character
 
+var _circle_mode: bool = false
+var _elapsed: float = 0.0
+
 @onready var _arena: Arena = $Arena
 @onready var _actors: Node2D = $Actors
 
@@ -68,6 +71,20 @@ func _nearest_enemy_distance() -> float:
 			nearest = minf(nearest, player.global_position.distance_to((child as Node2D).global_position))
 	return nearest
 
+## Smallest gap between any two enemies - the number that tells you whether
+## separation is working. Without it a swarm collapses towards zero.
+func _min_enemy_gap() -> float:
+	var enemies: Array[Node2D] = []
+	for child in _actors.get_children():
+		if child is Enemy:
+			enemies.append(child as Node2D)
+
+	var smallest := INF
+	for i in enemies.size():
+		for j in range(i + 1, enemies.size()):
+			smallest = minf(smallest, enemies[i].global_position.distance_to(enemies[j].global_position))
+	return smallest if smallest < INF else 0.0
+
 # --- debug capture ---------------------------------------------------------
 
 func _maybe_start_capture() -> void:
@@ -84,9 +101,14 @@ func _maybe_start_capture() -> void:
 		return
 
 	# Deterministic input, so a recorded run is reproducible.
-	# --capture-still keeps the player put, which is the only way to observe
-	# contact damage: enemies are slower and never catch a running player.
+	#   --capture-still  keeps the player put; the only way to observe contact
+	#                    damage, since enemies never catch a running player.
+	#   --capture-circle runs in circles, which is what makes a swarm without
+	#                    separation collapse into a single dot.
+	_circle_mode = args.has("--capture-circle")
 	var direction := Vector2.ZERO if args.has("--capture-still") else Vector2(1.0, -0.35).normalized()
+	if _circle_mode:
+		direction = Vector2.RIGHT
 	player.motion = MotionSource.Scripted.new(direction)
 
 	var capture := DebugCapture.new()
@@ -103,14 +125,23 @@ func _maybe_start_capture() -> void:
 	add_child(capture)
 	capture.start()
 
+func _process(delta: float) -> void:
+	if not _circle_mode or player == null or not is_instance_valid(player):
+		return
+	_elapsed += delta
+	var scripted := player.motion as MotionSource.Scripted
+	if scripted != null:
+		scripted.direction = Vector2.RIGHT.rotated(_elapsed * 1.6)
+
 func _describe_state() -> String:
 	if player == null or not is_instance_valid(player):
-		return "player is dead, enemies=%d" % _count_enemies()
-	return "player=(%.0f,%.0f) hp=%.0f/%.0f enemies=%d nearest=%.0f" % [
+		return "player is dead, enemies=%d min_gap=%.0f" % [_count_enemies(), _min_enemy_gap()]
+	return "player=(%.0f,%.0f) hp=%.0f/%.0f enemies=%d nearest=%.0f min_gap=%.0f" % [
 		player.global_position.x,
 		player.global_position.y,
 		player.model.current_hp,
 		player.model.get_max_hp(),
 		_count_enemies(),
 		_nearest_enemy_distance(),
+		_min_enemy_gap(),
 	]

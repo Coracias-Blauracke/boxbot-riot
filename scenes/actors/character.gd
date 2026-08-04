@@ -5,7 +5,11 @@ extends Actor
 ## comes from CharacterData.tres: sprite, collider, base stats and the innate
 ## effect list.
 
-var motion: MotionSource = MotionSource.Device.new(-1)
+## Keyboard and the first gamepad both drive player 1. Additional players get
+## their own MotionSource.Device with the device_id they joined on.
+var motion: MotionSource = MotionSource.Combined.new(
+	[MotionSource.Device.new(-1), MotionSource.Device.new(0)] as Array[MotionSource]
+)
 var player_index: int = 0
 
 func _ready() -> void:
