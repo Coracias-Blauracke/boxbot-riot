@@ -21,11 +21,13 @@ var _elapsed: float = 0.0
 
 @onready var _arena: Arena = $Arena
 @onready var _actors: Node2D = $Actors
+@onready var _camera: ArenaCamera = $Camera2D
 
 func _ready() -> void:
 	run = RunModel.new(20260804, world_data, wave_table)
 	run.wave_ended.connect(_on_wave_ended)
 	_arena.bind(run.world)
+	_camera.bind(run.world)
 
 	player = _spawn_player()
 
