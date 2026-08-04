@@ -33,8 +33,8 @@ func _initialize() -> void:
 	_test_swing_thrust_goes_out_and_back()
 	_test_swing_windup_is_not_live()
 	_test_swing_curve_override()
-	_test_swing_blade_tilts()
-	_test_thrust_leads_with_its_point()
+	_test_blade_points_outward()
+	_test_blade_tilt_offset()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -432,34 +432,34 @@ func _test_swing_curve_override() -> void:
 	var half := deg_to_rad(160.0) * 0.5
 	_check("curve overrides the default easing", swing.angle_at(swing.windup_ratio, false), half)
 
-## The blade rotates on its own, not just slides around - which is the other
-## half of why a swing reads as a swing.
-func _test_swing_blade_tilts() -> void:
+## The blade points AWAY from the wielder in every motion - a weapon seen from
+## above reads that way whether it sweeps or stabs. Rotating arcs by 90 made the
+## sword look like it was being swept flat, sideways-on.
+func _test_blade_points_outward() -> void:
+	for motion in [SwingPattern.Motion.ARC, SwingPattern.Motion.THRUST]:
+		var swing := _make_swing(motion)
+		var midpoint := lerpf(swing.windup_ratio, 1.0, 0.5)
+		_check(
+			"blade lies along its own radius (motion %d)" % motion,
+			swing.tilt_at(midpoint, false),
+			swing.angle_at(midpoint, false)
+		)
+
+## An offset is still available for weapons that want to be off-axis, and it
+## eases in and out rather than sitting at a fixed skew.
+func _test_blade_tilt_offset() -> void:
 	var swing := _make_swing(SwingPattern.Motion.ARC)
+	swing.blade_tilt_offset_degrees = 40.0
 	var midpoint := lerpf(swing.windup_ratio, 1.0, 0.5)
 
 	_check_bool(
-		"blade tilt differs from its position angle",
+		"offset skews the blade",
 		absf(swing.tilt_at(midpoint, false) - swing.angle_at(midpoint, false)) > 0.1,
 		true
 	)
-	_check(
-		"mirrored swing tilts the other way",
-		swing.tilt_at(midpoint, true),
-		-swing.tilt_at(midpoint, false)
-	)
-
-## Natural orientation follows the motion. A flat 90 for both made a spear stab
-## sideways instead of leading with its point.
-func _test_thrust_leads_with_its_point() -> void:
-	var thrust := _make_swing(SwingPattern.Motion.THRUST)
-	var midpoint := lerpf(thrust.windup_ratio, 1.0, 0.5)
-	_check("thrust blade lies along the thrust line", thrust.tilt_at(midpoint, false), 0.0)
-
-	var arc := _make_swing(SwingPattern.Motion.ARC)
 	_check_bool(
-		"arc blade lies across the sweep",
-		absf(arc.tilt_at(midpoint, false) - arc.angle_at(midpoint, false)) > deg_to_rad(45.0),
+		"mirrored swing skews the other way",
+		swing.tilt_at(midpoint, true) < -swing.angle_at(midpoint, false),
 		true
 	)
 

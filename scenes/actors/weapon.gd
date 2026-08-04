@@ -19,6 +19,11 @@ var wielder: Actor
 ## below 1.0 to watch a swing frame by frame; 1.0 is normal play.
 var time_scale: float = 1.0
 
+## How fast an attack may still be aimed DURING its windup, before it commits.
+## Deliberately high: the telegraph is the aiming phase, so tracking there is
+## nearly free regardless of what the swing allows once the blade is live.
+const WINDUP_TRACKING_RATE := 720.0
+
 var _target: Actor
 
 # --- melee swing state -----------------------------------------------------
@@ -51,13 +56,14 @@ func _physics_process(delta: float) -> void:
 		var desired := (_target.global_position - global_position).angle()
 		if _swing == null:
 			rotation = desired
-		elif _swing.tracking_degrees_per_second > 0.0:
-			# Keeps turning towards the target mid-swing, but at a capped rate.
-			# Snapping would break the animation; not turning at all makes every
-			# blow miss a target that has taken two steps since it began.
-			rotation = rotate_toward(
-				rotation, desired, deg_to_rad(_swing.tracking_degrees_per_second) * delta
-			)
+		else:
+			# The windup is still aiming; the blow commits only once the blade
+			# goes live. Freezing the aim at the decision instead of at the
+			# strike made every attack lead a target that had since moved.
+			var live := _swing.is_active(_swing_time / _swing_duration)
+			var rate := _swing.tracking_degrees_per_second if live else WINDUP_TRACKING_RATE
+			if rate > 0.0:
+				rotation = rotate_toward(rotation, desired, deg_to_rad(rate) * delta)
 
 	if _swing != null:
 		_advance_swing(delta)

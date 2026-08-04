@@ -39,12 +39,14 @@ enum Motion {
 ## eye sees the wind-up and the release as one motion.
 @export var windup_overshoot_degrees: float = 40.0
 
-## EXTRA rotation on top of the blade's natural orientation, which is implied by
-## the motion: an arc holds the blade across the sweep so the edge leads, a
-## thrust holds it along the line so the point leads. Leave at 0 unless a weapon
-## wants something deliberately odd - a lunging slash, say.
+## EXTRA rotation on top of the blade's natural orientation.
 ##
-## This used to be a flat 90 applied to both, which made a spear stab sideways.
+## Natural is RADIAL for every motion: the blade points away from the wielder,
+## which is how a weapon held from above actually reads whether it is sweeping
+## or stabbing. An earlier version rotated arcs by 90 so the edge would lead,
+## which made the sword look like it was being swept flat, sideways-on.
+##
+## Set this only when a weapon wants something deliberately off-axis.
 @export var blade_tilt_offset_degrees: float = 0.0
 @export var tilt_curve: Curve
 
@@ -111,17 +113,14 @@ func angle_at(t: float, mirrored: bool) -> float:
 func tilt_at(t: float, mirrored: bool) -> float:
 	var progress := _active_progress(t)
 
-	# Natural orientation comes from the motion, not from a constant: across the
-	# sweep for an arc so the edge leads, along the line for a thrust so the
-	# point leads.
-	var natural := 0.0 if motion == Motion.THRUST else deg_to_rad(90.0)
-	var lead := natural + deg_to_rad(blade_tilt_offset_degrees)
+	# Radial by default: the blade lies along the line from the wielder outwards.
+	var lead := deg_to_rad(blade_tilt_offset_degrees)
 
 	if tilt_curve != null:
 		lead *= tilt_curve.sample_baked(progress)
-	elif motion == Motion.ARC:
-		# Rolls hardest through the middle of the sweep, easing off at both
-		# ends - the blade turns over rather than staying rigid.
+	elif motion == Motion.ARC and not is_zero_approx(lead):
+		# Any offset that IS asked for eases in and out across the sweep, so the
+		# blade rolls over rather than sitting at a fixed skew.
 		lead *= 0.6 + 0.4 * sin(PI * progress)
 
 	return angle_at(t, mirrored) + (-lead if mirrored else lead)
