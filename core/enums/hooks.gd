@@ -6,7 +6,7 @@ class_name Hooks
 ## PIPELINE     - "this is about to happen, change it". The payload is MUTABLE
 ##                and passes through every effect in `priority` order. Without
 ##                this, armor, resistances and a shop that charges a stat
-##                instead of gold are simply not implementable.
+##                instead of currency are simply not implementable.
 enum Kind {
 	NOTIFICATION,
 	PIPELINE,
@@ -56,6 +56,10 @@ enum Hook {
 	CALCULATE_WAVE,
 	ON_SHOP_OPENED,
 	ON_SHOP_CLOSED,
+	## Fired on the projectile when it hits something. This is where explosions,
+	## lingering puddles and chain effects hang.
+	ON_IMPACT,
+	ON_OVERHEAT,
 }
 
 const KINDS: Dictionary = {
@@ -86,6 +90,8 @@ const KINDS: Dictionary = {
 	Hook.CALCULATE_WAVE: Kind.PIPELINE,
 	Hook.ON_SHOP_OPENED: Kind.NOTIFICATION,
 	Hook.ON_SHOP_CLOSED: Kind.NOTIFICATION,
+	Hook.ON_IMPACT: Kind.NOTIFICATION,
+	Hook.ON_OVERHEAT: Kind.NOTIFICATION,
 }
 
 static func kind_of(hook: Hook) -> Kind:

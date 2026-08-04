@@ -20,12 +20,16 @@ enum Counter {
 	REROLLS_USED,
 	WAVES_SURVIVED,
 	DODGES,
-	## Current balance - the only counter that legitimately goes DOWN.
+	## Spendable balance - the only counter that legitimately goes DOWN.
 	## Do not call crossings() on it; that helper assumes monotonic growth.
-	GOLD,
+	##
+	## Deliberately not named "gold": the theme may end up being crystals,
+	## scrap or anything else, and a second currency alongside this one is just
+	## one more entry in this enum.
+	CURRENCY,
 	## Lifetime total earned, never decreases. This is the one to hang
-	## "every 500 gold earned, gain X" effects on.
-	GOLD_EARNED,
+	## "every 500 earned, gain X" effects on.
+	CURRENCY_EARNED,
 }
 
 ## When a counter resets.
@@ -51,6 +55,6 @@ const SCOPES: Dictionary = {
 	Counter.REROLLS_USED: Scope.RUN,
 	Counter.WAVES_SURVIVED: Scope.RUN,
 	Counter.DODGES: Scope.WAVE,
-	Counter.GOLD: Scope.RUN,
-	Counter.GOLD_EARNED: Scope.RUN,
+	Counter.CURRENCY: Scope.RUN,
+	Counter.CURRENCY_EARNED: Scope.RUN,
 }

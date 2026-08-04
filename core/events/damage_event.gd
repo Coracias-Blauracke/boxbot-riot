@@ -3,16 +3,16 @@ extends EventPayload
 
 ## Damage resolves in TWO phases, owned by two different entities:
 ##
-##  PHASE 1 - CALCULATE_DAMAGE at the SOURCE (moment of firing / swinging)
-##            weapon stats + wielder stats, crit roll, multipliers.
-##            The result is frozen and travels with the projectile.
+##  PHASE 1 - CALCULATE_DAMAGE at the SOURCE, once per shot.
+##            Weapon stats plus wielder stats, the crit roll, multipliers.
+##            The result is frozen into a ShotSnapshot.
 ##
-##  PHASE 2 - TAKE_DAMAGE at the TARGET (moment of impact)
-##            armor, resistances, shields, "takes +20% from bleed".
+##  PHASE 2 - TAKE_DAMAGE at the TARGET, once per impact.
+##            Armor, resistances, shields, "takes +20% from bleed".
 ##
-## Snapshotting in phase 1 is deliberate: the weapon may be sold while the
-## projectile is in flight and buffs may expire, and retroactively changing an
-## already-fired shot feels wrong - plus piercing would recompute it N times.
+## This class is the phase 2 payload. Note what is NOT here: pierce and bounce
+## counters live on the projectile, because they are projectile state rather
+## than damage state, and one snapshot may feed many projectiles.
 
 var source: EntityModel = null
 var target: EntityModel = null
@@ -25,9 +25,6 @@ var is_crit: bool = false
 ## Reduction computed in phase 2, kept separate so the UI can show
 ## "blocked X" rather than just the final number.
 var absorbed: float = 0.0
-
-var pierce_left: int = 0
-var bounce_left: int = 0
 
 func final_amount() -> float:
 	return maxf(0.0, amount - absorbed)

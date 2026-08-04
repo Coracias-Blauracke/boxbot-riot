@@ -35,4 +35,4 @@ movement = SubResource("Resource_chase")
 separation_radius_scale = 2.6
 separation_weight = 0.9
 contact_damage_interval = 0.6
-gold_reward = 1
+currency_reward = 1

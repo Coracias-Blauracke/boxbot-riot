@@ -7,7 +7,7 @@ extends Resource
 ## necessary, so that the player-facing list does not show MAP_SIZE next to
 ## damage.
 ##
-## Side benefit that falls out for free: a shop charging a stat instead of gold
+## Side benefit that falls out for free: a shop charging a stat instead of currency
 ## takes its `icon` and `format` from here - no special case anywhere.
 
 enum Format {

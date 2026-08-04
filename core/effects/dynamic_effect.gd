@@ -22,7 +22,7 @@ extends Resource
 ##
 ## Deliberately a method rather than an @export field: the set of hooks is a
 ## property of the effect's CODE, not of its configuration. A designer must not
-## be able to wire a gold effect to ON_CRIT, because it would not work anyway.
+## be able to wire a currency effect to ON_CRIT, because it would not work anyway.
 ## Generic effects that genuinely need a configurable trigger override this and
 ## return their own exported field.
 @abstract func get_hooks() -> Array

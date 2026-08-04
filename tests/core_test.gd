@@ -40,7 +40,7 @@ func _initialize() -> void:
 	_test_stat_floors()
 	_test_max_hp_tracking()
 	_test_counters()
-	_test_gold()
+	_test_currency()
 	_test_notification_effect()
 	_test_pipeline_effect()
 	_test_counter_effect()
@@ -158,29 +158,29 @@ func _test_counters() -> void:
 	_check_int("WAVE scope is cleared", counters.get_value(CounterTypes.Counter.STEPS_TAKEN), 0)
 	_check_int("RUN scope is untouched", counters.get_value(CounterTypes.Counter.BULLETS_FIRED), 3500)
 
-func _test_gold() -> void:
+func _test_currency() -> void:
 	var entity := EntityModel.new()
-	entity.add_gold(100)
-	entity.add_gold(-30)
-	_check_int("gold balance goes down when spent", entity.get_gold(), 70)
-	# The lifetime tally must ignore spending, otherwise "every 500 gold earned"
+	entity.add_currency(100)
+	entity.add_currency(-30)
+	_check_int("currency balance goes down when spent", entity.get_currency(), 70)
+	# The lifetime tally must ignore spending, otherwise "every 500 currency earned"
 	# would be gameable by hoarding.
-	_check_int("lifetime earned ignores spending", entity.counters.get_value(CounterTypes.Counter.GOLD_EARNED), 100)
+	_check_int("lifetime earned ignores spending", entity.counters.get_value(CounterTypes.Counter.CURRENCY_EARNED), 100)
 	_check_bool("can_afford", entity.can_afford(70) and not entity.can_afford(71), true)
 
 # --- effects ---------------------------------------------------------------
 
 func _test_notification_effect() -> void:
 	var entity := EntityModel.new()
-	var effect := EffectGoldOnWaveEnd.new()
-	effect.gold_per_stack = 50
+	var effect := EffectCurrencyOnWaveEnd.new()
+	effect.currency_per_stack = 50
 	entity.effects.register(EffectInstance.new(effect, StringName("test"), 2))
 
 	entity.notify(Hooks.Hook.ON_WAVE_ENDED, WaveEvent.new())
-	_check_int("notification: gold scales with stacks", entity.get_gold(), 100)
+	_check_int("notification: currency scales with stacks", entity.get_currency(), 100)
 
 	entity.notify(Hooks.Hook.ON_CRIT, EventPayload.new())
-	_check_int("unrelated hook does not fire the effect", entity.get_gold(), 100)
+	_check_int("unrelated hook does not fire the effect", entity.get_currency(), 100)
 
 func _test_pipeline_effect() -> void:
 	var entity := EntityModel.new()
@@ -229,7 +229,7 @@ func _test_counter_effect() -> void:
 
 # --- items -----------------------------------------------------------------
 
-func _make_item(tier: int, speed_flat: float, gold: int) -> ItemData:
+func _make_item(tier: int, speed_flat: float, currency: int) -> ItemData:
 	var item := ItemData.new()
 	item.display_key = "TEST_ITEM"
 	item.tier = tier
@@ -240,9 +240,9 @@ func _make_item(tier: int, speed_flat: float, gold: int) -> ItemData:
 	modifier.value = speed_flat
 	item.static_stats = [modifier]
 
-	if gold > 0:
-		var effect := EffectGoldOnWaveEnd.new()
-		effect.gold_per_stack = gold
+	if currency > 0:
+		var effect := EffectCurrencyOnWaveEnd.new()
+		effect.currency_per_stack = currency
 		item.dynamic_effects = [effect]
 
 	return item
@@ -256,22 +256,22 @@ func _test_items_lifecycle() -> void:
 	_check_int("inventory quantity", entity.items.get_quantity(item), 3)
 
 	entity.notify(Hooks.Hook.ON_WAVE_ENDED, WaveEvent.new())
-	_check_int("effect scales with owned count", entity.get_gold(), 30)
+	_check_int("effect scales with owned count", entity.get_currency(), 30)
 
 	entity.remove_item(item, 1)
 	_check("selling one copy", entity.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED), 200.0)
 
-	entity.counters.set_value(CounterTypes.Counter.GOLD, 0)
+	entity.counters.set_value(CounterTypes.Counter.CURRENCY, 0)
 	entity.notify(Hooks.Hook.ON_WAVE_ENDED, WaveEvent.new())
-	_check_int("effect recomputes after a sale", entity.get_gold(), 20)
+	_check_int("effect recomputes after a sale", entity.get_currency(), 20)
 
 	entity.remove_item(item, 5)  # more than owned
 	_check("selling the rest clears modifiers", entity.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED), 0.0)
 	_check_int("empty inventory", entity.items.get_quantity(item), 0)
 
-	entity.counters.set_value(CounterTypes.Counter.GOLD, 0)
+	entity.counters.set_value(CounterTypes.Counter.CURRENCY, 0)
 	entity.notify(Hooks.Hook.ON_WAVE_ENDED, WaveEvent.new())
-	_check_int("effect removed along with the item", entity.get_gold(), 0)
+	_check_int("effect removed along with the item", entity.get_currency(), 0)
 
 func _test_item_tiers() -> void:
 	var entity := EntityModel.new()
@@ -296,7 +296,7 @@ func _test_authored_tres() -> void:
 	_check("tres: stats loaded from file", entity.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED), 400.0)
 
 	entity.notify(Hooks.Hook.ON_WAVE_ENDED, WaveEvent.new())
-	_check_int("tres: dynamic effect from file", entity.get_gold(), 50)
+	_check_int("tres: dynamic effect from file", entity.get_currency(), 50)
 
 	entity.remove_item(item, 2)
 	_check("tres: full teardown", entity.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED), 0.0)

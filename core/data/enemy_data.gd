@@ -22,4 +22,4 @@ extends EntityData
 @export var contact_damage_interval: float = 0.6
 
 @export_group("Rewards")
-@export var gold_reward: int = 1
+@export var currency_reward: int = 1

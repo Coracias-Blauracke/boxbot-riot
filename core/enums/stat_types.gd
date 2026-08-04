@@ -29,7 +29,7 @@ enum Stat {
 	# --- economy and utility ---
 	WEAPON_SLOTS,
 	LUCK,
-	GOLD_GAIN,
+	CURRENCY_GAIN,
 	HARVESTING,
 	ENGINEERING,
 	# --- status effects ---
@@ -39,6 +39,15 @@ enum Stat {
 	BURN_DAMAGE,
 	# --- world (stats of the map model, not of a character) ---
 	MAP_SIZE,
+	# --- weapons ---
+	## Half-angle of the inaccuracy cone, in degrees. 0 is perfectly accurate.
+	SPREAD_ANGLE,
+	PROJECTILE_SPEED,
+	## Heat is available to every weapon; heat_per_shot = 0 simply disables it.
+	HEAT_CAPACITY,
+	HEAT_DISSIPATION,
+	## Push applied to the wielder when firing. Almost always 0.
+	RECOIL,
 }
 
 ## get_stat() computes: (base + flat) * (1.0 + percent) * mult
@@ -80,4 +89,11 @@ const FLOORS: Dictionary = {
 	Stat.WEAPON_SLOTS: 0.0,
 	Stat.MAP_SIZE: 0.1,
 	Stat.CRIT_MULTIPLIER: 1.0,
+	Stat.SPREAD_ANGLE: 0.0,
+	## A multiplier, so it must be allowed below 1.0 for "slow projectiles"
+	## effects - only prevented from reaching zero or going negative.
+	Stat.PROJECTILE_SPEED: 0.1,
+	Stat.HEAT_CAPACITY: 1.0,
+	Stat.HEAT_DISSIPATION: 0.0,
+	Stat.RECOIL: 0.0,
 }

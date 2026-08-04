@@ -5,7 +5,7 @@ extends RefCounted
 ## bosses, weapons, turrets, destructible obstacles, and the map and run models
 ## themselves.
 ##
-## There is deliberately no PlayerModel or EnemyModel subclass. Once gold moved
+## There is deliberately no PlayerModel or EnemyModel subclass. Once currency moved
 ## into the counters, nothing distinguished them but the way they are driven -
 ## input versus AI - and that is a concern of the scene layer, not of the model.
 ##
@@ -102,22 +102,23 @@ func add_item(item: ItemData, quantity: int = 1) -> void:
 func remove_item(item: ItemData, quantity: int = 1) -> void:
 	items.remove_item(self, item, quantity)
 
-# --- gold ------------------------------------------------------------------
+# --- currency --------------------------------------------------------------
 #
-# Gold is a counter, not a stat: it is accumulated state that must be saved and
-# must never be touched by a percent modifier. GOLD is the spendable balance,
-# GOLD_EARNED the lifetime tally that "every 500 gold earned" effects hang on.
+# Currency is a counter, not a stat: accumulated state that must be saved and
+# must never be touched by a percent modifier. CURRENCY is the spendable
+# balance, CURRENCY_EARNED the lifetime tally that "every 500 earned" effects
+# hang on. Nothing here names a theme, so it can be coins, crystals or scrap.
 
-func get_gold() -> int:
-	return counters.get_value(CounterTypes.Counter.GOLD)
+func get_currency() -> int:
+	return counters.get_value(CounterTypes.Counter.CURRENCY)
 
-func add_gold(amount: int) -> void:
-	counters.add(CounterTypes.Counter.GOLD, amount)
+func add_currency(amount: int) -> void:
+	counters.add(CounterTypes.Counter.CURRENCY, amount)
 	if amount > 0:
-		counters.add(CounterTypes.Counter.GOLD_EARNED, amount)
+		counters.add(CounterTypes.Counter.CURRENCY_EARNED, amount)
 
 func can_afford(amount: int) -> bool:
-	return get_gold() >= amount
+	return get_currency() >= amount
 
 # --- statuses --------------------------------------------------------------
 
