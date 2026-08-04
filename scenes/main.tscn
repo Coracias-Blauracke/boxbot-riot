@@ -1,16 +1,20 @@
-[gd_scene load_steps=6 format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=9 format=3 uid="uid://ypmpa6ofxxh2"]
 
 [ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
 [ext_resource type="Resource" path="res://content/worlds/test_arena.tres" id="3_world"]
 [ext_resource type="Resource" path="res://content/characters/test_character.tres" id="4_char"]
 [ext_resource type="Resource" path="res://content/enemies/chaser.tres" id="5_enemy"]
+[ext_resource type="Resource" path="res://content/weapons/pistol.tres" id="6_pistol"]
+[ext_resource type="Resource" path="res://content/weapons/shotgun.tres" id="7_shotgun"]
+[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="8_wdata"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 world_data = ExtResource("3_world")
 character_data = ExtResource("4_char")
 enemy_data = ExtResource("5_enemy")
+starting_weapons = Array[ExtResource("8_wdata")]([ExtResource("6_pistol"), ExtResource("7_shotgun")])
 enemy_count = 8
 
 [node name="Arena" type="Node2D" parent="."]

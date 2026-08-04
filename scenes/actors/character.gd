@@ -24,3 +24,9 @@ func _ready() -> void:
 func _get_move_direction(_delta: float) -> Vector2:
 	var direction := motion.get_direction()
 	return direction.normalized() if direction.length() > 1.0 else direction
+
+func equip(weapon_data: WeaponData) -> Weapon:
+	return ($WeaponMount as WeaponMount).equip(weapon_data, self)
+
+func get_weapons() -> Array[Weapon]:
+	return ($WeaponMount as WeaponMount).get_weapons()

@@ -19,6 +19,11 @@ var world: WorldModel
 
 var placeholder_color: Color = Color.WHITE
 
+## Knockback and recoil arrive here rather than in `velocity`, which is
+## overwritten from the stats every frame. Decays on its own.
+var impulse: Vector2 = Vector2.ZERO
+@export var impulse_decay: float = 6.0
+
 @onready var _shape: CollisionShape2D = $CollisionShape2D
 
 func bind(p_model: EntityModel, p_data: EntityData, p_world: WorldModel) -> void:
@@ -43,7 +48,8 @@ func _physics_process(delta: float) -> void:
 	# Speed is read from the model every frame rather than cached, so a slow
 	# status or a speed item takes effect immediately with no wiring.
 	var direction := _get_move_direction(delta)
-	velocity = direction * model.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED)
+	velocity = direction * model.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED) + impulse
+	impulse = impulse.lerp(Vector2.ZERO, clampf(impulse_decay * delta, 0.0, 1.0))
 	move_and_slide()
 
 	if world != null:

@@ -11,6 +11,7 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 @export var world_data: WorldData
 @export var character_data: CharacterData
 @export var enemy_data: EnemyData
+@export var starting_weapons: Array[WeaponData] = []
 @export var enemy_count: int = 8
 
 var run: RunModel
@@ -44,6 +45,11 @@ func _spawn_player() -> Character:
 	node.bind(model, character_data, run.world)
 	node.position = Vector2.ZERO
 	_actors.add_child(node)
+
+	for weapon_data in starting_weapons:
+		if weapon_data != null:
+			node.equip(weapon_data)
+
 	return node
 
 func _spawn_enemy() -> Enemy:
@@ -133,15 +139,24 @@ func _process(delta: float) -> void:
 	if scripted != null:
 		scripted.direction = Vector2.RIGHT.rotated(_elapsed * 1.6)
 
+func _count_projectiles() -> int:
+	var total := 0
+	for child in _actors.get_children():
+		if child is Projectile:
+			total += 1
+	return total
+
 func _describe_state() -> String:
 	if player == null or not is_instance_valid(player):
-		return "player is dead, enemies=%d min_gap=%.0f" % [_count_enemies(), _min_enemy_gap()]
-	return "player=(%.0f,%.0f) hp=%.0f/%.0f enemies=%d nearest=%.0f min_gap=%.0f" % [
+		return "player is dead, enemies=%d" % _count_enemies()
+	return "player=(%.0f,%.0f) hp=%.0f/%.0f cur=%d enemies=%d nearest=%.0f gap=%.0f shots=%d" % [
 		player.global_position.x,
 		player.global_position.y,
 		player.model.current_hp,
 		player.model.get_max_hp(),
+		player.model.get_currency(),
 		_count_enemies(),
 		_nearest_enemy_distance(),
 		_min_enemy_gap(),
+		_count_projectiles(),
 	]

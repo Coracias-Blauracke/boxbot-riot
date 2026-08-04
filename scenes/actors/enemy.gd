@@ -21,6 +21,9 @@ func _ready() -> void:
 	placeholder_color = Color(1.0, 0.42, 0.36)
 	super()
 
+	# Weapons find their targets through this group.
+	add_to_group(&"enemies")
+
 	var radius: float = data.collider_radius if data != null else 8.0
 	var enemy_data := data as EnemyData
 	if enemy_data != null:
@@ -36,6 +39,11 @@ func _ready() -> void:
 	var separation_shape := CircleShape2D.new()
 	separation_shape.radius = maxf(_separation_radius, 1.0)
 	($SeparationArea/CollisionShape2D as CollisionShape2D).shape = separation_shape
+
+	# What projectiles look for.
+	var hurt_shape := CircleShape2D.new()
+	hurt_shape.radius = radius
+	($Hurtbox/CollisionShape2D as CollisionShape2D).shape = hurt_shape
 
 	_hitbox.area_entered.connect(_on_hitbox_area_entered)
 	_hitbox.area_exited.connect(_on_hitbox_area_exited)
@@ -110,3 +118,12 @@ func _on_hitbox_area_exited(area: Area2D) -> void:
 	var actor := area.get_parent() as Actor
 	if actor != null:
 		_touching.erase(actor)
+
+## Pays out to whoever landed the killing blow. The model records its last
+## attacker, so kill credit survives the projectile that did it being freed.
+func _on_model_died() -> void:
+	var enemy_data := data as EnemyData
+	var killer := model.get_last_attacker()
+	if enemy_data != null and killer != null:
+		killer.add_currency(enemy_data.currency_reward)
+	super()

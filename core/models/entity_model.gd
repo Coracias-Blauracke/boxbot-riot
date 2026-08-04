@@ -27,6 +27,13 @@ var _items: ItemsManager = null
 var _rng: RunRandom = null
 var _last_max_hp: float = 0.0
 
+## Whoever last landed damage, for kill credit. Weak, because the killer may
+## well die before its victim's death is processed.
+var last_attacker: WeakRef = null
+
+func get_last_attacker() -> EntityModel:
+	return last_attacker.get_ref() as EntityModel if last_attacker != null else null
+
 ## Injected by RunModel.add_player so the whole run shares one seed. Falls back
 ## to a private generator when the entity is used standalone (tests, previews);
 ## assign explicitly when a deterministic roll matters.
@@ -152,6 +159,8 @@ func apply_damage(event: DamageEvent) -> float:
 
 	if final > 0.0:
 		counters.add(CounterTypes.Counter.DAMAGE_TAKEN, roundi(final))
+		if event.source != null:
+			last_attacker = weakref(event.source)
 		set_hp(current_hp - final)
 
 	notify(Hooks.Hook.ON_DAMAGE_TAKEN, event)
