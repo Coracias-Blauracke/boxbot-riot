@@ -32,6 +32,7 @@ func _initialize() -> void:
 	_test_swing_thrust_goes_out_and_back()
 	_test_swing_windup_is_not_live()
 	_test_swing_curve_override()
+	_test_swing_blade_tilts()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -346,11 +347,15 @@ func _make_swing(motion: SwingPattern.Motion) -> SwingPattern:
 func _test_swing_arc_sweeps() -> void:
 	var swing := _make_swing(SwingPattern.Motion.ARC)
 	var half := deg_to_rad(160.0) * 0.5
+	var overshoot := deg_to_rad(swing.windup_overshoot_degrees)
 
-	# The blow starts at one edge of the arc and finishes at the other.
-	_check("arc starts at the near edge", swing.angle_at(swing.windup_ratio, false), -half)
+	# Anticipation: the weapon travels BEYOND the start of the arc during the
+	# windup, then releases through the whole sweep. Without this the swing is
+	# a bare rotation and reads as sterile.
+	_check("swing begins at the arc edge", swing.angle_at(0.0, false), -half)
+	_check_bool("windup winds back past the start", swing.angle_at(swing.windup_ratio * 0.99, false) < -half, true)
+	_check("release starts from the wound-back angle", swing.angle_at(swing.windup_ratio, false), -half - overshoot)
 	_check("arc finishes at the far edge", swing.angle_at(1.0, false), half)
-	_check("arc passes through centre midway", swing.angle_at(0.7, false), 0.0)
 
 	# Monotonic through the live window - a swing must not wobble backwards.
 	var previous := -INF
@@ -401,8 +406,27 @@ func _test_swing_curve_override() -> void:
 	curve.add_point(Vector2(1.0, 1.0))
 	swing.angle_curve = curve
 
+	# A curve that sits at 1.0 puts the blade at the end of the arc from the
+	# instant the release begins.
 	var half := deg_to_rad(160.0) * 0.5
 	_check("curve overrides the default easing", swing.angle_at(swing.windup_ratio, false), half)
+
+## The blade rotates on its own, not just slides around - which is the other
+## half of why a swing reads as a swing.
+func _test_swing_blade_tilts() -> void:
+	var swing := _make_swing(SwingPattern.Motion.ARC)
+	var midpoint := lerpf(swing.windup_ratio, 1.0, 0.5)
+
+	_check_bool(
+		"blade tilt differs from its position angle",
+		absf(swing.tilt_at(midpoint, false) - swing.angle_at(midpoint, false)) > 0.1,
+		true
+	)
+	_check(
+		"mirrored swing tilts the other way",
+		swing.tilt_at(midpoint, true),
+		-swing.tilt_at(midpoint, false)
+	)
 
 # --- test-only effect ------------------------------------------------------
 

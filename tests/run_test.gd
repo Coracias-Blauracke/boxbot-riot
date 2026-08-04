@@ -26,6 +26,7 @@ func _initialize() -> void:
 	_test_director_respects_availability()
 	_test_director_spreads_spawns_across_the_wave()
 	_test_director_ends_on_the_timer()
+	_test_intermission_starts_the_next_wave()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -349,6 +350,28 @@ func _test_director_ends_on_the_timer() -> void:
 	director.advance(1.0, rng)
 	_check_bool("finishes on the timer, not on a clear arena", director.is_finished(), true)
 	_check("no time left", director.time_remaining(), 0.0)
+
+## Without this the run stops dead after wave one: the shop opens and nothing
+## closes it, because there is no shop UI yet.
+func _test_intermission_starts_the_next_wave() -> void:
+	var run := RunModel.new(11, null, _make_table())
+	run.total_waves = 5
+	run.auto_intermission = 2.0
+	run.add_player(EntityModel.new())
+
+	run.start_wave()
+	_check_int("wave 1 running", run.wave_number, 1)
+
+	run.advance_wave(run.director.duration + 0.1)
+	_check_int("timer opens the shop", run.phase, WorldTypes.Phase.SHOP)
+
+	run.advance_wave(1.0)
+	_check_int("intermission is still running", run.phase, WorldTypes.Phase.SHOP)
+	_check_int("no new wave yet", run.wave_number, 1)
+
+	run.advance_wave(1.5)
+	_check_int("wave 2 begins", run.wave_number, 2)
+	_check_int("back in combat", run.phase, WorldTypes.Phase.COMBAT)
 
 # --- assertions ------------------------------------------------------------
 

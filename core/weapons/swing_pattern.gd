@@ -33,6 +33,18 @@ enum Motion {
 ## weapon read as heavy rather than just slow.
 @export_range(0.0, 0.9) var windup_ratio: float = 0.35
 
+## ANTICIPATION. During the windup the weapon travels BEYOND the start of the
+## arc, then sweeps through the whole thing. Without it a swing is a bare
+## rotation and reads as sterile no matter how the timing is tuned; with it the
+## eye sees the wind-up and the release as one motion.
+@export var windup_overshoot_degrees: float = 40.0
+
+## Rotation of the blade itself, on top of where it is positioned. 90 makes the
+## edge lead the sweep; 0 keeps it pointing away from the wielder, which is what
+## a thrust wants.
+@export var blade_tilt_degrees: float = 90.0
+@export var tilt_curve: Curve
+
 @export_group("Curves (optional)")
 ## Override the built-in easing. Null keeps the defaults, which already work.
 @export var angle_curve: Curve
@@ -60,17 +72,43 @@ func offset_at(t: float, mirrored: bool) -> Vector2:
 	return Vector2.RIGHT.rotated(angle_at(t, mirrored)) * reach_at(t)
 
 func angle_at(t: float, mirrored: bool) -> float:
+	if motion == Motion.THRUST:
+		return 0.0
+
 	var half := deg_to_rad(arc_degrees) * 0.5
-	var progress := _active_progress(t)
+	var overshoot := deg_to_rad(windup_overshoot_degrees)
+	var angle: float
 
-	var eased := (
-		angle_curve.sample_baked(progress)
-		if angle_curve != null
-		else _smoothstep(progress)
-	)
+	if t < windup_ratio:
+		# Winding back past the start of the arc.
+		var wind := t / maxf(0.001, windup_ratio)
+		angle = lerpf(-half, -half - overshoot, _smoothstep(wind))
+	else:
+		# Releasing: from the wound-back position through the entire arc.
+		var progress := _active_progress(t)
+		var eased := (
+			angle_curve.sample_baked(progress)
+			if angle_curve != null
+			else _smoothstep(progress)
+		)
+		angle = lerpf(-half - overshoot, half, eased)
 
-	var angle := 0.0 if motion == Motion.THRUST else lerpf(-half, half, eased)
 	return -angle if mirrored else angle
+
+## Rotation of the blade itself. Separate from where the blade IS, so the edge
+## can lead the sweep rather than the whole thing sliding around rigidly.
+func tilt_at(t: float, mirrored: bool) -> float:
+	var progress := _active_progress(t)
+	var lead := deg_to_rad(blade_tilt_degrees)
+
+	if tilt_curve != null:
+		lead *= tilt_curve.sample_baked(progress)
+	elif motion == Motion.ARC:
+		# Tilts hardest through the middle of the sweep, easing off at both
+		# ends - the blade rolls over rather than staying rigid.
+		lead *= 0.6 + 0.4 * sin(PI * progress)
+
+	return angle_at(t, mirrored) + (-lead if mirrored else lead)
 
 func reach_at(t: float) -> float:
 	var progress := _active_progress(t)

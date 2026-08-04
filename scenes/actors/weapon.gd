@@ -74,10 +74,34 @@ func _acquire_target() -> Actor:
 	# Deliberately the WEAPON's position, not the wielder's centre. Weapons on
 	# opposite sides of the mount then cover different directions on their own,
 	# which turned out to feel good - do not "fix" this to use the character.
-	var index := data.targeting.select(
-		global_position, positions, models, model.stats.get_stat(StatTypes.Stat.RANGE)
-	)
+	var index := data.targeting.select(global_position, positions, models, _targeting_range())
 	return actors[index] if index >= 0 else null
+
+## Slight overshoot on the acquisition range: the windup takes time and a melee
+## target is normally closing, so committing exactly at maximum reach would let
+## it arrive just after the blow has already passed.
+const MELEE_TARGET_TOLERANCE := 1.12
+
+## A melee weapon must not target further than it can physically hit. Using the
+## raw RANGE stat made the sword commit to swings at 95 units when its blade
+## only covered 57, so it repeatedly cut thin air.
+func _targeting_range() -> float:
+	if data.delivery == WeaponData.DeliveryKind.MELEE_SWEEP:
+		return melee_reach() * MELEE_TARGET_TOLERANCE
+	return model.stats.get_stat(StatTypes.Stat.RANGE)
+
+## Furthest any swing in the combo can actually connect, hitbox included.
+func melee_reach() -> float:
+	var scale := _reach_scale()
+	var furthest := 0.0
+	for swing in data.melee_combo:
+		if swing != null:
+			furthest = maxf(furthest, swing.reach * scale + swing.hitbox_radius)
+	return furthest
+
+## For melee, RANGE acts as a multiplier on the authored reach, neutral at 100.
+func _reach_scale() -> float:
+	return maxf(0.1, model.stats.get_stat(StatTypes.Stat.RANGE) / 100.0)
 
 # --- firing ----------------------------------------------------------------
 
@@ -183,8 +207,7 @@ func _check_swing_overlap(t: float) -> void:
 	if _swing.max_targets > 0 and _swing_hits.size() >= _swing.max_targets:
 		return
 
-	var reach_scale := maxf(0.1, model.stats.get_stat(StatTypes.Stat.RANGE) / 100.0)
-	var centre := global_position + _swing.offset_at(t, _swing_mirrored).rotated(rotation) * reach_scale
+	var centre := global_position + _swing.offset_at(t, _swing_mirrored).rotated(rotation) * _reach_scale()
 	var radius := _swing.hitbox_radius
 
 	for node in get_tree().get_nodes_in_group(&"enemies"):
@@ -214,19 +237,34 @@ func _land_swing_hit(enemy: Actor, from: Vector2) -> void:
 	if _swing.knockback > 0.0:
 		enemy.impulse += (enemy.global_position - from).normalized() * _swing.knockback
 
+## Placeholder blade of FIXED length that moves and rotates, rather than a line
+## stretching from the grip - the rubber-band look was an artefact of the
+## drawing, not of the swing.
+const BLADE_LENGTH := 24.0
+
 func _draw() -> void:
 	var heat := model.heat_ratio() if model != null else 0.0
 	var color := Color(0.85, 0.85, 0.9).lerp(Color(1.0, 0.35, 0.2), heat)
 
 	if _swing == null:
-		draw_line(Vector2.ZERO, Vector2.RIGHT * 14.0, color, 3.0)
+		if data != null and data.delivery == WeaponData.DeliveryKind.MELEE_SWEEP:
+			_draw_blade(Vector2.RIGHT * 10.0, 0.0, color)
+		else:
+			draw_line(Vector2.ZERO, Vector2.RIGHT * 14.0, color, 3.0)
 		return
 
-	# Placeholder blade: a line out to the hitbox, brightening once it is live.
 	var t := clampf(_swing_time / _swing_duration, 0.0, 1.0)
-	var reach_scale := maxf(0.1, model.stats.get_stat(StatTypes.Stat.RANGE) / 100.0)
-	var tip := _swing.offset_at(t, _swing_mirrored) * reach_scale
+	var pivot := _swing.offset_at(t, _swing_mirrored) * _reach_scale()
+	var tilt := _swing.tilt_at(t, _swing_mirrored)
 	var live := _swing.is_active(t)
-	draw_line(Vector2.ZERO, tip, color if not live else Color(1.0, 0.95, 0.7), 3.0)
+
+	_draw_blade(pivot, tilt, Color(1.0, 0.95, 0.7) if live else color.darkened(0.25))
 	if live:
-		draw_circle(tip, _swing.hitbox_radius, Color(1.0, 0.95, 0.7, 0.25))
+		draw_circle(pivot, _swing.hitbox_radius, Color(1.0, 0.95, 0.7, 0.18))
+
+func _draw_blade(centre: Vector2, tilt: float, color: Color) -> void:
+	var along := Vector2.RIGHT.rotated(tilt)
+	var grip := centre - along * BLADE_LENGTH * 0.3
+	var tip := centre + along * BLADE_LENGTH * 0.7
+	draw_line(grip, tip, color, 3.0)
+	draw_line(Vector2.ZERO, grip, color.darkened(0.55), 1.5)

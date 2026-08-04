@@ -24,6 +24,13 @@ var phase: WorldTypes.Phase = WorldTypes.Phase.PREPARING
 ## spawner reads this rather than having to catch the signal.
 var spawn_boss_this_wave: bool = false
 
+## TEMPORARY. With no shop UI, nothing closes the shop and the run stops dead
+## after wave one. A timed intermission keeps waves coming so the game can be
+## played and tested. Set to 0 once the shop exists - it will then be closed by
+## every player declaring themselves ready instead.
+var auto_intermission: float = 4.0
+var _intermission_left: float = 0.0
+
 func _init(run_seed: int = 0, world_data: WorldData = null, wave_table: WaveTable = null) -> void:
 	rng = RunRandom.new(run_seed)
 	world = WorldModel.new(world_data)
@@ -89,6 +96,7 @@ func end_wave() -> void:
 
 func open_shop() -> void:
 	phase = WorldTypes.Phase.SHOP
+	_intermission_left = auto_intermission
 	for player in players:
 		player.notify(Hooks.Hook.ON_SHOP_OPENED, EventPayload.new())
 	phase_changed.emit(phase)
@@ -105,6 +113,13 @@ func close_shop() -> void:
 ## Note it does NOT tick statuses: in the running game each actor ticks its own,
 ## and doing it here as well would advance every player's statuses twice.
 func advance_wave(delta: float) -> Array[EnemyData]:
+	if phase == WorldTypes.Phase.SHOP and auto_intermission > 0.0:
+		_intermission_left -= delta
+		if _intermission_left <= 0.0:
+			close_shop()
+			start_wave()
+		return []
+
 	if phase != WorldTypes.Phase.COMBAT:
 		return []
 
