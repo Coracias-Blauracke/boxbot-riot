@@ -19,6 +19,17 @@ var overrides: WorldOverrides
 var director: WaveDirector
 
 var players: Array[EntityModel] = []
+
+## ONE SHOP PER PLAYER, index-aligned with `players`. Not one shop shared four
+## ways: each has its own offers, its own reroll count, its own readiness and
+## its own RNG sub-stream. Everything below the shop was already built this way
+## - currency is a per-entity counter and prices come out of a pipeline
+## evaluated per buyer - so a single shared shop would have been the odd one out.
+var shops: Array[ShopManager] = []
+
+## Authored rules, shared by every player's shop. The DATA is common; nothing
+## about the state is.
+var shop_data: ShopData = null
 var wave_number: int = 0
 var total_waves: int = 20
 var phase: WorldTypes.Phase = WorldTypes.Phase.PREPARING
@@ -41,11 +52,16 @@ var _downed: Array[int] = []
 ## spawner reads this rather than having to catch the signal.
 var spawn_boss_this_wave: bool = false
 
-## TEMPORARY. With no shop UI, nothing closes the shop and the run stops dead
-## after wave one. A timed intermission keeps waves coming so the game can be
-## played and tested. Set to 0 once the shop exists - it will then be closed by
-## every player declaring themselves ready instead.
-var auto_intermission: float = 4.0
+## Seconds after which the shop closes ON ITS OWN. 0 means it does not, and
+## waits for every living player to declare ready.
+##
+## 0 now that there is a shop UI to press. It was 4.0 while there was nothing to
+## press, and leaving it there once the UI existed meant the shop shut itself
+## four seconds in, which is not long enough to read one item, let alone buy one.
+##
+## The capture runs set it back, because a scripted player never presses
+## anything and a wave-two capture would otherwise sit in the shop forever.
+var auto_intermission: float = 0.0
 var _intermission_left: float = 0.0
 
 func _init(run_seed: int = 0, world_data: WorldData = null, wave_table: WaveTable = null) -> void:
@@ -56,6 +72,11 @@ func _init(run_seed: int = 0, world_data: WorldData = null, wave_table: WaveTabl
 
 	director = WaveDirector.new()
 	director.table = wave_table
+
+	# Authored on the table, not hardcoded here. Still assignable afterwards so
+	# tests and challenge modes can shorten a run without a second .tres.
+	if wave_table != null:
+		total_waves = wave_table.total_waves
 
 ## Players share one RunRandom so the whole run stays reproducible from one seed.
 func add_player(player: EntityModel) -> int:
@@ -68,7 +89,17 @@ func add_player(player: EntityModel) -> int:
 	# cycle collector, so run_test.gd asserts it with a weakref rather than
 	# taking it on trust.
 	player.died.connect(_on_player_died)
+
+	# Created here rather than when the shop opens, so the pairing with `players`
+	# can never drift and player_index always matches the RNG sub-stream.
+	var shop := ShopManager.new()
+	shop.player_index = index
+	shops.append(shop)
+
 	return index
+
+func shop_for(index: int) -> ShopManager:
+	return shops[index] if index >= 0 and index < shops.size() else null
 
 # --- death and the end of the run ------------------------------------------
 
@@ -192,18 +223,60 @@ func end_wave() -> void:
 func open_shop() -> void:
 	phase = WorldTypes.Phase.SHOP
 	_intermission_left = auto_intermission
-	# Before the notification, so an effect hanging on ON_SHOP_OPENED sees a
-	# living player rather than having to ask whether this one is a corpse.
+	# Before everything else, so an effect hanging on ON_SHOP_OPENED sees a
+	# living player rather than having to ask whether this one is a corpse - and
+	# so a revived player gets a shop below.
 	_revive_downed()
+
+	for index in players.size():
+		var shop := shops[index]
+		shop.data = shop_data
+		# A player still down does not get a shop. Under PERMANENT they never
+		# will again, and rolling offers for a corpse would put a whole panel of
+		# things on screen that nobody can buy.
+		if players[index].is_alive:
+			shop.open(players[index], wave_number, rng)
+		else:
+			shop.close()
+
 	for player in players:
 		player.notify(Hooks.Hook.ON_SHOP_OPENED, EventPayload.new())
 	phase_changed.emit(phase)
 
 func close_shop() -> void:
+	for shop in shops:
+		shop.close()
 	for player in players:
 		player.notify(Hooks.Hook.ON_SHOP_CLOSED, EventPayload.new())
 	phase = WorldTypes.Phase.PREPARING
 	phase_changed.emit(phase)
+
+## Every LIVING player has to declare themselves ready.
+##
+## The living part matters: under PERMANENT a dead player can never press
+## anything again, so counting them would hold the run hostage for the rest of
+## it. Returns false when nobody is alive at all, because that is a lost run
+## rather than a wave everyone is ready for.
+func all_players_ready() -> bool:
+	var any_living := false
+	for index in players.size():
+		if not players[index].is_alive:
+			continue
+		any_living = true
+		if not shops[index].is_ready:
+			return false
+	return any_living
+
+## The intended way out of the shop phase once there is a UI to press it.
+## `auto_intermission` remains as the fallback until then.
+func set_player_ready(index: int, value: bool) -> void:
+	if index < 0 or index >= shops.size():
+		return
+
+	shops[index].set_ready(value)
+	if phase == WorldTypes.Phase.SHOP and all_players_ready():
+		close_shop()
+		start_wave()
 
 ## Advances the wave and returns whatever should spawn this frame. Ends the wave
 ## on its own once the timer runs out.

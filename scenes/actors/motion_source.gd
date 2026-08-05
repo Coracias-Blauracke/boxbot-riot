@@ -48,6 +48,22 @@ class Combined extends MotionSource:
 		return Vector2.ZERO
 
 
+## Movement driven by a player's device binding.
+##
+## Wraps PlayerInput rather than replacing it, so a capture run can swap in
+## Scripted below without the player losing the device that also drives their
+## shop panel. Walking and buying must not be able to disagree about who owns
+## which pad.
+class FromInput extends MotionSource:
+	var input: PlayerInput
+
+	func _init(p_input: PlayerInput = null) -> void:
+		input = p_input
+
+	func get_direction() -> Vector2:
+		return input.movement() if input != null else Vector2.ZERO
+
+
 ## Fixed direction, used by the debug capture so a recorded run is deterministic.
 class Scripted extends MotionSource:
 	var direction: Vector2 = Vector2.ZERO

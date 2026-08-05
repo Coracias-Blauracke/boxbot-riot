@@ -14,7 +14,7 @@ The user converses in Polish; the codebase does not.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 290 assertions across three suites, no editor, no game window
+# tests — 384 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -58,6 +58,13 @@ accident:
 | `--capture-scatter` | drives players to opposite corners to check the camera holds all of them |
 | `--capture-downed` | player 0 stands and dies while the rest kite in a WIDE circle and live — the only way to photograph one player down while the run continues |
 
+`--capture-intermission=N` holds the shop phase open (four seconds is not long
+enough to photograph) and `--capture-shop-owned` parks every shop cursor on the
+owned strip. The second one exists because **a UI state that needs input cannot
+otherwise be photographed at all**, which is a real hole in how this repo
+verifies the scene layer — every selected, hovered or focused state is invisible
+to a capture run until something can put the cursor there.
+
 `--capture-zoom=N` and `--capture-margin=N` override `ArenaCamera` so framing
 can be A/B'd with one variable changed. Note `group_margin` caps how far
 `default_zoom` can actually go: a solo player cannot exceed
@@ -78,13 +85,15 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
   events/    EventPayload and its subclasses
   managers/  StatsManager, CounterManager, EffectDispatcher, StatusManager,
-             ItemsManager, WaveDirector, RunRandom, WorldOverrides
+             ItemsManager, WaveDirector, RunRandom, WorldOverrides,
+             ShopManager (+ ShopOffer)
   models/    EntityModel, WorldModel, WeaponModel, RunModel
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
   behaviors/ MovementBehavior, ChaseBehavior
 scenes/      the view — nodes, physics, rendering
-  ui/        Hud, PlayerPanel, PlayerPalette
+  ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout
+  input/     PlayerInput (device binding, movement + menus)
 content/     authored .tres: characters, enemies, weapons, items, waves, worlds
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
@@ -107,8 +116,12 @@ spin, burst progress).
 **Hooks split into NOTIFICATION and PIPELINE.** Notifications say "this
 happened" (read-only payload, order irrelevant). Pipelines say "this is about to
 happen, change it" (mutable payload, ordered by `priority`). Armor, resistances
-and stat-based shop pricing are *not expressible* without pipelines. 23 of 31
-hooks currently fire; the rest wait on the shop and on step detection.
+and stat-based shop pricing are *not expressible* without pipelines. **28 of the
+29 hooks fire**; only `ON_STEP` waits on step detection.
+
+(This line previously read "23 of 31", which was wrong in both numbers. Count
+the entries in `Hooks.KINDS` — it has to cover every hook — rather than trusting
+the figure written here.)
 
 **Events are objects, not signal argument lists.** Adding a field must not break
 two hundred existing effects.
@@ -131,6 +144,50 @@ tally that "every 500 earned" effects hang on.
 `TargetSelector` (at whom). A pistol and a shotgun differ only by swapping
 `SpreadSingle` for `SpreadCone(8)`. Heat is an orthogonal layer on
 `WeaponModel`, available to every weapon; `heat_per_shot = 0` disables it.
+
+**The shop UI cannot use Godot's focus system.** Focus is ONE per viewport, so
+four panels cannot each hold their own. Every ShopPanel drives its own cursor
+from its own PlayerInput instead, and nothing about the shop is global state.
+That is also why device assignment had to stop being derived from the player
+index first: a panel needs to know which pad is its own.
+
+**Shop panels use the HUD's corner map.** 1 player takes the screen, 2 split it
+left and right, 3 and 4 take quadrants — P1 top-left, P2 top-right, P3
+bottom-left, P4 bottom-right, exactly as in combat, so a player learns where
+they are once. Three deliberately does not give somebody a full-width strip:
+that makes one panel a different SHAPE from the others, so it would have to work
+at three aspect ratios instead of two, and a visibly bigger panel for one person
+on a shared couch reads as unfair. The free quadrant is where the shared wave
+line goes.
+
+**Zero tier weight means "not yet", not "last resort".** Avoiding duplicate
+offers must never fall through to a tier the wave curve has switched off — it
+put a tier 4 item on wave 1 as soon as every other item had been drawn. Repeats
+are the correct fallback for a pool smaller than the shop; breaking the curve is
+not.
+
+**One shop per PLAYER, never one shop shared.** `RunModel.shops` is
+index-aligned with `players`, and each `ShopManager` draws from its own
+`RunRandom` sub-stream so the order in which four people hit reroll cannot shift
+what the others are offered. Nothing about that was added for the shop: currency
+was already a per-entity counter, `CALCULATE_PRICE` was already evaluated per
+buyer, and `ItemsManager` already took `host` as an argument precisely so two
+player models could not trigger each other's effects. A single shared shop would
+have been the odd one out.
+
+**The shop never decides what a stat is worth.** `PriceEvent` carries
+`uses_stat_payment` and `pay_with_stat` out of `CALCULATE_PRICE`, and
+`ShopManager` simply spends whichever was named. The EXCHANGE RATE lives in the
+effect that switches the buyer onto stat payment, because a character paying in
+blood and one paying in max HP want completely different numbers. A stat can
+never be paid down to its `StatTypes.FLOORS` value — that would let a purchase
+kill the buyer, or divide by zero further along.
+
+**A refund is not earnings.** `ShopManager.sell` adds to `CURRENCY` directly
+rather than calling `add_currency()`, which also credits `CURRENCY_EARNED`.
+Otherwise a buy-then-sell loop farms every "for each 500 earned" effect for the
+price of the spread. Sell value is a fraction of the item's AUTHORED price, not
+of what it would cost today, or buying early and selling late would print money.
 
 **Waves decompose the same way weapons do.** `WaveTable` says what MAY appear,
 the budget says how much, `WaveDirector` says when, and `SpawnPattern` says
@@ -257,22 +314,57 @@ bounds from the model, character and enemies from `.tres`, chasing AI with
 separation, contact damage, projectile and melee weapons, waves with
 budget-driven escalation, currency from kills, following camera, 1–4 local
 players, per-player HUD, downed players with a configurable death rule, a run
-that ends in victory or defeat, and a spawn system with swappable placement
-patterns, group arrivals, co-op scaling and authored per-wave modifiers.
+that ends in victory or defeat, a spawn system with swappable placement
+patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
+per-player shop MODEL — rolling by tier weight, pipeline pricing, buying,
+selling, rerolling, stat payment and ready-up — with eight authored items.
+
+The shop UI is playable: per-player panels laid out by player count, a cursor
+per player driven by that player's own device, offers, reroll, sell from the
+owned strip, a stat sheet that enumerates `StatSheet` rather than the enum, and
+ready-up. Readiness goes through `RunModel.set_player_ready()`, never through
+`ShopManager.set_ready()` — the manager's flag is not what the run watches, and
+calling it directly is a bug that no model test catches, because every test
+calls the run's function.
+
+**Item text is DERIVED, never authored per item.** A shop offer describes
+itself from its own `static_stats` and `dynamic_effects` - `StatMetadata`
+supplies the name and the format, and `DynamicEffect.describe()` supplies the
+prose. A hand-written description drifts away from the numbers it describes the
+moment somebody retunes one, and at a few hundred items it drifts silently: the
+text still reads fine, it is simply no longer true.
+
+Good and bad come from `StatMetadata.higher_is_better`, NOT from the sign. Less
+spread and less recoil are improvements, so a `-20%` on `SPREAD_ANGLE` is drawn
+green. Colouring by sign would tell the player a good item is a bad one.
+
+**The character is a TILE, not a panel.** It sits last in the owned strip and
+describes itself through the same block as any item, because from the player's
+side "what am I carrying" and "what did I start with" are one question.
+`EntityData` and `ItemData` carry the same shape under different names —
+`base_stats`/`innate_effects` against `static_stats`/`dynamic_effects` — so the
+strip flattens both into one entry type. The only real difference is that you
+cannot sell yourself, and that falls out of the entry having no item rather than
+out of a branch in the renderer.
+
+**Still missing from the shop UI:** item icons and any text at all. `display_key` renders as the raw key through `tr()` until a
+translation is loaded, which is by design but looks like a placeholder.
 
 **No debug settings are currently active.**
 
 **Working but temporary:**
-- `RunModel.auto_intermission = 4.0` closes the shop phase on a timer, because
-  there is no shop UI. Set to 0 once the shop exists — the HUD's "next in Ns"
-  countdown then becomes "waiting for P2, P4" instead.
+- `RunModel.auto_intermission` is now **0**: the shop waits for every living
+  player to declare ready and does not close itself. Capture runs set it back,
+  because a scripted player never presses anything and would sit in the shop
+  forever — any `--capture` gets 3 seconds unless `--capture-intermission=N`
+  says otherwise.
 - `player_count` in `main.tscn` defaults to 1; raise it to test co-op, or pass
   `--capture-players=N` for a capture run.
 - `death_rule` is an export on `main.tscn`. When challenge modes arrive it wants
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps:** no shop, no menus or pause (the HUD is the only UI), no join
+**Known gaps:** no shop UI, no menus or pause (the HUD is the only UI), no join
 flow for co-op, no `BEAM` delivery, no explosion/puddle effects on `ON_IMPACT`,
 no save system, no localisation (`display_key` fields exist but nothing consumes
 them — including the HUD, which prints "P1" and raw numbers), no art (everything

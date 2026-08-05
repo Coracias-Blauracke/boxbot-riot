@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_test_overrides_release()
 	_test_wave_loop()
 	_test_boss_chance_is_independent_per_player()
+	_test_run_length_comes_from_the_table()
 	_test_wave_table_curves()
 	_test_director_respects_availability()
 	_test_director_spreads_spawns_across_the_wave()
@@ -46,6 +47,13 @@ func _initialize() -> void:
 	_test_wave_modifier_applies_only_to_its_waves()
 	_test_horde_cost_cap_excludes_the_heavy_enemy()
 	_test_a_cap_that_excludes_everything_is_ignored()
+	_test_every_player_gets_their_own_shop()
+	_test_shops_fill_when_the_shop_opens()
+	_test_ready_up_closes_the_shop()
+	_test_a_downed_player_does_not_hold_the_shop_open()
+	_test_shop_layout_divides_the_screen()
+	_test_readiness_only_counts_when_it_goes_through_the_run()
+	_test_the_shop_waits_by_default()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -313,6 +321,7 @@ func _make_table() -> WaveTable:
 	table.budget_per_wave = 8.0
 	table.budget_growth = 1.0
 	table.spawn_events = 12
+	table.total_waves = 20
 	table.default_pattern = SpawnRing.new()
 	# Neutral by default so the existing curve assertions keep measuring the
 	# curve rather than the co-op scaling.
@@ -328,6 +337,24 @@ func _enemies_in(groups: Array[SpawnGroup]) -> int:
 	for group in groups:
 		total += group.count
 	return total
+
+## The run length is authored on the table, so a twenty-wave curve and a
+## fifty-wave curve are different content rather than the same content played
+## for longer. It used to be a constant inside RunModel.
+func _test_run_length_comes_from_the_table() -> void:
+	var table := _make_table()
+	table.total_waves = 7
+
+	var run := RunModel.new(1, null, table)
+	_check_int("the table sets the run length", run.total_waves, 7)
+
+	# Still assignable afterwards, so a challenge or a test can shorten a run
+	# without authoring a second table for it.
+	run.total_waves = 2
+	_check_int("and stays overridable", run.total_waves, 2)
+
+	var without_table := RunModel.new(1)
+	_check_bool("no table leaves the default intact", without_table.total_waves > 0, true)
 
 func _test_wave_table_curves() -> void:
 	var table := _make_table()
@@ -798,6 +825,145 @@ func _test_a_cap_that_excludes_everything_is_ignored() -> void:
 		"an impossible cap falls back to the full set",
 		table.available_entries(11, table.max_entry_cost_for(11)).size(), 2
 	)
+
+# --- shops in the run ------------------------------------------------------
+
+func _make_run_shop_data() -> ShopData:
+	var item := ItemData.new()
+	item.display_key = "RUN_TEST_ITEM"
+	item.tier = 1
+	item.base_price = 5
+
+	var data := ShopData.new()
+	data.pool = [item]
+	data.offer_count = 3
+	return data
+
+func _run_with_shop(count: int, rule := RunTypes.DeathRule.REVIVE_NEXT_WAVE) -> RunModel:
+	var run := _run_with_players(count, rule)
+	# Ready-up is the way out, not the timer. auto_intermission only exists
+	# because there is no UI to press yet.
+	run.auto_intermission = 0.0
+	run.shop_data = _make_run_shop_data()
+	return run
+
+func _test_every_player_gets_their_own_shop() -> void:
+	var run := _run_with_shop(3)
+
+	_check_int("one shop per player", run.shops.size(), 3)
+	_check_int("indexed to match its RNG sub-stream", run.shop_for(2).player_index, 2)
+	_check_bool("and they are separate objects", run.shop_for(0) != run.shop_for(1), true)
+	_check_bool("out of range is null rather than a crash", run.shop_for(9) == null, true)
+
+func _test_shops_fill_when_the_shop_opens() -> void:
+	var run := _run_with_shop(2)
+	run.start_wave()
+	_check_int("nothing on offer during combat", run.shop_for(0).offers.size(), 0)
+
+	run.end_wave()
+	_check_int("the shop phase fills them", run.shop_for(0).offers.size(), 3)
+	_check_int("for every player, not just the first", run.shop_for(1).offers.size(), 3)
+
+	run.close_shop()
+	_check_int("and closing empties them", run.shop_for(0).offers.size(), 0)
+
+func _test_ready_up_closes_the_shop() -> void:
+	var run := _run_with_shop(2)
+	run.start_wave()
+	run.end_wave()
+	_check_int("in the shop", run.phase, WorldTypes.Phase.SHOP)
+
+	run.set_player_ready(0, true)
+	_check_bool("one player is not everyone", run.all_players_ready(), false)
+	_check_int("so the shop stays open", run.phase, WorldTypes.Phase.SHOP)
+
+	run.set_player_ready(1, true)
+	_check_int("the last one starts the wave", run.phase, WorldTypes.Phase.COMBAT)
+	_check_int("and it is the next one", run.wave_number, 2)
+
+func _test_a_downed_player_does_not_hold_the_shop_open() -> void:
+	# Under PERMANENT a dead player can never press ready again, so counting
+	# them would hold the run hostage for the rest of it.
+	var run := _run_with_shop(2, RunTypes.DeathRule.PERMANENT)
+	run.start_wave()
+	_kill(run.players[0])
+	run.end_wave()
+
+	_check_int("the survivor gets a shop", run.shop_for(1).offers.size(), 3)
+	# Offers a corpse cannot buy would be a whole panel of dead UI.
+	_check_int("the corpse does not", run.shop_for(0).offers.size(), 0)
+
+	run.set_player_ready(1, true)
+	_check_int("and the survivor alone can start the wave", run.phase, WorldTypes.Phase.COMBAT)
+
+## REGRESSION. The shop panel called ShopManager.set_ready() directly, which
+## flips a flag nobody is watching: RunModel is what checks whether everyone is
+## ready and starts the next wave. Pressing ready in the UI therefore did
+## nothing at all, and no model test caught it because every one of them called
+## the run's function - the very thing the UI was skipping.
+func _test_readiness_only_counts_when_it_goes_through_the_run() -> void:
+	var run := _run_with_shop(1)
+	run.start_wave()
+	run.end_wave()
+	_check_int("in the shop", run.phase, WorldTypes.Phase.SHOP)
+
+	# What the UI used to do.
+	run.shop_for(0).set_ready(true)
+	_check_bool("the flag is set", run.shop_for(0).is_ready, true)
+	_check_int("but the run has not moved", run.phase, WorldTypes.Phase.SHOP)
+	_check_int("and no wave started", run.wave_number, 1)
+
+	# What it does now.
+	run.set_player_ready(0, true)
+	_check_int("routing it through the run starts the wave", run.phase, WorldTypes.Phase.COMBAT)
+	_check_int("and it is the next one", run.wave_number, 2)
+
+## The shop must NOT close itself now that there is a UI to press. Four seconds
+## is not long enough to read one item, let alone buy one.
+func _test_the_shop_waits_by_default() -> void:
+	var run := _run_with_players(1, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.shop_data = _make_run_shop_data()
+	_check("a fresh run does not close its own shop", run.auto_intermission, 0.0)
+
+	run.start_wave()
+	run.end_wave()
+	for tick in 100:
+		run.advance_wave(1.0)
+	_check_int("a hundred seconds later it is still open", run.phase, WorldTypes.Phase.SHOP)
+
+## ShopLayout lives in scenes/ but touches no Node, so unlike the rest of that
+## layer it can be checked here rather than only photographed. Worth it: the
+## three-player case is the one nobody can hold in their head.
+func _test_shop_layout_divides_the_screen() -> void:
+	var screen := Vector2(1920.0, 1080.0)
+
+	_check("one player takes the whole width", ShopLayout.rect_for(0, 1, screen).size.x, 1920.0)
+
+	var left := ShopLayout.rect_for(0, 2, screen)
+	var right := ShopLayout.rect_for(1, 2, screen)
+	_check("two players split vertically", left.size.x, 960.0)
+	_check("and the second starts at the middle", right.position.x, 960.0)
+	_check("each keeps full height", right.size.y, 1080.0)
+
+	# The corner map has to match the HUD's, or the game teaches two conflicting
+	# spatial rules: P1 top-left, P2 top-right, P3 bottom-left, P4 bottom-right.
+	var corners := [Vector2(0, 0), Vector2(960, 0), Vector2(0, 540), Vector2(960, 540)]
+	var matched := true
+	for index in 4:
+		if ShopLayout.rect_for(index, 4, screen).position != corners[index]:
+			matched = false
+	_check_bool("four players take the HUD's corners", matched, true)
+
+	# Three uses the same quadrants rather than a bespoke split, so no player
+	# gets a differently shaped panel.
+	_check("three players still get quadrants", ShopLayout.rect_for(2, 3, screen).size.y, 540.0)
+	_check_bool(
+		"and the spare quadrant is reported for the wave line",
+		ShopLayout.free_rect(3, screen) == Rect2(Vector2(960, 540), Vector2(960, 540)), true
+	)
+	_check_bool("with none spare at four", ShopLayout.free_rect(4, screen) == Rect2(), true)
+
+	_check_bool("a quarter screen is not compact", ShopLayout.is_compact(ShopLayout.rect_for(0, 4, screen)), false)
 
 # --- assertions ------------------------------------------------------------
 

@@ -21,6 +21,15 @@ extends EntityData
 ## ordinary modifier rather than a special case.
 @export var weapon_slots: int = 6
 
+## How many things this character is offered in the shop. Applied as a BASE
+## modifier to SHOP_SLOTS, exactly like weapon_slots above, so "you see two more
+## items" is an ordinary item modifier rather than a shop feature.
+##
+## 0 means "no opinion" and ShopData.offer_count decides - which is what an
+## entity with no CharacterData at all reports, so tests and previews keep the
+## authored default.
+@export var shop_slots: int = 4
+
 ## Optional escape hatch: if a character genuinely needs unique nodes (a
 ## particle system, some bespoke visual), they are instantiated as a child.
 ## An escape hatch without scene inheritance.

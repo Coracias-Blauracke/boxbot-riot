@@ -27,6 +27,34 @@ class SpyEffect extends DynamicEffect:
 			last_target = weakref((event as StatusEvent).target)
 			last_applier = weakref((event as StatusEvent).applier)
 
+## Halves every price. Exists to prove CALCULATE_PRICE is actually consulted
+## rather than the shop quietly using its own arithmetic.
+class DiscountEffect extends DynamicEffect:
+	func get_hooks() -> Array:
+		return [Hooks.Hook.CALCULATE_PRICE]
+
+	func execute(_host: Variant, _inst: EffectInstance, event: EventPayload) -> void:
+		var price := event as PriceEvent
+		if price != null:
+			price.price = price.price / 2
+
+## Switches the buyer onto paying with MAX_HP at one point per two currency.
+##
+## The EXCHANGE RATE lives here, in the effect, and not in ShopManager - which
+## is the whole design. A character who pays in blood and one who pays in max HP
+## want completely different numbers, and only the effect knows which it is.
+class BloodPriceEffect extends DynamicEffect:
+	func get_hooks() -> Array:
+		return [Hooks.Hook.CALCULATE_PRICE]
+
+	func execute(_host: Variant, _inst: EffectInstance, event: EventPayload) -> void:
+		var price := event as PriceEvent
+		if price == null:
+			return
+		price.uses_stat_payment = true
+		price.pay_with_stat = StatTypes.Stat.MAX_HP
+		price.price = maxi(1, price.price / 2)
+
 var _passed: int = 0
 var _failed: int = 0
 
@@ -56,6 +84,16 @@ func _initialize() -> void:
 	_test_a_corpse_takes_no_further_damage()
 	_test_healing_cannot_raise_a_corpse()
 	_test_revive_restores_a_fraction_of_max_hp()
+	_test_shop_rolls_respect_tier_weights()
+	_test_shops_are_independent_per_player()
+	_test_price_goes_through_the_pipeline()
+	_test_buying_costs_currency_and_grants_the_item()
+	_test_selling_refunds_without_crediting_earnings()
+	_test_reroll_costs_more_every_time()
+	_test_stat_payment_spends_the_stat_not_the_currency()
+	_test_shop_slot_count_comes_from_the_stat()
+	_test_modifier_text_reads_as_a_change_not_a_value()
+	_test_buying_an_authored_item_actually_changes_the_stat()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -514,6 +552,338 @@ func _test_revive_restores_a_fraction_of_max_hp() -> void:
 	_check("reviving the living grants nothing", player.revive(1.0), 0.0)
 	_check("and leaves their health alone", player.current_hp, 50.0)
 	_check_int("no second signal", revived[0], 1)
+
+# --- shop ------------------------------------------------------------------
+
+func _make_priced_item(key: String, tier: int, price: int) -> ItemData:
+	var item := ItemData.new()
+	item.display_key = key
+	item.tier = tier
+	item.base_price = price
+	return item
+
+## Tier 3 is deliberately unreachable and tier 4 only opens up later, so the
+## weighting can be asserted rather than eyeballed.
+func _make_shop_data() -> ShopData:
+	var data := ShopData.new()
+	data.pool = [
+		_make_priced_item("T1_A", 1, 10),
+		_make_priced_item("T1_B", 1, 10),
+		_make_priced_item("T2_A", 2, 20),
+		_make_priced_item("T4_A", 4, 60),
+	]
+	data.offer_count = 4
+	data.price_per_wave = 0.0
+	data.reroll_base_cost = 5
+	data.reroll_cost_growth = 2.0
+	data.sell_ratio = 0.5
+	data.base_tier_weights = PackedFloat32Array([100.0, 20.0, 0.0, 0.0])
+	data.tier_weight_per_wave = PackedFloat32Array([0.0, 0.0, 0.0, 10.0])
+	return data
+
+func _make_buyer(currency: int = 500) -> EntityModel:
+	var buyer := _living(200.0)
+	buyer.add_currency(currency)
+	return buyer
+
+func _make_shop(index: int = 0) -> ShopManager:
+	var shop := ShopManager.new()
+	shop.data = _make_shop_data()
+	shop.player_index = index
+	return shop
+
+func _tiers_offered(shop: ShopManager) -> Array:
+	var tiers: Array = []
+	for offer in shop.offers:
+		tiers.append(offer.item.tier)
+	return tiers
+
+func _test_shop_rolls_respect_tier_weights() -> void:
+	var shop := _make_shop()
+	var buyer := _make_buyer()
+	var rng := RunRandom.new(2468)
+
+	var early_tiers: Array = []
+	for attempt in 40:
+		shop.open(buyer, 1, rng)
+		early_tiers.append_array(_tiers_offered(shop))
+
+	_check_int("the shop fills every slot", shop.offers.size(), 4)
+	_check_bool("tier 4 is absent while its weight is 0", early_tiers.has(4), false)
+	_check_bool("tier 3 has no items so it never appears", early_tiers.has(3), false)
+	_check_bool("tier 1 dominates early", early_tiers.count(1) > early_tiers.count(2), true)
+
+	# Its weight climbs 10 per wave, so by wave 20 it should be the common one.
+	var late_tiers: Array = []
+	for attempt in 40:
+		shop.open(buyer, 20, rng)
+		late_tiers.append_array(_tiers_offered(shop))
+
+	_check_bool("tier 4 shows up once its weight has grown", late_tiers.has(4), true)
+
+	# REGRESSION. Avoiding duplicates used to fall through to a zero-weight tier
+	# once every other item had been drawn: the pool holds four items and the
+	# shop wants four slots, so the tier 4 item was the only distinct one left
+	# and went in on wave 1. Zero weight means "not yet", not "last resort".
+	shop.data.allow_duplicate_offers = false
+	var forced: Array = []
+	for attempt in 30:
+		shop.open(buyer, 1, rng)
+		forced.append_array(_tiers_offered(shop))
+	_check_bool("a zero-weight tier never fills a leftover slot", forced.has(4), false)
+	_check_bool("repeats are preferred to breaking the curve", forced.size() > 30, true)
+
+func _test_shops_are_independent_per_player() -> void:
+	# Two shops, ONE generator, different sub-streams. This is what stops player
+	# 1's rerolls from shifting what player 2 is offered.
+	var rng := RunRandom.new(13579)
+	var first := _make_shop(0)
+	var second := _make_shop(1)
+	var buyer := _make_buyer()
+
+	first.open(buyer, 3, rng)
+	var untouched: Array = _tiers_offered(first)
+
+	# Player 2 rerolls repeatedly in between.
+	second.open(buyer, 3, rng)
+	for attempt in 5:
+		second.open(buyer, 3, rng)
+
+	var fresh_rng := RunRandom.new(13579)
+	var replay := _make_shop(0)
+	replay.open(buyer, 3, fresh_rng)
+
+	_check_bool(
+		"another player's rolls do not disturb this one",
+		_tiers_offered(replay) == untouched, true
+	)
+
+func _test_price_goes_through_the_pipeline() -> void:
+	var shop := _make_shop()
+	var buyer := _make_buyer()
+	var item := shop.data.pool[0]
+
+	shop.wave_number = 1
+	_check_int("base price with no effects", shop.quote(buyer, item).price, 10)
+
+	# Wave scaling is authored on ShopData, not baked into the item.
+	shop.data.price_per_wave = 0.5
+	shop.wave_number = 3
+	_check_int("price scales with the wave", shop.quote(buyer, item).price, 20)
+
+	buyer.effects.register(EffectInstance.new(DiscountEffect.new(), &"half_off"))
+	_check_int("and CALCULATE_PRICE gets the last word", shop.quote(buyer, item).price, 10)
+
+func _test_buying_costs_currency_and_grants_the_item() -> void:
+	var shop := _make_shop()
+	var buyer := _make_buyer(30)
+	var rng := RunRandom.new(555)
+	shop.open(buyer, 1, rng)
+
+	var offer := shop.offers[0]
+	var price := offer.price
+
+	_check_bool("the purchase goes through", shop.buy(buyer, 0), true)
+	_check_int("currency is spent", buyer.get_currency(), 30 - price)
+	_check_int("the item is owned", buyer.items.get_quantity(offer.item), 1)
+	_check_int("and counted", buyer.counters.get_value(CounterTypes.Counter.ITEMS_BOUGHT), 1)
+	_check_bool("the slot is marked sold", offer.sold, true)
+	_check_bool("buying the same slot twice fails", shop.buy(buyer, 0), false)
+
+	# Broke, so nothing else is affordable.
+	buyer.counters.set_value(CounterTypes.Counter.CURRENCY, 0)
+	_check_bool("no purchase without the currency", shop.buy(buyer, 1), false)
+	_check_int("and nothing was taken", buyer.get_currency(), 0)
+
+func _test_selling_refunds_without_crediting_earnings() -> void:
+	var shop := _make_shop()
+	var buyer := _make_buyer(100)
+	var item := shop.data.pool[0]
+
+	buyer.add_item(item)
+	var earned_before := buyer.counters.get_value(CounterTypes.Counter.CURRENCY_EARNED)
+
+	_check_bool("the sale goes through", shop.sell(buyer, item), true)
+	_check_int("the item is gone", buyer.items.get_quantity(item), 0)
+	_check_int("half the authored price comes back", buyer.get_currency(), 105)
+
+	# The exploit this guards: add_currency() also credits CURRENCY_EARNED, so a
+	# buy-then-sell loop would farm every "for each 500 earned" effect for the
+	# price of the spread.
+	_check_int(
+		"a refund is not earnings",
+		buyer.counters.get_value(CounterTypes.Counter.CURRENCY_EARNED), earned_before
+	)
+	_check_bool("selling what you do not own fails", shop.sell(buyer, item), false)
+
+func _test_reroll_costs_more_every_time() -> void:
+	var shop := _make_shop()
+	var buyer := _make_buyer(100)
+	var rng := RunRandom.new(31)
+	shop.open(buyer, 1, rng)
+
+	_check_int("the first reroll is the base cost", shop.reroll_cost(), 5)
+	_check_bool("and it is affordable", shop.reroll(buyer, rng), true)
+	_check_int("currency is spent", buyer.get_currency(), 95)
+	_check_int("the next one costs more", shop.reroll_cost(), 10)
+	_check_int("the counter moves", buyer.counters.get_value(CounterTypes.Counter.REROLLS_USED), 1)
+
+	# Reopening the shop resets the escalation - it is a per-visit decision, not
+	# a per-run tax.
+	shop.open(buyer, 2, rng)
+	_check_int("reopening resets the price", shop.reroll_cost(), 5)
+
+	buyer.counters.set_value(CounterTypes.Counter.CURRENCY, 2)
+	_check_bool("a reroll you cannot afford fails", shop.reroll(buyer, rng), false)
+	_check_int("and costs nothing", buyer.get_currency(), 2)
+
+func _test_stat_payment_spends_the_stat_not_the_currency() -> void:
+	# The feature PriceEvent was designed around: one co-op player pays currency
+	# while another pays a stat, with no special case in the shop.
+	var shop := _make_shop()
+	var buyer := _make_buyer(100)
+	buyer.effects.register(EffectInstance.new(BloodPriceEffect.new(), &"blood_price"))
+
+	var rng := RunRandom.new(909)
+	shop.open(buyer, 1, rng)
+
+	var offer := shop.offers[0]
+	_check_bool("the offer is flagged as a stat payment", offer.uses_stat_payment, true)
+
+	var hp_before := buyer.get_max_hp()
+	_check_bool("the purchase goes through", shop.buy(buyer, 0), true)
+	_check_int("currency is untouched", buyer.get_currency(), 100)
+	_check("max HP paid for it", buyer.get_max_hp(), hp_before - float(offer.price))
+
+	# Must never be affordable down to the stat's floor - that would let a
+	# purchase kill the buyer, or divide by zero further along.
+	buyer.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.FLAT, -190.0, &"drain")
+	_check_bool("cannot pay a stat down to its floor", shop.buy(buyer, 1), false)
+
+func _test_shop_slot_count_comes_from_the_stat() -> void:
+	# The requirement: one character sees 1 slot, another sees 8. Solved the way
+	# WEAPON_SLOTS already solves it - as a stat - so an ITEM can grant a slot
+	# too, and ShopManager never learns such a thing exists.
+	var shop := _make_shop()
+	var rng := RunRandom.new(4711)
+
+	var plain := _make_buyer()
+	shop.open(plain, 1, rng)
+	_check_int("no opinion falls back to the authored count", shop.offers.size(), 4)
+
+	var narrow := _make_buyer()
+	narrow.stats.add_modifier(StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.BASE, 1.0, &"character")
+	shop.open(narrow, 1, rng)
+	_check_int("a one-slot character sees one", shop.offers.size(), 1)
+
+	var wide := _make_buyer()
+	wide.stats.add_modifier(StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.BASE, 8.0, &"character")
+	shop.open(wide, 1, rng)
+	_check_int("an eight-slot character sees eight", shop.offers.size(), 8)
+
+	# And an item grants one on top, with no special case anywhere.
+	wide.stats.add_modifier(StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.FLAT, 1.0, &"item")
+	shop.open(wide, 1, rng)
+	_check_int("an item adds a slot", shop.offers.size(), 9)
+
+## What a shop offer says it does. Derived from the item rather than authored
+## per item, so it cannot drift away from the numbers it describes.
+func _test_modifier_text_reads_as_a_change_not_a_value() -> void:
+	var flat := StatMetadata.new()
+	flat.stat = StatTypes.Stat.MAX_HP
+	flat.format = StatMetadata.Format.FLAT
+
+	_check_bool("a whole value drops its decimal", flat.format_value(100.0) == "100", true)
+	_check_bool("a fractional one keeps it", flat.format_value(1.5) == "1.5", true)
+	_check_bool("a flat modifier carries its sign", flat.format_modifier(StatTypes.Modifier.FLAT, 10.0) == "+10", true)
+	_check_bool("and a negative one", flat.format_modifier(StatTypes.Modifier.FLAT, -10.0) == "-10", true)
+
+	# A PERCENT modifier is a proportion, not a quantity of the stat, so it reads
+	# as a percentage whatever the stat's own format says.
+	_check_bool(
+		"a percent modifier is a percentage",
+		flat.format_modifier(StatTypes.Modifier.PERCENT, 0.5) == "+50%", true
+	)
+	_check_bool(
+		"a mult modifier reads as a factor",
+		flat.format_modifier(StatTypes.Modifier.MULT, 1.5) == "x1.50", true
+	)
+
+	# ...but a FLAT modifier to a percent-FORMATTED stat is in that stat's unit.
+	var chance := StatMetadata.new()
+	chance.stat = StatTypes.Stat.CRIT_CHANCE
+	chance.format = StatMetadata.Format.PERCENT
+	_check_bool(
+		"a flat modifier to a percent stat stays in its unit",
+		chance.format_modifier(StatTypes.Modifier.FLAT, 0.08) == "+8%", true
+	)
+
+	# Good and bad is not the same as positive and negative: less spread is an
+	# improvement, which is what higher_is_better is for.
+	var spread := StatMetadata.new()
+	spread.stat = StatTypes.Stat.SPREAD_ANGLE
+	spread.higher_is_better = false
+	_check_bool("less spread is an improvement", spread.is_improvement(-0.2), true)
+	_check_bool("more spread is not", spread.is_improvement(0.2), false)
+	_check_bool("more health is", flat.is_improvement(10.0), true)
+
+## END TO END on the REAL content, not on a fabricated item.
+##
+## Every other shop test builds items with no stats on them, so all of them
+## would still pass if buying moved nothing at all. This one goes through the
+## authored .tres, the authored pool and ShopManager.buy(), and then asks the
+## stat.
+func _test_buying_an_authored_item_actually_changes_the_stat() -> void:
+	var shop_data: ShopData = load("res://content/shop/default_shop.tres")
+	var plating: ItemData = load("res://content/items/scrap_plating.tres")
+	var sights: ItemData = load("res://content/items/machined_sights.tres")
+	if shop_data == null or plating == null or sights == null:
+		_failed += 1
+		printerr("  FAIL  authored shop content did not load")
+		return
+
+	_check_bool("the authored pool is not empty", shop_data.pool.is_empty(), false)
+
+	var shop := ShopManager.new()
+	shop.data = shop_data
+	shop.wave_number = 1
+
+	var buyer := _living(100.0)
+	buyer.add_currency(500)
+
+	# Placed by hand rather than rolled, so the assertion is about the purchase
+	# rather than about what the dice offered.
+	var offer := ShopOffer.new()
+	offer.item = plating
+	offer.price = shop.quote(buyer, plating).price
+	shop.offers = [offer]
+
+	var hp_before := buyer.get_max_hp()
+	_check_bool("scrap plating is bought", shop.buy(buyer, 0), true)
+	_check("and max HP actually moves by the authored +10", buyer.get_max_hp(), hp_before + 10.0)
+
+	# The other direction: an item whose whole point is a NEGATIVE modifier on a
+	# stat where less is better.
+	var spread_offer := ShopOffer.new()
+	spread_offer.item = sights
+	shop.offers = [spread_offer]
+
+	buyer.stats.add_modifier(StatTypes.Stat.SPREAD_ANGLE, StatTypes.Modifier.BASE, 10.0, &"weapon")
+	var spread_before := buyer.stats.get_stat(StatTypes.Stat.SPREAD_ANGLE)
+	_check_bool("machined sights are bought", shop.buy(buyer, 0), true)
+	_check_bool(
+		"spread went DOWN (%.1f -> %.1f)" % [spread_before, buyer.stats.get_stat(StatTypes.Stat.SPREAD_ANGLE)],
+		buyer.stats.get_stat(StatTypes.Stat.SPREAD_ANGLE) < spread_before, true
+	)
+	_check(
+		"ranged damage moves by the authored +3",
+		buyer.stats.get_stat(StatTypes.Stat.RANGED_DAMAGE), 3.0
+	)
+
+	# Selling has to hand the stat back, or an item is a one-way purchase that
+	# quietly keeps working after it is gone.
+	shop.sell(buyer, plating)
+	_check("selling gives the max HP back", buyer.get_max_hp(), hp_before)
 
 # --- assertions ------------------------------------------------------------
 

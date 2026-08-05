@@ -57,6 +57,12 @@ func _validate(path: String) -> void:
 		_validate_item(path, resource)
 	elif resource is WaveTable:
 		_validate_wave_table(path, resource)
+	elif resource is StatSheet:
+		_validate_stat_sheet(path, resource)
+	elif resource is StatMetadata:
+		_validate_stat_metadata(path, resource)
+	elif resource is ShopData:
+		_validate_shop(path, resource)
 	elif resource is WaveModifier:
 		_validate_wave_modifier(path, resource)
 	elif resource is SpawnPattern:
@@ -103,6 +109,8 @@ func _validate_wave_table(path: String, table: WaveTable) -> void:
 		_errors.append("%s : base_duration must be positive" % path)
 	if table.spawn_events <= 0:
 		_errors.append("%s : spawn_events must be positive" % path)
+	if table.total_waves <= 0:
+		_errors.append("%s : total_waves must be positive, the run would end at once" % path)
 
 	var reachable_at_one := false
 	for i in table.entries.size():
@@ -178,11 +186,83 @@ func _validate_spawn_pattern(path: String, pattern: SpawnPattern) -> void:
 		if (pattern as SpawnInView).clear_radius <= 0.0:
 			_errors.append("%s : clear_radius must be positive, it spawns ON the players" % path)
 
+func _validate_stat_metadata(path: String, meta: StatMetadata) -> void:
+	if not StatTypes.Stat.values().has(meta.stat):
+		_errors.append("%s : stat outside the enum (%d)" % [path, meta.stat])
+	if meta.display_key.is_empty():
+		_errors.append("%s : empty display_key (translation key)" % path)
+	# The sheet shows this when the player rests on the row. Blank is a row that
+	# explains nothing, which is worse than no row.
+	if meta.visible_in_ui and meta.description_key.is_empty():
+		_errors.append("%s : visible stat with no description_key" % path)
+
+## THE rule that makes "a new stat shows up on its own" true rather than merely
+## possible: every value in the enum has to be in the sheet exactly once. Add a
+## stat and forget its metadata and this fails here, rather than the stat
+## silently never appearing in the game.
+func _validate_stat_sheet(path: String, sheet: StatSheet) -> void:
+	var seen: Dictionary = {}
+
+	for i in sheet.entries.size():
+		var entry: StatMetadata = sheet.entries[i]
+		if entry == null:
+			_errors.append("%s : entry[%d] is null (deleted metadata?)" % [path, i])
+			continue
+		if seen.has(entry.stat):
+			_errors.append("%s : stat %d appears twice" % [path, entry.stat])
+		seen[entry.stat] = true
+
+	for stat in StatTypes.Stat.values():
+		if not seen.has(stat):
+			_errors.append(
+				"%s : StatTypes.Stat value %d has no metadata, it can never be displayed"
+				% [path, stat]
+			)
+
+func _validate_shop(path: String, shop: ShopData) -> void:
+	if shop.pool.is_empty():
+		_errors.append("%s : shop pool is empty, it can never offer anything" % path)
+	if shop.offer_count <= 0:
+		_errors.append("%s : offer_count must be positive" % path)
+	if shop.sell_ratio < 0.0:
+		_errors.append("%s : sell_ratio cannot be negative" % path)
+	# At or above 1.0 an item sells for what it cost, so buy-and-sell is at worst
+	# free and the whole economy stops mattering.
+	if shop.sell_ratio >= 1.0:
+		_errors.append("%s : sell_ratio at or above 1.0 makes selling a free undo" % path)
+	if shop.reroll_cost_growth < 1.0:
+		_warnings.append("%s : reroll_cost_growth below 1.0 makes rerolling cheaper each time" % path)
+
+	for i in shop.pool.size():
+		if shop.pool[i] == null:
+			_errors.append("%s : pool[%d] is null (deleted item?)" % [path, i])
+
+	# A tier with items but no weight is content that can never be drawn - it
+	# loads fine, validates fine, and is simply never seen.
+	var tiers_present := {}
+	for item in shop.pool:
+		if item != null:
+			tiers_present[item.tier] = true
+
+	var late := shop.tier_weights_for(30)
+	var early := shop.tier_weights_for(1)
+	for tier in tiers_present:
+		var index: int = tier - 1
+		if index < 0 or index >= early.size():
+			continue
+		if early[index] <= 0.0 and late[index] <= 0.0:
+			_warnings.append(
+				"%s : tier %d has items but zero weight at every wave, they are unreachable"
+				% [path, tier]
+			)
+
 func _validate_item(path: String, item: ItemData) -> void:
 	if item.display_key.is_empty():
 		_errors.append("%s : empty display_key (translation key)" % path)
 	if item.tier < 1 or item.tier > 4:
 		_errors.append("%s : tier out of range 1-4 (%d)" % [path, item.tier])
+	if item.base_price < 0:
+		_errors.append("%s : base_price cannot be negative" % path)
 	if item.static_stats.is_empty() and item.dynamic_effects.is_empty():
 		_warnings.append("%s : item has no effect at all" % path)
 

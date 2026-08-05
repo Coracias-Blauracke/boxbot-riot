@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="StatMetadata" format=3]
+
+[ext_resource type="Script" path="res://core/data/stat_metadata.gd" id="1_meta"]
+
+[resource]
+script = ExtResource("1_meta")
+stat = 30
+display_key = "STAT_RECOIL"
+description_key = "STAT_RECOIL_DESC"
+format = 0
+visible_in_ui = false
+higher_is_better = false
+sort_order = 950

@@ -32,6 +32,7 @@ pattern = ExtResource("6_ambush")
 [resource]
 script = ExtResource("1_table")
 entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes")])
+total_waves = 20
 base_duration = 20.0
 duration_per_wave = 1.5
 max_duration = 60.0

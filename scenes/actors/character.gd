@@ -5,11 +5,15 @@ extends Actor
 ## comes from CharacterData.tres: sprite, collider, base stats and the innate
 ## effect list.
 
-## Keyboard and the first gamepad both drive player 1. Additional players get
-## their own MotionSource.Device with the device_id they joined on.
-var motion: MotionSource = MotionSource.Combined.new(
-	[MotionSource.Device.new(-1), MotionSource.Device.new(0)] as Array[MotionSource]
-)
+## Which physical device owns this player, for BOTH walking and menus. Assigned
+## by the spawner; see PlayerInput for why it cannot be derived from the index.
+var input: PlayerInput = PlayerInput.new(PlayerInput.KEYBOARD, true)
+
+## How this character decides where to walk. Normally reads `input`; the capture
+## runs swap in MotionSource.Scripted, which is why the two are separate - a
+## scripted walk must not cost the player their shop controls.
+var motion: MotionSource = MotionSource.FromInput.new(input)
+
 var player_index: int = 0
 
 func _ready() -> void:

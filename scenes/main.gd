@@ -11,15 +11,42 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 @export var world_data: WorldData
 @export var character_data: CharacterData
 @export var wave_table: WaveTable
+@export var shop_data: ShopData
+@export var stat_sheet: StatSheet
 @export var starting_weapons: Array[WeaponData] = []
 
 ## Local co-op, up to four. Player 0 takes keyboard and the first gamepad;
 ## the rest take a gamepad each.
 @export_range(1, 4) var player_count: int = 1
 
+## Which device drives which player: -1 is the keyboard, 0 and up are gamepads,
+## one entry per player in order.
+##
+## An ARRAY rather than a rule, because no rule survives contact with a real
+## couch. Three pads and one keyboard is an ordinary case, and deriving the
+## device from the player index cannot express it - the keyboard player and the
+## first pad player collide on the same slot. Left empty, it falls back to the
+## old behaviour so nothing has to be authored to launch.
+##
+## This is the placeholder for a join flow, which is still a known gap: the real
+## version assigns a device when somebody presses a button to join.
+@export var player_devices: Array[int] = []
+
 ## What happens to a player who runs out of health. A permadeath challenge is
 ## this dropdown and nothing else - see RunTypes.DeathRule.
 @export var death_rule: RunTypes.DeathRule = RunTypes.DeathRule.REVIVE_NEXT_WAVE
+
+## Share of max HP a revived player stands up on. Exposed alongside death_rule
+## because the two are one decision: a rule that revives and a cost of being
+## revived. Leaving this reachable only from core/ made half the knob authored
+## and half of it welded shut.
+@export_range(0.05, 1.0, 0.05) var revive_hp_fraction: float = 0.5
+
+## 0 draws a fresh seed every run. A FIXED value makes a run reproducible, which
+## is what every A/B capture in this repo depends on - the co-op scaling
+## measurement and the camera framing comparison are both worthless without it.
+## Keep it set while developing; ship with 0.
+@export var run_seed: int = 20260804
 
 var run: RunModel
 var players: Array[Character] = []
@@ -34,6 +61,10 @@ var player: Character
 ## it, a table authored before patterns existed would spawn nothing at all and
 ## never say why.
 var _fallback_pattern: SpawnPattern = SpawnRing.new()
+
+## Capture only. 0 leaves RunModel's own value alone.
+var _forced_intermission: float = 0.0
+var _capture_shop_owned: bool = false
 
 var _circling: Array[Character] = []
 var _elapsed: float = 0.0
@@ -50,6 +81,7 @@ var _circle_rate: float = 1.6
 @onready var _actors: Node2D = $Actors
 @onready var _camera: ArenaCamera = $Camera2D
 @onready var _hud: Hud = $Hud
+@onready var _shop_screen: ShopScreen = $ShopScreen
 
 func _ready() -> void:
 	# Capture runs override the scene's player count, so a co-op state can be
@@ -66,9 +98,27 @@ func _ready() -> void:
 			_camera.default_zoom = float(arg.substr("--capture-zoom=".length()))
 		elif arg.begins_with("--capture-margin="):
 			_camera.group_margin = float(arg.substr("--capture-margin=".length()))
+		elif arg == "--capture-shop-owned":
+			# A UI state that needs input cannot otherwise be photographed at
+			# all, which is a real hole in how this repo verifies the scene
+			# layer. This parks every shop cursor on the owned strip instead.
+			_capture_shop_owned = true
+		elif arg.begins_with("--capture-intermission="):
+			# The shop phase is four seconds, which is not long enough to
+			# reliably photograph. Holding it open is the only way to read the
+			# panel at each player count.
+			_forced_intermission = float(arg.substr("--capture-intermission=".length()))
 
-	run = RunModel.new(20260804, world_data, wave_table)
+	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
+	run.revive_hp_fraction = revive_hp_fraction
+	run.shop_data = shop_data
+	# A capture run has nobody to press ready, so it would sit in the shop
+	# forever. Any capture gets a default; --capture-intermission overrides it.
+	if _forced_intermission > 0.0:
+		run.auto_intermission = _forced_intermission
+	elif OS.get_cmdline_user_args().has("--capture"):
+		run.auto_intermission = 3.0
 	run.wave_ended.connect(_on_wave_ended)
 	run.run_ended.connect(_on_run_ended)
 	_arena.bind(run.world)
@@ -84,6 +134,9 @@ func _ready() -> void:
 	for entry in players:
 		models.append(entry.model)
 	_hud.bind(run, models)
+	_shop_screen.bind(run, players, stat_sheet)
+	if _capture_shop_owned:
+		_shop_screen.park_cursor_on_owned()
 
 	run.start_wave()
 	print("wave %d started, boss=%s, duration=%.0fs" % [
@@ -123,9 +176,8 @@ func _spawn_player(index: int) -> Character:
 	node.bind(model, character_data, run.world)
 	node.player_index = index
 
-	# Player 0 keeps keyboard plus the first pad; everyone else gets one pad.
-	if index > 0:
-		node.motion = MotionSource.Device.new(index)
+	node.input = _device_for(index)
+	node.motion = MotionSource.FromInput.new(node.input)
 
 	# Spread them out so they do not start stacked on one another.
 	node.position = (
@@ -146,6 +198,24 @@ func _spawn_player(index: int) -> Character:
 ## The pattern lives in core/ and takes plain numbers, so this stays the only
 ## place that knows a camera exists. It is also why the group survives as a
 ## group: one call, one anchor, the cluster arrives together.
+## Authored assignment when there is one, otherwise the old rule: player 0 takes
+## the keyboard AND the first pad, everyone after takes the pad matching their
+## index.
+##
+## That fallback is exactly what player_devices exists to escape - it cannot
+## express three pads and one keyboard, because the keyboard player is also
+## holding pad 0. It stays only so the game launches with nothing authored.
+func _device_for(index: int) -> PlayerInput:
+	if index < player_devices.size():
+		var id: int = player_devices[index]
+		# Only the keyboard player also answers to the keyboard; giving it to a
+		# second player would have two of them move on the same key.
+		return PlayerInput.new(id, id == PlayerInput.KEYBOARD)
+
+	if index == 0:
+		return PlayerInput.new(0, true)
+	return PlayerInput.new(index, false)
+
 func _spawn_group(group: SpawnGroup) -> void:
 	if group == null or group.enemy == null:
 		return
