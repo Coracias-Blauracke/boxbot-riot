@@ -57,6 +57,10 @@ func _validate(path: String) -> void:
 		_validate_item(path, resource)
 	elif resource is WaveTable:
 		_validate_wave_table(path, resource)
+	elif resource is WaveModifier:
+		_validate_wave_modifier(path, resource)
+	elif resource is SpawnPattern:
+		_validate_spawn_pattern(path, resource)
 	elif resource is WeaponData:
 		_validate_weapon(path, resource)
 	elif resource is EntityData:
@@ -121,6 +125,58 @@ func _validate_wave_table(path: String, table: WaveTable) -> void:
 	# A table with nothing available on wave one produces an empty first wave.
 	if not reachable_at_one and not table.entries.is_empty():
 		_errors.append("%s : no entry is available on wave 1" % path)
+
+	# Placement is the failure that says nothing at all: with no pattern
+	# anywhere the wave runs its full length and not one enemy appears.
+	if table.default_pattern == null:
+		var all_entries_placed := true
+		for entry in table.entries:
+			if entry != null and entry.pattern == null:
+				all_entries_placed = false
+		if not all_entries_placed:
+			_errors.append("%s : no default_pattern and some entries have none either" % path)
+
+	if table.budget_per_extra_player < 0.0 or table.events_per_extra_player < 0.0:
+		_errors.append("%s : co-op scaling cannot be negative" % path)
+
+	for i in table.modifiers.size():
+		if table.modifiers[i] == null:
+			_errors.append("%s : modifier[%d] is null (deleted resource?)" % [path, i])
+
+## A modifier that matches no wave is dead content, and one that multiplies by
+## zero produces an empty wave without erroring - both silent at runtime.
+func _validate_wave_modifier(path: String, modifier: WaveModifier) -> void:
+	if modifier.display_key.is_empty():
+		_errors.append("%s : empty display_key (translation key)" % path)
+	if modifier.waves.is_empty() and modifier.every_n_waves <= 0:
+		_errors.append("%s : matches no wave at all" % path)
+	if modifier.budget_multiplier <= 0.0:
+		_errors.append("%s : budget_multiplier must be positive" % path)
+	if modifier.events_multiplier <= 0.0:
+		_errors.append("%s : events_multiplier must be positive" % path)
+	if modifier.max_entry_cost < 0.0:
+		_errors.append("%s : max_entry_cost cannot be negative" % path)
+	for wave in modifier.waves:
+		if wave <= 0:
+			_errors.append("%s : wave numbers start at 1, got %d" % [path, wave])
+
+func _validate_spawn_pattern(path: String, pattern: SpawnPattern) -> void:
+	if pattern is SpawnRing:
+		# At or below 1.0 the ring sits inside the view and enemies pop into
+		# existence on screen, which reads as a bug rather than as difficulty.
+		if (pattern as SpawnRing).view_margin <= 1.0:
+			_errors.append("%s : view_margin must exceed 1.0 or enemies appear on screen" % path)
+	elif pattern is SpawnNearPlayer:
+		var ambush := pattern as SpawnNearPlayer
+		if ambush.min_distance <= 0.0:
+			_errors.append("%s : min_distance must be positive or the group lands on the player" % path)
+		if ambush.max_distance < ambush.min_distance:
+			_errors.append("%s : max_distance is below min_distance" % path)
+	elif pattern is SpawnInView:
+		# Spawning inside the frame gives the player no approach to react to, so
+		# a missing clearance is the difference between pressure and a coin flip.
+		if (pattern as SpawnInView).clear_radius <= 0.0:
+			_errors.append("%s : clear_radius must be positive, it spawns ON the players" % path)
 
 func _validate_item(path: String, item: ItemData) -> void:
 	if item.display_key.is_empty():

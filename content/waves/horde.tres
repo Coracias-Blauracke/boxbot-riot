@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="WaveModifier" format=3]
+
+[ext_resource type="Script" path="res://core/waves/wave_modifier.gd" id="1_modifier"]
+
+[resource]
+script = ExtResource("1_modifier")
+display_key = "WAVE_MOD_HORDE"
+waves = PackedInt32Array(11)
+every_n_waves = 0
+budget_multiplier = 2.0
+events_multiplier = 2.0
+max_entry_cost = 1.0

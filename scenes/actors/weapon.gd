@@ -45,6 +45,13 @@ func _physics_process(delta: float) -> void:
 	if model == null or data == null or wielder == null:
 		return
 
+	# A downed wielder's weapons stop dead, mid-swing included. They are fully
+	# automatic and acquire their own targets, so without this a corpse keeps
+	# firing, keeps earning currency and keeps clearing the wave it just lost.
+	if wielder.model != null and not wielder.model.is_alive:
+		_cancel_swing()
+		return
+
 	# One multiplier drives both the animation and the firing pattern, so a
 	# slowed weapon does not start overlapping its own swings.
 	delta *= time_scale
@@ -228,8 +235,15 @@ func _advance_swing(delta: float) -> void:
 			_check_swing_overlap(t)
 
 	if current >= 1.0:
-		_swing = null
-		_swing_snapshot = null
+		_cancel_swing()
+
+## Drops a swing wherever it is. Used both when one finishes and when the
+## wielder goes down - a swing left half-finished would otherwise resume from a
+## stale angle the moment they are revived.
+func _cancel_swing() -> void:
+	_swing = null
+	_swing_snapshot = null
+	_swing_hits.clear()
 
 func _check_swing_overlap(t: float) -> void:
 	if _swing.max_targets > 0 and _swing_hits.size() >= _swing.max_targets:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=12 format=3 uid="uid://ypmpa6ofxxh2"]
 
 [ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://core/data/weapon_data.gd" id="8_wdata"]
 [ext_resource type="Resource" path="res://content/weapons/sword.tres" id="9_sword"]
 [ext_resource type="Script" path="res://scenes/levels/arena_camera.gd" id="10_camera"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="11_hud"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -26,3 +27,5 @@ script = ExtResource("2_arena")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 script = ExtResource("10_camera")
+
+[node name="Hud" parent="." instance=ExtResource("11_hud")]

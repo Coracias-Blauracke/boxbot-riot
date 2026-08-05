@@ -20,8 +20,18 @@ extends Resource
 ## afford one of them cannot also afford a swarm.
 @export var cost: float = 1.0
 ## Spawned together as a cluster, which reads very differently from the same
-## number trickling in one at a time.
+## number trickling in one at a time. Honoured since SpawnGroup: the group keeps
+## one anchor all the way to placement instead of being flattened into
+## `group_size` unrelated rolls.
 @export var group_size: int = 1
+
+@export_group("Placement")
+## HOW this enemy arrives. Null falls back to WaveTable.default_pattern.
+##
+## Lives here rather than on the wave because it is a property of the ENEMY: a
+## lurker should always ambush and a chaser should always walk in from off
+## screen, whichever wave they turn up in.
+@export var pattern: SpawnPattern
 
 func is_available(wave_number: int) -> bool:
 	if wave_number < min_wave:

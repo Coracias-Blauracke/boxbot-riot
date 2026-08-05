@@ -27,6 +27,25 @@ func _initialize() -> void:
 	_test_director_spreads_spawns_across_the_wave()
 	_test_director_ends_on_the_timer()
 	_test_intermission_starts_the_next_wave()
+	_test_one_death_does_not_end_a_co_op_run()
+	_test_revive_rule_stands_players_up_at_the_shop()
+	_test_permanent_rule_leaves_them_down()
+	_test_shared_fate_ends_on_the_first_death()
+	_test_victory_on_the_last_wave()
+	_test_defeat_is_not_overwritten_by_victory()
+	_test_a_corpse_does_not_bank_waves_survived()
+	_test_run_frees_together_with_its_players()
+	_test_a_group_arrives_as_one_group()
+	_test_ring_places_the_group_off_screen_and_together()
+	_test_ambush_keeps_its_distance_from_every_member()
+	_test_ambush_without_players_still_spawns()
+	_test_in_view_lands_on_screen_but_never_on_a_player()
+	_test_in_view_falls_back_when_no_clear_spot_exists()
+	_test_patterns_stay_inside_the_arena()
+	_test_player_count_scales_budget_and_events()
+	_test_wave_modifier_applies_only_to_its_waves()
+	_test_horde_cost_cap_excludes_the_heavy_enemy()
+	_test_a_cap_that_excludes_everything_is_ignored()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -294,7 +313,21 @@ func _make_table() -> WaveTable:
 	table.budget_per_wave = 8.0
 	table.budget_growth = 1.0
 	table.spawn_events = 12
+	table.default_pattern = SpawnRing.new()
+	# Neutral by default so the existing curve assertions keep measuring the
+	# curve rather than the co-op scaling.
+	table.budget_per_extra_player = 0.0
+	table.events_per_extra_player = 0.0
 	return table
+
+## Enemies, not groups. advance() returns groups now, so .size() counts
+## arrivals - which is a different number and would quietly change what the
+## pacing assertions mean.
+func _enemies_in(groups: Array[SpawnGroup]) -> int:
+	var total := 0
+	for group in groups:
+		total += group.count
+	return total
 
 func _test_wave_table_curves() -> void:
 	var table := _make_table()
@@ -324,7 +357,7 @@ func _test_director_spreads_spawns_across_the_wave() -> void:
 	var step := 0.1
 	var elapsed := 0.0
 	while elapsed < director.duration:
-		var spawned := director.advance(step, rng).size()
+		var spawned := _enemies_in(director.advance(step, rng))
 		total += spawned
 		if elapsed < director.duration * 0.5:
 			first_half += spawned
@@ -372,6 +405,399 @@ func _test_intermission_starts_the_next_wave() -> void:
 	run.advance_wave(1.5)
 	_check_int("wave 2 begins", run.wave_number, 2)
 	_check_int("back in combat", run.phase, WorldTypes.Phase.COMBAT)
+
+# --- death rules -----------------------------------------------------------
+
+## A player with a body. EntityModel.new() sits at zero HP and can never die,
+## because set_hp() clamps to zero, sees no change and returns before it can
+## flip is_alive.
+func _run_with_players(count: int, rule: RunTypes.DeathRule) -> RunModel:
+	var run := RunModel.new(4242)
+	run.death_rule = rule
+	for i in count:
+		var player := EntityModel.new()
+		player.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.BASE, 100.0, &"test_body")
+		run.add_player(player)
+	return run
+
+func _kill(victim: EntityModel) -> void:
+	var event := DamageEvent.new()
+	event.amount = 9999.0
+	victim.apply_damage(event)
+
+func _test_one_death_does_not_end_a_co_op_run() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.start_wave()
+
+	_kill(run.players[0])
+	_check_int("one player left standing", run.living_player_count(), 1)
+	_check_bool("the downed one is tracked", run.is_player_downed(0), true)
+	_check_bool("the survivor is not", run.is_player_downed(1), false)
+	_check_bool("the run carries on", run.is_run_over(), false)
+	_check_int("still in combat", run.phase, WorldTypes.Phase.COMBAT)
+
+	_kill(run.players[1])
+	_check_bool("the last death ends it", run.is_run_over(), true)
+	_check_int("as a defeat", run.outcome, RunTypes.Outcome.DEFEAT)
+	_check_int("and the phase closes", run.phase, WorldTypes.Phase.FINISHED)
+
+func _test_revive_rule_stands_players_up_at_the_shop() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.revive_hp_fraction = 0.5
+	run.start_wave()
+
+	_kill(run.players[0])
+	_check_bool("down during the wave", run.players[0].is_alive, false)
+
+	run.end_wave()
+	_check_int("the shop opened", run.phase, WorldTypes.Phase.SHOP)
+	_check_bool("and they are back up", run.players[0].is_alive, true)
+	_check("on the configured fraction of max HP", run.players[0].current_hp, 50.0)
+	_check_bool("no longer counted as down", run.is_player_downed(0), false)
+
+	# Standing up must not cost the survivor anything either.
+	_check("the survivor is untouched", run.players[1].current_hp, 100.0)
+
+func _test_permanent_rule_leaves_them_down() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.PERMANENT)
+	run.start_wave()
+
+	_kill(run.players[0])
+	run.end_wave()
+	_check_int("the shop still opens for the survivor", run.phase, WorldTypes.Phase.SHOP)
+	_check_bool("but the dead stay dead", run.players[0].is_alive, false)
+	_check_bool("and stay on the downed list", run.is_player_downed(0), true)
+	_check_bool("the run is not over yet", run.is_run_over(), false)
+
+	run.close_shop()
+	run.start_wave()
+	_kill(run.players[1])
+	_check_int("it ends with the last survivor", run.outcome, RunTypes.Outcome.DEFEAT)
+
+func _test_shared_fate_ends_on_the_first_death() -> void:
+	var run := _run_with_players(4, RunTypes.DeathRule.SHARED_FATE)
+	run.start_wave()
+
+	_kill(run.players[2])
+	_check_int("three are still alive", run.living_player_count(), 3)
+	_check_bool("and it is over anyway", run.is_run_over(), true)
+	_check_int("as a defeat", run.outcome, RunTypes.Outcome.DEFEAT)
+
+func _test_victory_on_the_last_wave() -> void:
+	var run := _run_with_players(1, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.total_waves = 2
+
+	run.start_wave()
+	run.end_wave()
+	run.close_shop()
+	run.start_wave()
+	run.end_wave()
+
+	_check_int("clearing the last wave wins", run.outcome, RunTypes.Outcome.VICTORY)
+	_check_int("and finishes the run", run.phase, WorldTypes.Phase.FINISHED)
+
+	# A finished run must be inert: nothing may start another wave on top of it.
+	run.start_wave()
+	_check_int("no wave starts after the end", run.wave_number, 2)
+
+func _test_defeat_is_not_overwritten_by_victory() -> void:
+	# The race this exists for: the last player dies on the very frame the
+	# director runs out of time on the final wave. Without one choke point for
+	# the outcome, end_wave() would then overwrite the defeat with a victory.
+	var run := _run_with_players(1, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.total_waves = 1
+	run.start_wave()
+
+	_kill(run.players[0])
+	_check_int("dying loses the run", run.outcome, RunTypes.Outcome.DEFEAT)
+
+	run.end_wave()
+	_check_int("the final wave ending does not rewrite it", run.outcome, RunTypes.Outcome.DEFEAT)
+
+func _test_a_corpse_does_not_bank_waves_survived() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.PERMANENT)
+	run.start_wave()
+	_kill(run.players[0])
+	run.end_wave()
+
+	_check_int(
+		"the survivor is credited",
+		run.players[1].counters.get_value(CounterTypes.Counter.WAVES_SURVIVED), 1
+	)
+	# Otherwise "every 5 waves survived, gain X" pays a corpse for the rest of
+	# the run, which under PERMANENT is most of it.
+	_check_int(
+		"the corpse is not",
+		run.players[0].counters.get_value(CounterTypes.Counter.WAVES_SURVIVED), 0
+	)
+
+func _test_run_frees_together_with_its_players() -> void:
+	# add_player() connects to the player's `died` signal, and the run holds the
+	# player. If that connection were a strong reference back, the pair would be
+	# a cycle - and RefCounted has no cycle collector, so neither would ever be
+	# freed. Asserted rather than assumed, because this exact shape has leaked
+	# in this codebase before.
+	var run := _run_with_players(2, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	# Typed explicitly: weakref() returns Variant, and `:=` off a Variant is a
+	# parse error here - which silently skips the whole suite rather than
+	# failing one assertion.
+	var run_ref: WeakRef = weakref(run)
+	var player_ref: WeakRef = weakref(run.players[0])
+
+	run.start_wave()
+	_kill(run.players[0])
+
+	run = null
+	_check_bool("the run frees", run_ref.get_ref() == null, true)
+	_check_bool("and takes its players with it", player_ref.get_ref() == null, true)
+
+# --- spawn placement -------------------------------------------------------
+
+## A roomy arena and a view in the middle of it, so nothing under test is
+## measuring a wall clamp by accident.
+func _make_context(players: PackedVector2Array = PackedVector2Array()) -> SpawnContext:
+	var context := SpawnContext.new()
+	context.world = WorldModel.new()
+	context.world.base_extents = Vector2(4000.0, 4000.0)
+	context.view_centre = Vector2.ZERO
+	context.view_size = Vector2(1400.0, 800.0)
+	context.player_positions = players
+	return context
+
+## REGRESSION. WaveEntry.group_size promised a cluster while the director
+## flattened it into `group_size` copies in one array and the spawner rolled an
+## independent position for each. An authored group of three arrived at three
+## unrelated points on the ring, and default_waves.tres has been authoring
+## group_size = 3 the whole time.
+func _test_a_group_arrives_as_one_group() -> void:
+	var director := WaveDirector.new()
+	director.table = _make_table()
+	director.begin(1)
+
+	var rng := RunRandom.new(99)
+	var groups: Array[SpawnGroup] = []
+	var elapsed := 0.0
+	while elapsed < director.duration and groups.is_empty():
+		groups = director.advance(0.1, rng)
+		elapsed += 0.1
+
+	_check_bool("the wave produced a group", groups.is_empty(), false)
+	if groups.is_empty():
+		return
+
+	_check_int("a group of three is ONE decision", groups[0].count, 3)
+	_check_bool("and it carries its pattern", groups[0].pattern != null, true)
+
+func _test_ring_places_the_group_off_screen_and_together() -> void:
+	var pattern := SpawnRing.new()
+	pattern.view_margin = 1.12
+	pattern.cluster_radius = 46.0
+
+	var context := _make_context()
+	var rng := RunRandom.new(31337)
+
+	var all_off_screen := true
+	var all_clustered := true
+
+	for attempt in 60:
+		var points := pattern.positions(context, 5, rng)
+		if points.size() != 5:
+			all_clustered = false
+			break
+		for point in points:
+			# Off screen means outside the view rectangle on at least one axis.
+			if absf(point.x) <= context.view_size.x * 0.5 and absf(point.y) <= context.view_size.y * 0.5:
+				all_off_screen = false
+			# Every member sits within the cluster radius of the anchor, which
+			# is the first point by construction.
+			if point.distance_to(points[0]) > pattern.cluster_radius + 0.001:
+				all_clustered = false
+
+	_check_bool("nothing pops into existence on screen", all_off_screen, true)
+	_check_bool("the whole group shares one anchor", all_clustered, true)
+
+func _test_ambush_keeps_its_distance_from_every_member() -> void:
+	var pattern := SpawnNearPlayer.new()
+	pattern.min_distance = 190.0
+	pattern.max_distance = 310.0
+	pattern.cluster_radius = 40.0
+
+	var player := Vector2(120.0, -60.0)
+	var context := _make_context(PackedVector2Array([player]))
+	var rng := RunRandom.new(4242)
+
+	var closest := INF
+	var furthest := 0.0
+	for attempt in 200:
+		for point in pattern.positions(context, 4, rng):
+			closest = minf(closest, point.distance_to(player))
+			furthest = maxf(furthest, point.distance_to(player))
+
+	# The floor must hold for the whole cluster. Scattering radius 40 around an
+	# anchor at 190 would otherwise put the nearest member at 150.
+	_check_bool("no member lands inside the floor (%.0f)" % closest, closest >= 190.0 - 0.001, true)
+	# And it is still an ambush rather than a ring spawn: the far end stays
+	# within the band plus the cluster it is allowed to scatter over.
+	_check_bool("and none strays past the band (%.0f)" % furthest, furthest <= 310.0 + 40.0 + 0.001, true)
+
+func _test_ambush_without_players_still_spawns() -> void:
+	# Every player down, or a preview with none bound. Returning nothing here
+	# would stall the wave silently rather than erroring.
+	var pattern := SpawnNearPlayer.new()
+	var context := _make_context()
+	var points := pattern.positions(context, 3, RunRandom.new(5))
+
+	_check_int("an ambush with nobody to ambush still places its group", points.size(), 3)
+
+func _test_in_view_lands_on_screen_but_never_on_a_player() -> void:
+	var pattern := SpawnInView.new()
+	pattern.clear_radius = 230.0
+	pattern.view_inset = 40.0
+	pattern.cluster_radius = 40.0
+
+	# Two players, because the clearance has to hold against BOTH. A floor
+	# measured only against the nearest one still drops a group on the other.
+	var players := PackedVector2Array([Vector2(-200.0, 80.0), Vector2(320.0, -120.0)])
+	var context := _make_context(players)
+	var rng := RunRandom.new(1234)
+
+	var closest := INF
+	var on_screen := 0
+	var total := 0
+
+	for attempt in 200:
+		for point in pattern.positions(context, 3, rng):
+			total += 1
+			for player in players:
+				closest = minf(closest, point.distance_to(player))
+			# Inside the view rectangle - that is the whole difference from the
+			# ring, which only ever places outside it.
+			if absf(point.x) <= context.view_size.x * 0.5 and absf(point.y) <= context.view_size.y * 0.5:
+				on_screen += 1
+
+	_check_bool("nothing lands on a player (closest %.0f)" % closest, closest >= 230.0 - 0.001, true)
+	# Not all of them: pushing clear of a player can shove a member past the
+	# frame edge, which is preferable to dropping it in somebody's lap.
+	_check_bool("the group lands in view (%d of %d)" % [on_screen, total], on_screen > total / 2, true)
+
+func _test_in_view_falls_back_when_no_clear_spot_exists() -> void:
+	# A view so small that every point in it is inside the clearance. Returning
+	# nothing here would stall the wave with no error to explain why.
+	var pattern := SpawnInView.new()
+	pattern.clear_radius = 5000.0
+
+	var context := _make_context(PackedVector2Array([Vector2.ZERO]))
+	context.view_size = Vector2(200.0, 120.0)
+
+	var points := pattern.positions(context, 4, RunRandom.new(77))
+	_check_int("an impossible clearance still places the group", points.size(), 4)
+
+func _test_patterns_stay_inside_the_arena() -> void:
+	# A tight arena, so every pattern is forced against the walls.
+	var context := SpawnContext.new()
+	context.world = WorldModel.new()
+	context.world.base_extents = Vector2(300.0, 200.0)
+	context.view_centre = Vector2.ZERO
+	context.view_size = Vector2(400.0, 240.0)
+	context.player_positions = PackedVector2Array([Vector2(250.0, 150.0)])
+
+	var patterns: Array[SpawnPattern] = [
+		SpawnRing.new(), SpawnNearPlayer.new(), SpawnEdge.new(), SpawnInView.new()
+	]
+	var rng := RunRandom.new(808)
+
+	for pattern in patterns:
+		var all_inside := true
+		for attempt in 100:
+			for point in pattern.positions(context, 4, rng):
+				if not context.world.is_inside(context.world.clamp_to_bounds(point)):
+					all_inside = false
+		_check_bool(
+			"%s never places outside the arena" % pattern.get_script().get_global_name(),
+			all_inside, true
+		)
+
+# --- co-op scaling and wave modifiers --------------------------------------
+
+func _test_player_count_scales_budget_and_events() -> void:
+	var table := _make_table()
+	table.budget_per_extra_player = 1.0
+	table.events_per_extra_player = 1.0
+
+	_check("one player is the baseline", table.budget_for(1, 1), 24.0)
+	_check("two players face twice the wave", table.budget_for(1, 2), 48.0)
+	# Linear, not compounding: four players get four times, not eight. The
+	# budget curve already compounds on its own across waves.
+	_check("four players face four times, not eight", table.budget_for(1, 4), 96.0)
+
+	_check_int("events scale too", table.events_for(1, 2), 24)
+	# This is the point of scaling events alongside budget: the gap between
+	# arrivals halves instead of each arrival doubling in size.
+	_check_int("four players get four times the arrivals", table.events_for(1, 4), 48)
+
+	# Setting the scale to zero has to switch co-op scaling off completely, so a
+	# challenge or a hand-tuned table can opt out.
+	var neutral := WaveTable.new()
+	neutral.budget_per_extra_player = 0.0
+	neutral.events_per_extra_player = 0.0
+	_check("a zero scale disables budget scaling", neutral.budget_for(1, 4), neutral.budget_for(1, 1))
+	_check_int("and event scaling too", neutral.events_for(1, 4), neutral.events_for(1, 1))
+
+func _make_horde(wave: int, cap: float) -> WaveModifier:
+	var horde := WaveModifier.new()
+	horde.display_key = "WAVE_MOD_HORDE"
+	horde.waves = PackedInt32Array([wave])
+	horde.budget_multiplier = 2.0
+	horde.events_multiplier = 2.0
+	horde.max_entry_cost = cap
+	return horde
+
+func _test_wave_modifier_applies_only_to_its_waves() -> void:
+	var table := _make_table()
+	table.modifiers = [_make_horde(11, 0.0)]
+
+	var plain := table.budget_for(10)
+	var horde := table.budget_for(11)
+	var after := table.budget_for(12)
+
+	_check_bool("wave 11 carries 100%% more (%.0f vs %.0f)" % [horde, plain], horde > plain * 1.9, true)
+	_check_bool("and wave 12 is back to normal", after < horde, true)
+	_check_int("the modifier is reported for its wave", table.modifiers_for(11).size(), 1)
+	_check_int("and not for others", table.modifiers_for(10).size(), 0)
+
+	# every_n_waves is the other way of matching, for a recurring twist.
+	var recurring := WaveModifier.new()
+	recurring.display_key = "WAVE_MOD_EVERY_FIVE"
+	recurring.every_n_waves = 5
+	table.modifiers = [recurring]
+	_check_int("every fifth wave matches", table.modifiers_for(15).size(), 1)
+	_check_int("the others do not", table.modifiers_for(16).size(), 0)
+
+func _test_horde_cost_cap_excludes_the_heavy_enemy() -> void:
+	var table := _make_table()
+	table.modifiers = [_make_horde(11, 1.0)]
+
+	# Wave 11 has both enemies available: the cheap one at cost 1 and the heavy
+	# one at cost 4. Doubling the budget without the cap just buys twice as many
+	# heavies, which is a completely different wave from a horde.
+	_check_int("both are normally eligible", table.available_entries(11).size(), 2)
+	_check_int(
+		"the cap leaves only the cheap swarm",
+		table.available_entries(11, table.max_entry_cost_for(11)).size(), 1
+	)
+	_check("the cap is reported", table.max_entry_cost_for(11), 1.0)
+	_check("and is absent on other waves", table.max_entry_cost_for(12), 0.0)
+
+func _test_a_cap_that_excludes_everything_is_ignored() -> void:
+	# The worst failure mode available here: nothing errors, no enemy is
+	# eligible, and the wave simply does not happen for twenty seconds.
+	var table := _make_table()
+	table.modifiers = [_make_horde(11, 0.25)]
+
+	_check_int(
+		"an impossible cap falls back to the full set",
+		table.available_entries(11, table.max_entry_cost_for(11)).size(), 2
+	)
 
 # --- assertions ------------------------------------------------------------
 

@@ -53,6 +53,9 @@ func _initialize() -> void:
 	_test_status_damage_over_time()
 	_test_status_events_reach_both_sides()
 	_test_damage_pipeline_and_death()
+	_test_a_corpse_takes_no_further_damage()
+	_test_healing_cannot_raise_a_corpse()
+	_test_revive_restores_a_fraction_of_max_hp()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -434,6 +437,83 @@ func _test_damage_pipeline_and_death() -> void:
 	_check_bool("target died", target.is_alive, false)
 	_check_int("killer is notified of the kill", on_kill.calls, 1)
 	_check_int("kill counter", killer.counters.get_value(CounterTypes.Counter.ENEMIES_KILLED), 1)
+
+# --- death, corpses and revival --------------------------------------------
+#
+# REGRESSIONS. All three only became reachable once a downed player stopped
+# being freed on death: before that, everything that died left the tree in the
+# same frame and nothing could ever address it again.
+
+## A bare EntityModel sits at zero HP and can never die - set_hp() clamps to
+## zero, sees no change and returns before it can flip is_alive. Every death
+## test has to give it a body first.
+func _living(maximum: float = 100.0) -> EntityModel:
+	var entity := EntityModel.new()
+	entity.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.BASE, maximum, &"test_body")
+	return entity
+
+func _hit(victim: EntityModel, amount: float, attacker: EntityModel = null) -> float:
+	var event := DamageEvent.new()
+	event.source = attacker
+	event.amount = amount
+	return victim.apply_damage(event)
+
+func _test_a_corpse_takes_no_further_damage() -> void:
+	var killer := _living()
+	var victim := _living()
+
+	_hit(victim, 500.0, killer)
+	_check_bool("victim died", victim.is_alive, false)
+	_check_int("one kill credited", killer.counters.get_value(CounterTypes.Counter.ENEMIES_KILLED), 1)
+
+	# The kill credit below apply_damage() only ever checked `not is_alive`, so
+	# every later hit on the same corpse awarded another kill. A poison ticking
+	# on a downed player would have farmed it for the rest of the run.
+	var on_kill := SpyEffect.new()
+	on_kill.watched = Hooks.Hook.ON_KILL
+	killer.effects.register(EffectInstance.new(on_kill, &"kill_watcher"))
+
+	var banked := victim.counters.get_value(CounterTypes.Counter.DAMAGE_TAKEN)
+
+	_check("hitting a corpse lands nothing", _hit(victim, 500.0, killer), 0.0)
+	_check_int("no second kill credited", killer.counters.get_value(CounterTypes.Counter.ENEMIES_KILLED), 1)
+	_check_int("ON_KILL does not fire again", on_kill.calls, 0)
+	_check_int(
+		"the corpse banks no further damage taken",
+		victim.counters.get_value(CounterTypes.Counter.DAMAGE_TAKEN), banked
+	)
+
+func _test_healing_cannot_raise_a_corpse() -> void:
+	var victim := _living()
+	_hit(victim, 500.0)
+
+	# set_hp() would happily push current_hp back above zero while is_alive
+	# stayed false, leaving something neither dead nor playable. Lifesteal and
+	# regeneration both route through heal(), so this was one tick away.
+	_check("healing a corpse heals nothing", victim.heal(50.0), 0.0)
+	_check("the corpse stays at zero", victim.current_hp, 0.0)
+	_check_bool("and stays dead", victim.is_alive, false)
+
+func _test_revive_restores_a_fraction_of_max_hp() -> void:
+	var player := _living(200.0)
+	_hit(player, 500.0)
+	_check_bool("player is down", player.is_alive, false)
+
+	# A one-element array, not an int: a lambda captures outer locals by VALUE,
+	# so an int incremented inside one is silently lost. The array is a
+	# reference, so mutating its contents survives.
+	var revived: Array[int] = [0]
+	player.revived.connect(func() -> void: revived[0] += 1)
+
+	_check("revive returns the health it granted", player.revive(0.25), 50.0)
+	_check_bool("player is up", player.is_alive, true)
+	_check_int("the revived signal fired once", revived[0], 1)
+
+	# Reviving something already standing must be a no-op, or a second call
+	# would top a wounded player back up for free.
+	_check("reviving the living grants nothing", player.revive(1.0), 0.0)
+	_check("and leaves their health alone", player.current_hp, 50.0)
+	_check_int("no second signal", revived[0], 1)
 
 # --- assertions ------------------------------------------------------------
 

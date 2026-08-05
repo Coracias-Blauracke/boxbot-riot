@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="SpawnInView" format=3]
+
+[ext_resource type="Script" path="res://core/waves/spawn_in_view.gd" id="1_in_view"]
+
+[resource]
+script = ExtResource("1_in_view")
+clear_radius = 230.0
+view_inset = 40.0
+cluster_radius = 40.0

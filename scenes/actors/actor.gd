@@ -33,6 +33,8 @@ func bind(p_model: EntityModel, p_data: EntityData, p_world: WorldModel) -> void
 
 	if not model.died.is_connected(_on_model_died):
 		model.died.connect(_on_model_died)
+	if not model.revived.is_connected(_on_model_revived):
+		model.revived.connect(_on_model_revived)
 
 func _ready() -> void:
 	if data != null:
@@ -65,8 +67,13 @@ func _physics_process(delta: float) -> void:
 func _get_move_direction(_delta: float) -> Vector2:
 	return Vector2.ZERO
 
+## Enemies simply vanish. Players go down instead and override this - see
+## Character, and RunTypes.DeathRule for who stands up again.
 func _on_model_died() -> void:
 	queue_free()
+
+func _on_model_revived() -> void:
+	queue_redraw()
 
 # --- placeholder rendering -------------------------------------------------
 #
@@ -78,6 +85,17 @@ func _draw() -> void:
 		return
 
 	var radius := data.collider_radius
+
+	# Downed: flattened, drained of colour, no health bar. It has to read as
+	# "still there, but out" from across a 1920-wide screen, because in co-op
+	# somebody else has to notice before the wave ends.
+	if model != null and not model.is_alive:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.4))
+		draw_circle(Vector2.ZERO, radius, placeholder_color.darkened(0.7))
+		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 24, placeholder_color.darkened(0.4), 2.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
+
 	draw_circle(Vector2.ZERO, radius, placeholder_color)
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 24, placeholder_color.darkened(0.5), 2.0)
 
