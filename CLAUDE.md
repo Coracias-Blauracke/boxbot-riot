@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 453 assertions across three suites, no editor, no game window
+# tests — 452 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -431,7 +431,8 @@ players, per-player HUD, downed players with a configurable death rule, a run
 that ends in victory or defeat, a spawn system with swappable placement
 patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
 per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
-rerolling, stat payment and ready-up — with eight authored items.
+rerolling, stat payment and ready-up — and a status system whose four statuses
+differ only by authored numbers. Twenty items authored.
 
 The shop UI is playable end to end: per-player panels laid out by player count,
 a cursor per player driven by that player's own device, offers, reroll, buying,
@@ -469,9 +470,16 @@ that makes polishing now a mistake.
 
 **Known gaps:** no menus or pause, no join flow for co-op, no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
-art (everything is drawn as placeholder circles, ellipses and lines), and an
-effect library of four classes — which is the ceiling on how many items can be
-authored before new ones need code.
+art (everything is drawn as placeholder circles, ellipses and lines), and no
+buffs authored — the status machinery is valence-neutral and ready for them,
+but nothing positive exists yet.
+
+The effect library is **twelve classes**. It was four when the item list was
+written, and the eight added since each cover a FAMILY rather than an item:
+apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
+double-status-stacks, stat-per-world-count, and the three status kinds. That
+ratio is the point - twelve of the twenty authored items needed no new code at
+all.
 
 **Localisation is DEFERRED ON PURPOSE, and is not a gap.** `tr()` is already
 wrapped around every `display_key` and `description_key`, so the door is open
@@ -579,9 +587,9 @@ Armor is the instructive case: `EffectArmorFromMaxHp` already reduces damage
 through `DamageEvent.absorbed`, so the pipeline plumbing works. What is missing
 is only the bridge from the `ARMOR` STAT into it.
 
-Two of the eight authored items are decorative because of this and are known to
-be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They display
-correctly and change nothing.
+Two of the twenty authored items are decorative because of this and are known
+to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
+display correctly and change nothing.
 
 **Weapons are cheaper than items.** They decompose onto four axes that already
 exist — `FiringPattern` × delivery × `SpreadPattern` × `TargetSelector` — so

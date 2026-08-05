@@ -23,6 +23,11 @@ script = ExtResource("2_scale")
 axis = 5
 stat = 43
 
+[sub_resource type="Resource" id="s_stacks"]
+script = ExtResource("2_scale")
+axis = 3
+stat = 37
+
 [resource]
 script = ExtResource("1_status")
 status_id = &"burn"
@@ -35,4 +40,4 @@ damage_type = 5
 damage_counter = 15
 spread_radius = 90.0
 max_targets = 3
-scaling = Array[ExtResource("2_scale")]([SubResource("s_chance"), SubResource("s_damage"), SubResource("s_rate"), SubResource("s_spread")])
+scaling = Array[ExtResource("2_scale")]([SubResource("s_chance"), SubResource("s_damage"), SubResource("s_rate"), SubResource("s_spread"), SubResource("s_stacks")])
