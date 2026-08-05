@@ -98,7 +98,9 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
 scenes/      the view — nodes, physics, rendering
   ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout
   input/     PlayerInput (device binding, movement + menus)
-content/     authored .tres: characters, enemies, weapons, items, waves, worlds
+content/     authored .tres: characters, enemies, weapons, items, projectiles,
+             waves, worlds, spawn/ (patterns), shop/ (pool and rules),
+             stats/ (StatMetadata + the StatSheet reading order)
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
 ```
@@ -148,6 +150,53 @@ tally that "every 500 earned" effects hang on.
 `TargetSelector` (at whom). A pistol and a shotgun differ only by swapping
 `SpreadSingle` for `SpreadCone(8)`. Heat is an orthogonal layer on
 `WeaponModel`, available to every weapon; `heat_per_shot = 0` disables it.
+
+**A player OWNS a device; it is not derived from their index.** The old rule
+gave player 0 the keyboard plus pad 0 and player N pad N, which cannot express
+three pads and one keyboard — the keyboard player and the first pad player
+collide on the same slot and move together. `PlayerInput` carries the binding
+and answers for BOTH walking and menus, because splitting those produces a
+player who can walk but cannot buy. `main.tscn`'s `player_devices` array is the
+placeholder until a join flow assigns them at runtime.
+
+**Shop slot count is a STAT, not a shop setting.** `SHOP_SLOTS` works exactly as
+`WEAPON_SLOTS` does, so "this character sees 8 items", "this item grants a slot"
+and "this curse takes one away" are ordinary modifiers and `ShopManager` never
+learns any of them exist. 0 means the buyer has no opinion and
+`ShopData.offer_count` stands.
+
+**Item text is DERIVED, never authored per item.** A shop offer describes itself
+from its own `static_stats` and `dynamic_effects`: `StatMetadata` supplies the
+name and the format, `DynamicEffect.describe()` supplies the prose. A
+hand-written description drifts from the numbers it describes the moment
+somebody retunes one, and at a few hundred items it drifts SILENTLY — the text
+still reads fine, it is simply no longer true.
+
+Good and bad come from `StatMetadata.higher_is_better`, NOT from the sign. Less
+spread and less recoil are improvements, so `-20%` on `SPREAD_ANGLE` draws
+green. Colouring by sign tells the player a good item is a bad one.
+
+Rendering a MODIFIER is not rendering a value: a `PERCENT` modifier of 0.5 is
+"+50%" whatever the stat's own format says, because it is a proportion rather
+than a quantity of the stat, while a `FLAT` one is in the stat's unit so +0.08
+to `CRIT_CHANCE` reads "+8%".
+
+**The character is a TILE, not a panel.** It sits last in the owned strip and
+describes itself through the same block as any item, because from the player's
+side "what am I carrying" and "what did I start with" are one question.
+`EntityData` and `ItemData` carry the same shape under different names —
+`base_stats`/`innate_effects` against `static_stats`/`dynamic_effects` — so the
+strip flattens both into one entry type. The only real difference is that you
+cannot sell yourself, and that falls out of the entry having no item rather than
+out of a branch in the renderer.
+
+**The stat sheet enumerates `StatSheet`, never the enum.** A stat authored later
+appears without any screen being touched, and the validator asserts every value
+in `StatTypes.Stat` is in the sheet exactly once — so forgetting metadata fails
+validation instead of the stat silently never appearing. Values come from
+`get_stat()`, which already includes every modifier-based effect; pipeline
+effects deliberately get no row, because their value depends on the event and a
+number would be fiction.
 
 **The shop UI cannot use Godot's focus system.** Focus is ONE per viewport, so
 four panels cannot each hold their own. Every ShopPanel drives its own cursor
@@ -302,6 +351,17 @@ than failing one assertion; lambdas capture by **value**, so assigning to an
 outer local inside one is silently lost (capture a one-element `Array` instead —
 the array is a reference, so mutating its contents survives).
 
+**Readiness goes through `RunModel.set_player_ready()`, never through
+`ShopManager.set_ready()`.** The manager's flag is not what the run watches, so
+calling it directly flips a boolean nobody reads and the shop never closes. The
+UI did exactly that and the bug survived a full test suite.
+
+**A test that follows the correct path cannot catch a caller taking a different
+one.** That is the general lesson from the above, and it is worth more than the
+bug: every readiness test called the run's function — precisely the step the UI
+was skipping. When a bug is "the caller went around the API", the test has to
+assert the difference between the two paths, not the behaviour of the right one.
+
 **Watch the import log, not just test results.** Parse errors can leave tests
 passing while silently skipping assertions.
 
@@ -320,39 +380,28 @@ budget-driven escalation, currency from kills, following camera, 1–4 local
 players, per-player HUD, downed players with a configurable death rule, a run
 that ends in victory or defeat, a spawn system with swappable placement
 patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
-per-player shop MODEL — rolling by tier weight, pipeline pricing, buying,
-selling, rerolling, stat payment and ready-up — with eight authored items.
+per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
+rerolling, stat payment and ready-up — with eight authored items.
 
-The shop UI is playable: per-player panels laid out by player count, a cursor
-per player driven by that player's own device, offers, reroll, sell from the
-owned strip, a stat sheet that enumerates `StatSheet` rather than the enum, and
-ready-up. Readiness goes through `RunModel.set_player_ready()`, never through
-`ShopManager.set_ready()` — the manager's flag is not what the run watches, and
-calling it directly is a bug that no model test catches, because every test
-calls the run's function.
+The shop UI is playable end to end: per-player panels laid out by player count,
+a cursor per player driven by that player's own device, offers, reroll, buying,
+selling from the owned strip, the character as the last tile, a derived detail
+block for whatever is highlighted, a stat sheet, on-screen control hints and
+ready-up. The cursor returns to the first offer on every entry.
 
-**Item text is DERIVED, never authored per item.** A shop offer describes
-itself from its own `static_stats` and `dynamic_effects` - `StatMetadata`
-supplies the name and the format, and `DynamicEffect.describe()` supplies the
-prose. A hand-written description drifts away from the numbers it describes the
-moment somebody retunes one, and at a few hundred items it drifts silently: the
-text still reads fine, it is simply no longer true.
+**Deliberately NOT polished yet.** Colours, borders, spacing and the shape of
+the detail block wait for the art pass, because the layout constraints come from
+content that does not exist — how long names get, how many stat lines a complex
+item has. Tuning proportions against eight items means tuning them again at
+fifty.
 
-Good and bad come from `StatMetadata.higher_is_better`, NOT from the sign. Less
-spread and less recoil are improvements, so a `-20%` on `SPREAD_ANGLE` is drawn
-green. Colouring by sign would tell the player a good item is a bad one.
-
-**The character is a TILE, not a panel.** It sits last in the owned strip and
-describes itself through the same block as any item, because from the player's
-side "what am I carrying" and "what did I start with" are one question.
-`EntityData` and `ItemData` carry the same shape under different names —
-`base_stats`/`innate_effects` against `static_stats`/`dynamic_effects` — so the
-strip flattens both into one entry type. The only real difference is that you
-cannot sell yourself, and that falls out of the entry having no item rather than
-out of a branch in the renderer.
-
-**Still missing from the shop UI:** item icons and any text at all. `display_key` renders as the raw key through `tr()` until a
-translation is loaded, which is by design but looks like a placeholder.
+**Overflow is deferred with it, and that is a considered decision rather than an
+omission.** The detail block will become a floating tooltip near the cursor with
+its own maximum size and a stick-scroll for long descriptions, as the genre
+does. The overflow rule belongs to THAT window; writing one for the current
+inline block would be designing it twice. Nothing overflows today because no
+authored item has more than two stat lines — which is exactly the sample size
+that makes polishing now a mistake.
 
 **No debug settings are currently active.**
 
@@ -368,11 +417,17 @@ translation is loaded, which is by design but looks like a placeholder.
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps:** no shop UI, no menus or pause (the HUD is the only UI), no join
-flow for co-op, no `BEAM` delivery, no explosion/puddle effects on `ON_IMPACT`,
-no save system, no localisation (`display_key` fields exist but nothing consumes
-them — including the HUD, which prints "P1" and raw numbers), no art (everything
-is drawn as placeholder circles, ellipses and lines).
+**Known gaps:** no menus or pause, no join flow for co-op, no `BEAM` delivery,
+no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
+art (everything is drawn as placeholder circles, ellipses and lines), and an
+effect library of four classes — which is the ceiling on how many items can be
+authored before new ones need code.
+
+**Localisation is DEFERRED ON PURPOSE, and is not a gap.** `tr()` is already
+wrapped around every `display_key` and `description_key`, so the door is open
+and no content file will need touching. Until a translation is loaded, `tr()`
+returns the key unchanged, which is why the shop reads `ITEM_WHETSTONE` rather
+than a name. That looks like a placeholder and is not one.
 
 **Settled: the base resolution is 1920×1080 and stays there.** `stretch/aspect`
 is `"keep"` (16:9 fills, 21:9 letterboxes). **Pixel art is ruled out** — the user
@@ -430,6 +485,35 @@ rescaling `.tres` files.
 
 ---
 
+## Authoring content: the order matters
+
+**The item and weapon list comes FIRST, in prose, before any `.tres`. Effect
+classes are derived from it, never invented ahead of it.** Ten effects thought
+up in advance are ten solutions looking for a problem; a hundred items written
+down first group themselves, and the repeats are the classes worth writing.
+
+For each item, note the name, tier, rough price and then EITHER its stat lines
+OR its behaviour in one sentence. That split is the whole point:
+
+| kind | cost |
+|---|---|
+| a bundle of stat modifiers | **zero code** — a `.tres` and nothing else |
+| a behaviour | one effect class, which usually covers a whole family |
+
+In this genre most items are the first kind, so the majority of a list lands
+without a line of GDScript. `EffectStatPerCounter` already covers every "for
+every N of something, gain X" — when writing the list, mark which behaviours are
+that same pattern with different numbers.
+
+**Weapons are cheaper than items.** They decompose onto four axes that already
+exist — `FiringPattern` × delivery × `SpreadPattern` × `TargetSelector` — so
+most new weapons are a new combination rather than new code. Naming those four
+per weapon immediately exposes what the engine is missing. One hole is already
+known: **`BEAM` delivery is not implemented**, so anything laser-shaped is
+blocked.
+
+---
+
 ## Keeping this file and the tests honest
 
 **This document is part of the work, not a report about it.** A stale
@@ -442,10 +526,12 @@ What goes stale fastest, and what to do about it:
 |---|---|
 | add a `Hooks.Hook` value | the count in *Architecture* and whether it fires |
 | finish a system | move it out of *Known gaps* into *Current state* |
-| add a debug knob | the **DEBUG SETTINGS ACTIVE** block — and delete it when reverted |
+| add a debug knob | say so under *Current state* — and delete the note when reverted |
+| add a capture flag | the table and notes in *Verifying visual behaviour* |
 | lose time to a non-obvious trap | *Rules that break things when violated* |
-| settle something in *Undecided* | replace it with the decision and its reason |
+| settle something open | replace it with the decision AND its reason |
 | add or remove tests | the assertion count in *How to run things* |
+| author a new content type | a check in `validate_content.gd`, then the tree |
 
 **Tests ship with the change, not after it.**
 
