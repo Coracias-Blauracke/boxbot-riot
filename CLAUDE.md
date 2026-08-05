@@ -505,6 +505,34 @@ without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
 
+### Thirteen stats exist and do nothing, ON PURPOSE
+
+Measured, not guessed - grep for `Stat.<NAME>` outside `stat_types.gd` and the
+metadata:
+
+| state | stats |
+|---|---|
+| **wired** (19) | MAX_HP, MELEE_DAMAGE, RANGED_DAMAGE, ATTACK_SPEED, CRIT_CHANCE, CRIT_MULTIPLIER, RANGE, PIERCING, BOUNCING, MOVEMENT_SPEED, WEAPON_SLOTS, SHOP_SLOTS, POISON_DAMAGE, SPREAD_ANGLE, PROJECTILE_SPEED, HEAT_CAPACITY, HEAT_DISSIPATION, RECOIL, MAP_SIZE |
+| **cheap to wire** | ARMOR, LIFESTEAL, DODGE, HP_REGEN, CURRENCY_GAIN — one small effect class each, the mechanism already exists |
+| **needs content too** | STATUS_CHANCE, BLEED_DAMAGE, BURN_DAMAGE — plus authored `StatusEffect.tres`, of which there are currently none |
+| **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
+
+**DO NOT wire these one at a time as they come up.** They are not independent:
+ARMOR, DODGE and MAX_HP are one defensive system, and whether dodge is checked
+before armor, whether armor scales with max HP, and whether either has
+diminishing returns is a SINGLE decision. Wiring them piecemeal produces five
+ad-hoc formulas that do not compose. LIFESTEAL and HP_REGEN have the same
+problem through `CALCULATE_HEAL`. The plan is to settle them together once the
+item list shows what the stats are actually for.
+
+Armor is the instructive case: `EffectArmorFromMaxHp` already reduces damage
+through `DamageEvent.absorbed`, so the pipeline plumbing works. What is missing
+is only the bridge from the `ARMOR` STAT into it.
+
+Two of the eight authored items are decorative because of this and are known to
+be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They display
+correctly and change nothing.
+
 **Weapons are cheaper than items.** They decompose onto four axes that already
 exist — `FiringPattern` × delivery × `SpreadPattern` × `TargetSelector` — so
 most new weapons are a new combination rather than new code. Naming those four
