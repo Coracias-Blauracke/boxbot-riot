@@ -14,7 +14,7 @@ The user converses in Polish; the codebase does not.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 359 assertions across three suites, no editor, no game window
+# tests — 369 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -317,6 +317,17 @@ per player driven by that player's own device, offers, reroll, sell from the
 owned strip, a stat sheet that enumerates `StatSheet` rather than the enum, and
 ready-up. `auto_intermission` still runs as a fallback because nothing forces a
 player to press ready.
+
+**Item text is DERIVED, never authored per item.** A shop offer describes
+itself from its own `static_stats` and `dynamic_effects` - `StatMetadata`
+supplies the name and the format, and `DynamicEffect.describe()` supplies the
+prose. A hand-written description drifts away from the numbers it describes the
+moment somebody retunes one, and at a few hundred items it drifts silently: the
+text still reads fine, it is simply no longer true.
+
+Good and bad come from `StatMetadata.higher_is_better`, NOT from the sign. Less
+spread and less recoil are improvements, so a `-20%` on `SPREAD_ANGLE` is drawn
+green. Colouring by sign would tell the player a good item is a bad one.
 
 **Still missing from the shop UI:** the character tile (its innate effects and
 starting stats — `DynamicEffect.describe()` is the source), item icons, and any

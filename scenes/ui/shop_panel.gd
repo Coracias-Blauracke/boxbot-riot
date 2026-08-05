@@ -255,7 +255,90 @@ func _draw_shop(font: Font, top: float) -> void:
 	_draw_row(font, y, row_height, reroll_selected, false, "PRZELOSUJ", "", str(shop.reroll_cost()))
 	y += row_height + 12.0
 
+	y = _draw_detail(font, y)
 	_draw_owned(font, y)
+
+## What the highlighted thing actually DOES, for an offer and for something
+## already owned alike.
+##
+## Derived from the item rather than authored per item. A hand-written
+## description and the numbers it describes drift apart the moment somebody
+## retunes one of them, and at a few hundred items they drift silently - the
+## text still reads fine, it is just no longer true.
+func _draw_detail(font: Font, top: float) -> float:
+	var item := _highlighted_item()
+	if item == null:
+		return top
+
+	var left := _column_x()
+	var y := top + 4.0
+	var line := 20.0 if _compact else 22.0
+	var font_size := 13 if _compact else 15
+
+	draw_string(
+		font, Vector2(left, y), tr(item.display_key),
+		HORIZONTAL_ALIGNMENT_LEFT, _column_width(), font_size + 1, Color(0.93, 0.95, 0.99)
+	)
+	y += line
+
+	for modifier in item.static_stats:
+		if modifier == null:
+			continue
+		y = _draw_modifier_line(font, left, y, line, font_size, modifier)
+
+	# The dynamic half. describe() is implemented by every effect in the
+	# library, and a throwaway instance at one stack is what a single copy does -
+	# which is what the shop is selling.
+	for effect in item.dynamic_effects:
+		if effect == null:
+			continue
+		draw_string(
+			font, Vector2(left + 10.0, y), "* " + effect.describe(EffectInstance.new(effect, item, 1)),
+			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.72, 0.82, 0.95)
+		)
+		y += line
+
+	if zone == Zone.OWNED:
+		draw_string(
+			font, Vector2(left + 10.0, y), "sprzedaj za %d" % shop.data.sell_price_for(item),
+			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.95, 0.86, 0.62)
+		)
+		y += line
+
+	return y + 10.0
+
+## Green when it helps, red when it hurts - and which is which comes from
+## StatMetadata.higher_is_better, not from the sign, because less spread and
+## less recoil are improvements.
+func _draw_modifier_line(
+	font: Font, left: float, y: float, line: float, font_size: int, modifier: StatModifier
+) -> float:
+	var meta: StatMetadata = stat_sheet.metadata_for(modifier.stat) if stat_sheet != null else null
+	var label := tr(meta.display_key) if meta != null else "STAT_%d" % modifier.stat
+	var value := (
+		meta.format_modifier(modifier.modifier_type, modifier.value)
+		if meta != null
+		else str(modifier.value)
+	)
+	var good := meta.is_improvement(modifier.value) if meta != null else modifier.value >= 0.0
+
+	draw_string(
+		font, Vector2(left + 10.0, y), label,
+		HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 120.0, font_size, Color(0.74, 0.78, 0.85)
+	)
+	draw_string(
+		font, Vector2(left + _column_width() - 110.0, y), value,
+		HORIZONTAL_ALIGNMENT_RIGHT, 110.0, font_size,
+		Color(0.5, 0.9, 0.55) if good else Color(0.95, 0.5, 0.45)
+	)
+	return y + line
+
+func _highlighted_item() -> ItemData:
+	if zone == Zone.OWNED:
+		return _owned[cursor] if cursor < _owned.size() else null
+	if cursor < shop.offers.size():
+		return shop.offers[cursor].item
+	return null
 
 func _draw_row(
 	font: Font, y: float, height: float, selected: bool, dimmed: bool,
@@ -317,13 +400,6 @@ func _draw_owned(font: Font, top: float) -> void:
 			)
 		x += OWNED_TILE
 
-	if zone == Zone.OWNED and cursor < _owned.size():
-		var item := _owned[cursor]
-		draw_string(
-			font, Vector2(_column_x(), top + OWNED_TILE + 20.0),
-			"%s  —  sprzedaj za %d" % [tr(item.display_key), shop.data.sell_price_for(item)],
-			HORIZONTAL_ALIGNMENT_LEFT, _column_width(), 14, Color(0.86, 0.88, 0.93)
-		)
 
 ## The sheet enumerates StatSheet, never the enum, so a stat authored later
 ## appears here without this file being touched.

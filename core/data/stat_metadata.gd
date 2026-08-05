@@ -40,4 +40,31 @@ func format_value(value: float) -> String:
 		Format.INTEGER:
 			return str(roundi(value))
 		_:
-			return "%.1f" % value
+			# One decimal, but never a bare ".0" - "100" reads better than
+			# "100.0" in a list of thirty stats, while a regen of 1.5 still
+			# needs its decimal.
+			return ("%.1f" % value).trim_suffix(".0")
+
+## Renders a MODIFIER, which is not the same thing as rendering a value.
+##
+## A PERCENT modifier of 0.5 is "+50%" whatever the stat's own format says,
+## because the modifier is a proportion rather than a quantity of the stat. BASE
+## and FLAT are in the stat's own unit and go through format_value(), so +0.08
+## to a percent-formatted stat like CRIT_CHANCE correctly reads "+8%". MULT
+## composes as a separate factor and reads as one.
+func format_modifier(modifier_type: StatTypes.Modifier, value: float) -> String:
+	match modifier_type:
+		StatTypes.Modifier.PERCENT:
+			return "%+d%%" % roundi(value * 100.0)
+		StatTypes.Modifier.MULT:
+			return "x%.2f" % value
+		_:
+			return ("+" if value >= 0.0 else "-") + format_value(absf(value))
+
+## Whether this modifier helps the holder. Deliberately not "is it positive":
+## less spread and less recoil are improvements, which is the entire reason
+## higher_is_better exists.
+func is_improvement(value: float) -> bool:
+	if is_zero_approx(value):
+		return true
+	return (value > 0.0) == higher_is_better

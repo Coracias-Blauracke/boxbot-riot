@@ -92,6 +92,7 @@ func _initialize() -> void:
 	_test_reroll_costs_more_every_time()
 	_test_stat_payment_spends_the_stat_not_the_currency()
 	_test_shop_slot_count_comes_from_the_stat()
+	_test_modifier_text_reads_as_a_change_not_a_value()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -783,6 +784,47 @@ func _test_shop_slot_count_comes_from_the_stat() -> void:
 	wide.stats.add_modifier(StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.FLAT, 1.0, &"item")
 	shop.open(wide, 1, rng)
 	_check_int("an item adds a slot", shop.offers.size(), 9)
+
+## What a shop offer says it does. Derived from the item rather than authored
+## per item, so it cannot drift away from the numbers it describes.
+func _test_modifier_text_reads_as_a_change_not_a_value() -> void:
+	var flat := StatMetadata.new()
+	flat.stat = StatTypes.Stat.MAX_HP
+	flat.format = StatMetadata.Format.FLAT
+
+	_check_bool("a whole value drops its decimal", flat.format_value(100.0) == "100", true)
+	_check_bool("a fractional one keeps it", flat.format_value(1.5) == "1.5", true)
+	_check_bool("a flat modifier carries its sign", flat.format_modifier(StatTypes.Modifier.FLAT, 10.0) == "+10", true)
+	_check_bool("and a negative one", flat.format_modifier(StatTypes.Modifier.FLAT, -10.0) == "-10", true)
+
+	# A PERCENT modifier is a proportion, not a quantity of the stat, so it reads
+	# as a percentage whatever the stat's own format says.
+	_check_bool(
+		"a percent modifier is a percentage",
+		flat.format_modifier(StatTypes.Modifier.PERCENT, 0.5) == "+50%", true
+	)
+	_check_bool(
+		"a mult modifier reads as a factor",
+		flat.format_modifier(StatTypes.Modifier.MULT, 1.5) == "x1.50", true
+	)
+
+	# ...but a FLAT modifier to a percent-FORMATTED stat is in that stat's unit.
+	var chance := StatMetadata.new()
+	chance.stat = StatTypes.Stat.CRIT_CHANCE
+	chance.format = StatMetadata.Format.PERCENT
+	_check_bool(
+		"a flat modifier to a percent stat stays in its unit",
+		chance.format_modifier(StatTypes.Modifier.FLAT, 0.08) == "+8%", true
+	)
+
+	# Good and bad is not the same as positive and negative: less spread is an
+	# improvement, which is what higher_is_better is for.
+	var spread := StatMetadata.new()
+	spread.stat = StatTypes.Stat.SPREAD_ANGLE
+	spread.higher_is_better = false
+	_check_bool("less spread is an improvement", spread.is_improvement(-0.2), true)
+	_check_bool("more spread is not", spread.is_improvement(0.2), false)
+	_check_bool("more health is", flat.is_improvement(10.0), true)
 
 # --- assertions ------------------------------------------------------------
 
