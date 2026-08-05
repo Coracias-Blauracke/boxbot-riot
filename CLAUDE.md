@@ -232,11 +232,59 @@ no save system, no localisation (`display_key` fields exist but nothing consumes
 them — including the HUD, which prints "P1" and raw numbers), no art (everything
 is drawn as placeholder circles, ellipses and lines).
 
-**Undecided:** art style. This gates the base resolution — pixel art wants a low
-base (e.g. 640×360) with integer scaling, and changing it after hundreds of
-items are authored means reworking every collider radius, reach and speed.
-Currently 1920×1080 with `stretch/aspect = "keep"` (16:9 fills, 21:9
-letterboxes).
+**Settled: the base resolution is 1920×1080 and stays there.** `stretch/aspect`
+is `"keep"` (16:9 fills, 21:9 letterboxes). **Pixel art is ruled out** — the user
+does not want it, so the low base with integer scaling that pixel art would have
+demanded is not on the table, and with it goes the whole reason the base was ever
+in question.
+
+This matters mainly for what it UNBLOCKS. Every spatial number in `content/` —
+collider radii, reach, `base_extents`, speeds, knockback — is denominated in
+these units, and the fear of having to rescale all of them was the one argument
+against authoring content at volume early. That argument is gone.
+
+An earlier version of this file listed the art style as *Undecided* and framed it
+as gating the base resolution via pixel art. That was never a decision anybody
+had made; it was a hypothesis written down as though it were a live option, and a
+later session duly treated it as one. **A guess recorded here reads exactly like a
+decision.** If something is genuinely open, say who has to settle it and what
+depends on it — or leave it out.
+
+**Settled: simple, low-detail sprites in the spirit of Brotato — but NOT pixel
+art.** Plain readable shapes and flat colour, authored as ordinary rasters and
+scaled smoothly. No integer scaling, no retro pixel grid, no `scale_mode`
+change. The reason is production cost rather than taste: a few hundred item
+icons is the dominant art expense in this genre, and simple sprites are what
+makes that volume tractable.
+
+Sprites are authored for the LARGEST they will ever appear. `stretch/mode` is
+`canvas_items`, so a 4K monitor scales the whole 1920 canvas by 2×, and
+`ArenaCamera.default_zoom = 1.35` is the CLOSEST framing (`min_zoom = 0.5` only
+pulls further back). Maximum on-screen size is therefore
+`collider_radius × 2 × 1.35 × 2`:
+
+| entity | `collider_radius` | largest on 1920 | largest on 4K |
+|---|---|---|---|
+| brute | 15 | 41 px | 81 px |
+| character | 12 | 32 px | 65 px |
+| chaser | 9 | 24 px | 49 px |
+| weapons | 6–7 | 16–19 px | 32–38 px |
+| bullet | 4 | 11 px | 22 px |
+
+**128×128 covers everything on the arena with headroom.** Item icons are a
+separate case: they are HUD-space, not world-space, so their size follows
+whatever the shop grid ends up being rather than any of the above.
+
+Art swaps in without touching gameplay: `EntityData` keeps `icon` and `sprite`
+in a different group from `collider_radius`.
+
+**On-screen scale is a CAMERA setting, not a content one.** The actors are small
+— a 12-radius character is 32 px on a 1920-wide screen, about 60 player-widths
+across the view — and that reads as dots in capture screenshots. If everything
+should simply be bigger, that is `default_zoom` alone, one number, no content
+touched. Only the ratio of actor size to `base_extents` lives in content, and a
+ratio is what gets tuned by feel anyway. Do not "fix" apparent scale by
+rescaling `.tres` files.
 
 ---
 
