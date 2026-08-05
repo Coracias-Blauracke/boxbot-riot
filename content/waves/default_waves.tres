@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="WaveTable" format=3]
+
+[ext_resource type="Script" path="res://core/waves/wave_table.gd" id="1_table"]
+[ext_resource type="Script" path="res://core/waves/wave_entry.gd" id="2_entry"]
+[ext_resource type="Resource" path="res://content/enemies/chaser.tres" id="3_chaser"]
+[ext_resource type="Resource" path="res://content/enemies/brute.tres" id="4_brute"]
+
+[sub_resource type="Resource" id="Resource_chasers"]
+script = ExtResource("2_entry")
+enemy = ExtResource("3_chaser")
+min_wave = 1
+max_wave = 0
+weight = 3.0
+cost = 1.0
+group_size = 3
+
+[sub_resource type="Resource" id="Resource_brutes"]
+script = ExtResource("2_entry")
+enemy = ExtResource("4_brute")
+min_wave = 2
+max_wave = 0
+weight = 1.0
+cost = 4.0
+group_size = 1
+
+[resource]
+script = ExtResource("1_table")
+entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes")])
+base_duration = 20.0
+duration_per_wave = 1.5
+max_duration = 60.0
+base_budget = 24.0
+budget_per_wave = 8.0
+budget_growth = 1.05
+spawn_events = 12

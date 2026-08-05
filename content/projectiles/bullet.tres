@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ProjectileData" format=3]
+
+[ext_resource type="Script" path="res://core/data/projectile_data.gd" id="1_proj"]
+
+[resource]
+script = ExtResource("1_proj")
+display_key = "PROJ_BULLET"
+collider_radius = 4.0
+speed = 520.0
+lifetime = 1.6
+speed_scale = 1.0
+damage_retained_on_pierce = 0.75
+damage_retained_on_bounce = 0.8

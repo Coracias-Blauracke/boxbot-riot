@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bt8rqx2vspr1n"]
+
+[ext_resource type="Script" uid="uid://ccebrk75enmsw" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" uid="uid://cw0bsrnmc76fk" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" uid="uid://bkjoehce5vknb" path="res://core/effects/dynamic_effect.gd" id="3_effect_base"]
+[ext_resource type="Script" uid="uid://b4fxabdntpsye" path="res://core/effects/library/effect_currency_on_wave_end.gd" id="4_currency"]
+
+[sub_resource type="Resource" id="Resource_speed_flat"]
+script = ExtResource("2_mod")
+stat = 14
+modifier_type = 1
+value = 100.0
+metadata/_custom_type_script = "uid://cw0bsrnmc76fk"
+
+[sub_resource type="Resource" id="Resource_speed_pct"]
+script = ExtResource("2_mod")
+stat = 14
+modifier_type = 2
+value = 0.5
+metadata/_custom_type_script = "uid://cw0bsrnmc76fk"
+
+[sub_resource type="Resource" id="Resource_currency"]
+script = ExtResource("4_currency")
+priority = 0
+scope = 0
+currency_per_stack = 25
+metadata/_custom_type_script = "uid://b4fxabdntpsye"
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_TURBO_SPRINGS"
+tier = 2
+static_stats = Array[ExtResource("2_mod")]([SubResource("Resource_speed_flat"), SubResource("Resource_speed_pct")])
+dynamic_effects = Array[ExtResource("3_effect_base")]([SubResource("Resource_currency")])
+body_slot = &"legs"
+metadata/_custom_type_script = "uid://ccebrk75enmsw"
