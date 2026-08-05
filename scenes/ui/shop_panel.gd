@@ -98,6 +98,16 @@ func bind(
 	if shop != null and not shop.offers_changed.is_connected(_on_offers_changed):
 		shop.offers_changed.connect(_on_offers_changed)
 
+## Back to the first offer. Called on every entry into the shop: a cursor left
+## on "reroll" from last time is not where anybody meant to resume, and one left
+## in the owned strip is worse - the first thing DOWN does there is nothing and
+## the first thing ACCEPT does is sell something.
+func reset_cursor() -> void:
+	zone = Zone.OFFERS
+	cursor = 0
+	tab = Tab.SHOP
+	queue_redraw()
+
 func place(rect: Rect2) -> void:
 	position = rect.position
 	size = rect.size
@@ -253,6 +263,24 @@ func _draw() -> void:
 		_draw_stats(font, y)
 	else:
 		_draw_shop(font, y)
+	_draw_controls(font)
+
+## Nothing on screen said which button does what, so "I do not know how to sell
+## this" was a fault of the UI rather than of the player. Labelled per device,
+## because telling a pad player to press Space is worse than saying nothing.
+func _draw_controls(font: Font) -> void:
+	if input == null:
+		return
+	var hint := "%s kup/sprzedaj   %s przelosuj   %s sklep/staty   %s gotow" % [
+		input.label_for(PlayerInput.Action.ACCEPT),
+		input.label_for(PlayerInput.Action.REROLL),
+		input.label_for(PlayerInput.Action.TAB),
+		input.label_for(PlayerInput.Action.READY),
+	]
+	draw_string(
+		font, Vector2(_column_x(), size.y - 16.0), hint,
+		HORIZONTAL_ALIGNMENT_LEFT, _column_width(), 13, Color(0.5, 0.55, 0.64)
+	)
 
 func _draw_header(font: Font) -> float:
 	var left := _column_x()
@@ -283,7 +311,10 @@ func _draw_header(font: Font) -> float:
 	# Readiness is shown on EVERY panel rather than once on a shared banner,
 	# because at four players there is no shared space left and "who are we
 	# waiting for" is exactly the question a full screen of panels creates.
-	var state := waiting_text if shop.is_ready else "GOTÓW: Enter / Start"
+	var state := (
+		waiting_text if shop.is_ready
+		else "GOTÓW: %s" % input.label_for(PlayerInput.Action.READY)
+	)
 	draw_string(
 		font, Vector2(left + width - 300.0, PAD + 40.0), state,
 		HORIZONTAL_ALIGNMENT_RIGHT, 300.0, 15,
@@ -356,7 +387,10 @@ func _draw_detail(font: Font, top: float) -> float:
 
 	if zone == Zone.OWNED and entry.can_sell():
 		draw_string(
-			font, Vector2(left + 10.0, y), "sprzedaj za %d" % shop.data.sell_price_for(entry.item),
+			font, Vector2(left + 10.0, y),
+			"%s: sprzedaj za %d" % [
+				input.label_for(PlayerInput.Action.ACCEPT), shop.data.sell_price_for(entry.item)
+			],
 			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.95, 0.86, 0.62)
 		)
 		y += line

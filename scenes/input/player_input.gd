@@ -61,6 +61,25 @@ func uses_keyboard() -> bool:
 func is_pad() -> bool:
 	return device_id >= 0
 
+## The label for an action ON THIS DEVICE. A hint that names a key the player is
+## not holding is worse than none - it tells the pad player to press Space.
+func label_for(action: Action) -> String:
+	if is_pad():
+		match action:
+			Action.ACCEPT: return "A"
+			Action.CANCEL: return "B"
+			Action.REROLL: return "X"
+			Action.READY: return "START"
+			Action.TAB: return "RB"
+			_: return ""
+	match action:
+		Action.ACCEPT: return "SPACJA"
+		Action.CANCEL: return "ESC"
+		Action.REROLL: return "R"
+		Action.READY: return "ENTER"
+		Action.TAB: return "TAB"
+		_: return ""
+
 # --- movement --------------------------------------------------------------
 
 ## Analogue, for walking. Deliberately separate from the menu directions below:

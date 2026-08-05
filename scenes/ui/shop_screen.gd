@@ -40,12 +40,26 @@ func bind(p_run: RunModel, players: Array[Character], p_sheet: StatSheet) -> voi
 func _on_ready_requested(index: int, value: bool) -> void:
 	run.set_player_ready(index, value)
 
-## Capture only: parks every cursor on the owned strip, so the tile detail can
-## be photographed without a hand on a pad.
+## Capture only: buys one item and parks every cursor on the owned strip, so a
+## tile's detail can be photographed without a hand on a pad.
+##
+## Deferred to the moment the shop OPENS. Doing it at startup bought nothing,
+## silently, because offers do not exist until the first wave ends - which is
+## exactly the sort of thing a capture is supposed to catch.
+var _park_on_owned: bool = false
+
 func park_cursor_on_owned() -> void:
-	for panel in _panels:
-		panel.zone = ShopPanel.Zone.OWNED
-		panel.cursor = 0
+	_park_on_owned = true
+
+func _park_now() -> void:
+	for index in _panels.size():
+		# The grant is because a wave-one player cannot afford anything, and a
+		# silently failed purchase photographs an empty strip and proves nothing.
+		run.players[index].add_currency(500)
+		run.shop_for(index).buy(run.players[index], 0)
+		_panels[index]._on_offers_changed()
+		_panels[index].zone = ShopPanel.Zone.OWNED
+		_panels[index].cursor = 0
 
 func _place_panels() -> void:
 	var viewport := Vector2(get_viewport().get_visible_rect().size)
@@ -54,6 +68,17 @@ func _place_panels() -> void:
 
 func _on_phase_changed(phase: WorldTypes.Phase) -> void:
 	_set_shown(phase == WorldTypes.Phase.SHOP)
+	if phase != WorldTypes.Phase.SHOP:
+		return
+
+	# Every entry into the shop starts the cursor at the top. Leaving it where
+	# it was last time drops the player onto "reroll" or into the owned strip,
+	# which is never where they meant to be.
+	for panel in _panels:
+		panel.reset_cursor()
+
+	if _park_on_owned:
+		_park_now()
 
 func _set_shown(shown: bool) -> void:
 	visible = shown
