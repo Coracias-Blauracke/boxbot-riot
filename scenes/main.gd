@@ -249,6 +249,9 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 
 	var model := EntityModel.new(enemy_data)
 	model.rng = run.rng
+	# Registered where it is created. There is no unregister and there cannot be
+	# one forgotten: the census holds weakrefs and prunes itself.
+	run.census.register(model)
 
 	var node := ENEMY_SCENE.instantiate() as Enemy
 	# No target assigned: the enemy picks the nearest living player itself, and

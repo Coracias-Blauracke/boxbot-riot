@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 384 assertions across three suites, no editor, no game window
+# tests — 410 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -280,6 +280,33 @@ twice the arrivals. Scaling the budget alone would keep twelve arrivals and make
 each one twice the size, which reads as long quiet stretches punctuated by a
 wall. Scaling is linear, not compounding: four players face four times the wave,
 not eight — the budget curve already compounds across waves on its own.
+
+**A status snapshots its parameters from the APPLIER when it lands.** Damage,
+tick rate, max stacks and duration are resolved onto the `ActiveStatus` and
+never read live off the `.tres`, which is globally cached and therefore cannot
+hold a per-player value. `StatusScaling` names which stat feeds which axis, and
+generic composes with specific - bleed can read both `STATUS_CHANCE` and
+`BLEED_CHANCE`, and an item raising either works with no branch anywhere. Same
+reasoning as rolling crit once per shot: the applier may die long before the
+poison wears off, and a buff expiring mid-duration must not retroactively weaken
+something already ticking.
+
+"Five ticks, and a new stack resets the count" needs no machinery of its own -
+it is `base_duration / tick_interval` with `RefreshMode.REFRESH`.
+
+**`WorldCensus` is DERIVED, never maintained by signals.** "For each burning
+enemy" needs a live count, and an incremental counter that goes up on apply and
+down on expiry breaks permanently and silently the first time an event is missed
+- a target cleared by `clear_all()`, an enemy freed mid-burn - and afterwards
+reports three burning enemies to an empty screen. Nothing detects that.
+Recomputing cannot drift. The cost is one walk, cached per generation, so twenty
+items asking the same question in a frame pay once.
+
+It holds `WeakRef`s, so a freed enemy prunes itself and there is no
+`unregister()` to forget. And it deliberately does NOT answer what `RunModel`
+already answers - duplicating `living_player_count()` would create two counts
+that eventually disagree, which is the same silent-drift bug through another
+door.
 
 **Crit is rolled ONCE per shot** into a shared `ShotSnapshot`, so all shotgun
 pellets crit together and a piercing shot keeps critting through every enemy.

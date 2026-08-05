@@ -30,6 +30,11 @@ enum Counter {
 	## Lifetime total earned, never decreases. This is the one to hang
 	## "every 500 earned, gain X" effects on.
 	CURRENCY_EARNED,
+	## Lifetime status tallies, for "every 1000 fire damage dealt" and
+	## "every 100 enemies poisoned". Separate from DAMAGE_DEALT because an item
+	## that rewards burning specifically must not be fed by a sword.
+	BURN_DAMAGE_DEALT,
+	ENEMIES_POISONED,
 }
 
 ## When a counter resets.

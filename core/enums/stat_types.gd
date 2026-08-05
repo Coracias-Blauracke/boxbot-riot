@@ -55,6 +55,23 @@ enum Stat {
 	## apply, and the shop never learns that such a thing exists. 0 means the
 	## buyer has no opinion and ShopData.offer_count decides.
 	SHOP_SLOTS,
+	# --- status axes ---
+	#
+	# Per status rather than generic, because the whole point of having four
+	# statuses is that they behave differently. A status names which of these it
+	# reads via StatusScaling, and generic composes with specific: bleed can list
+	# both STATUS_CHANCE and BLEED_CHANCE, and an item raising either one works.
+	BLEED_CHANCE,
+	BLEED_RATE,
+	BLEED_MAX_STACKS,
+	BURN_CHANCE,
+	BURN_RATE,
+	BURN_MAX_STACKS,
+	POISON_CHANCE,
+	POISON_RATE,
+	POISON_MAX_STACKS,
+	SLOW_CHANCE,
+	SLOW_POWER,
 }
 
 ## get_stat() computes: (base + flat) * (1.0 + percent) * mult

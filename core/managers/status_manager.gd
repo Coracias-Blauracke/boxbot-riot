@@ -32,6 +32,11 @@ func apply(
 	event.stacks = stacks
 	event.duration = definition.base_duration if duration < 0.0 else duration
 
+	# The applier's stats decide how likely this is to land and how long it
+	# lasts, BEFORE any pipeline effect gets to argue about it.
+	event.chance += definition.bonus_for(StatusScaling.Axis.CHANCE, applier)
+	event.duration += definition.bonus_for(StatusScaling.Axis.DURATION, applier)
+
 	# Offence first, then defence - the same two-phase shape as damage.
 	if applier != null:
 		applier.pipeline(Hooks.Hook.CALCULATE_STATUS, event)
@@ -88,10 +93,13 @@ func tick(host: EntityModel, delta: float) -> void:
 	for status in get_all():
 		var definition := status.definition()
 
-		if definition.tick_interval > 0.0:
+		# The RESOLVED interval, not the authored one - that is what makes
+		# "bleed ticks 10% faster" a per-player property rather than a global
+		# edit to a shared resource.
+		if status.tick_interval > 0.0:
 			status.tick_accumulator += delta
-			while status.tick_accumulator >= definition.tick_interval:
-				status.tick_accumulator -= definition.tick_interval
+			while status.tick_accumulator >= status.tick_interval:
+				status.tick_accumulator -= status.tick_interval
 				definition.on_tick(host, status)
 				host.notify(Hooks.Hook.ON_STATUS_TICK, _describe(host, status))
 
@@ -105,7 +113,11 @@ func _land(host: EntityModel, event: StatusEvent) -> ActiveStatus:
 	var existing: ActiveStatus = _active.get(event.status_id)
 
 	if existing != null:
-		existing.stacks = mini(existing.stacks + event.stacks, event.definition.max_stacks)
+		# Re-resolved on every application, not only the first. The applier's
+		# stats may have moved since, and the newest application is the one that
+		# should decide how the status behaves from here.
+		event.definition.resolve_onto(existing, event.applier)
+		existing.stacks = mini(existing.stacks + event.stacks, existing.max_stacks)
 		match event.definition.refresh_mode:
 			StatusEffect.RefreshMode.REFRESH:
 				existing.remaining = event.duration
@@ -119,9 +131,11 @@ func _land(host: EntityModel, event: StatusEvent) -> ActiveStatus:
 		event.definition.on_applied(host, existing)
 		return existing
 
-	var status := ActiveStatus.new(
-		event.definition, event.definition, mini(event.stacks, event.definition.max_stacks)
-	)
+	var status := ActiveStatus.new(event.definition, event.definition, 1)
+	# Resolve first: the cap the stacks are clamped to is the RESOLVED one, so
+	# "+1 additional bleed stack" works on the very application that grants it.
+	event.definition.resolve_onto(status, event.applier)
+	status.stacks = mini(event.stacks, status.max_stacks)
 	status.remaining = event.duration
 	status.set_applier(event.applier)
 

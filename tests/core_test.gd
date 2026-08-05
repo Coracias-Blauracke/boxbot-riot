@@ -94,6 +94,17 @@ func _initialize() -> void:
 	_test_shop_slot_count_comes_from_the_stat()
 	_test_modifier_text_reads_as_a_change_not_a_value()
 	_test_buying_an_authored_item_actually_changes_the_stat()
+	_test_status_chance_scales_off_the_applier()
+	_test_status_damage_is_snapshotted_not_read_live()
+	_test_status_rate_makes_it_tick_faster()
+	_test_status_max_stacks_scales_and_caps()
+	_test_status_duration_scales()
+	_test_status_tick_count_falls_out_of_duration()
+	_test_status_damage_is_tallied_per_status()
+	_test_a_status_on_a_player_behaves_the_same()
+	_test_census_counts_by_status()
+	_test_census_prunes_what_has_been_freed()
+	_test_census_caches_within_a_generation()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -415,7 +426,9 @@ func _test_status_damage_over_time() -> void:
 	var poison := StatusDamageOverTime.new()
 	poison.status_id = &"poison"
 	poison.damage_per_stack = 2.0
-	poison.scaling_stat = StatTypes.Stat.POISON_DAMAGE
+	# Which stat scales it is now named through `scaling`, so bleed and burn
+	# differ by authoring rather than by a field on the class.
+	poison.scaling = [_make_scaling(StatusScaling.Axis.DAMAGE, StatTypes.Stat.POISON_DAMAGE)]
 	poison.base_duration = 3.0
 	poison.tick_interval = 1.0
 
@@ -884,6 +897,270 @@ func _test_buying_an_authored_item_actually_changes_the_stat() -> void:
 	# quietly keeps working after it is gone.
 	shop.sell(buyer, plating)
 	_check("selling gives the max HP back", buyer.get_max_hp(), hp_before)
+
+# --- statuses: the resolved-parameter machinery -----------------------------
+#
+# Every axis is checked the same way: give the APPLIER a stat, apply the status,
+# then assert the status sitting on the TARGET behaves differently. That shape
+# is the whole design - a status' parameters belong to whoever inflicted it and
+# are frozen at the moment it landed.
+
+func _make_scaling(axis: StatusScaling.Axis, stat: StatTypes.Stat) -> StatusScaling:
+	var entry := StatusScaling.new()
+	entry.axis = axis
+	entry.stat = stat
+	return entry
+
+func _make_bleed(scaling: Array[StatusScaling] = []) -> StatusDamageOverTime:
+	var bleed := StatusDamageOverTime.new()
+	bleed.status_id = &"bleed"
+	bleed.base_duration = 5.0
+	bleed.tick_interval = 1.0
+	bleed.max_stacks = 10
+	bleed.damage_per_stack = 1.0
+	bleed.damage_type = StatTypes.DamageType.BLEED
+	bleed.refresh_mode = StatusEffect.RefreshMode.REFRESH
+	bleed.scaling = scaling
+	return bleed
+
+func _test_status_chance_scales_off_the_applier() -> void:
+	# chance starts at 1.0, so a scaling stat is only visible in the FAILURE
+	# direction: a negative modifier has to make the roll miss sometimes.
+	var bleed := _make_bleed([_make_scaling(StatusScaling.Axis.CHANCE, StatTypes.Stat.BLEED_CHANCE)])
+
+	var cursed := _living()
+	cursed.stats.add_modifier(StatTypes.Stat.BLEED_CHANCE, StatTypes.Modifier.FLAT, -0.5, &"curse")
+
+	var landed := 0
+	for attempt in 400:
+		var victim := _living()
+		victim.rng = RunRandom.new(attempt + 1)
+		if victim.apply_status(bleed, cursed) != null:
+			landed += 1
+	_check_bool("a chance stat moves the roll (%d/400)" % landed, landed > 120 and landed < 280, true)
+
+	# Without the penalty it always lands, so the number above is the stat and
+	# not the generator being noisy.
+	var clean := _living()
+	var always := 0
+	for attempt in 50:
+		var victim := _living()
+		victim.rng = RunRandom.new(attempt + 1)
+		if victim.apply_status(bleed, clean) != null:
+			always += 1
+	_check_int("with no penalty it always lands", always, 50)
+
+func _test_status_damage_is_snapshotted_not_read_live() -> void:
+	var bleed := _make_bleed([_make_scaling(StatusScaling.Axis.DAMAGE, StatTypes.Stat.BLEED_DAMAGE)])
+
+	var attacker := _living()
+	var handle := attacker.stats.add_modifier(
+		StatTypes.Stat.BLEED_DAMAGE, StatTypes.Modifier.FLAT, 4.0, &"buff"
+	)
+
+	var victim := _living(200.0)
+	victim.apply_status(bleed, attacker)
+
+	# THE POINT: the buff is gone before the first tick. A live read would
+	# retroactively weaken bleed already ticking; a snapshot does not.
+	attacker.stats.remove_modifier(handle)
+
+	var before := victim.current_hp
+	victim.tick_statuses(1.0)
+	_check("the snapshot survives the buff expiring", before - victim.current_hp, 5.0)
+
+	# A status applied AFTER the buff is gone is correspondingly weaker, which is
+	# what proves the snapshot is per application rather than taken once ever.
+	var second := _living(200.0)
+	second.apply_status(bleed, attacker)
+	var second_before := second.current_hp
+	second.tick_statuses(1.0)
+	_check("a later application reads the weaker stats", second_before - second.current_hp, 1.0)
+
+func _test_status_rate_makes_it_tick_faster() -> void:
+	var bleed := _make_bleed([_make_scaling(StatusScaling.Axis.RATE, StatTypes.Stat.BLEED_RATE)])
+
+	var plain_attacker := _living()
+	var fast_attacker := _living()
+	# +100% rate halves the interval, so one second buys two ticks, not one.
+	fast_attacker.stats.add_modifier(
+		StatTypes.Stat.BLEED_RATE, StatTypes.Modifier.FLAT, 1.0, &"pacemaker"
+	)
+
+	var plain := _living(200.0)
+	plain.apply_status(bleed, plain_attacker)
+	var plain_before := plain.current_hp
+	plain.tick_statuses(1.0)
+
+	var hurried := _living(200.0)
+	hurried.apply_status(bleed, fast_attacker)
+	var hurried_before := hurried.current_hp
+	hurried.tick_statuses(1.0)
+
+	_check("one tick at the authored rate", plain_before - plain.current_hp, 1.0)
+	_check("two ticks at double rate", hurried_before - hurried.current_hp, 2.0)
+
+func _test_status_max_stacks_scales_and_caps() -> void:
+	var bleed := _make_bleed(
+		[_make_scaling(StatusScaling.Axis.MAX_STACKS, StatTypes.Stat.BLEED_MAX_STACKS)]
+	)
+	bleed.max_stacks = 2
+
+	var attacker := _living()
+	var victim := _living(500.0)
+	for attempt in 6:
+		victim.apply_status(bleed, attacker)
+	_check_int("stacks stop at the authored cap", victim.statuses.get_stacks(&"bleed"), 2)
+
+	# The raised cap has to apply on the very application that grants it, which
+	# is why the cap is resolved BEFORE the stacks are clamped to it.
+	attacker.stats.add_modifier(
+		StatTypes.Stat.BLEED_MAX_STACKS, StatTypes.Modifier.FLAT, 1.0, &"item"
+	)
+	var wider := _living(500.0)
+	for attempt in 6:
+		wider.apply_status(bleed, attacker)
+	_check_int("and at the raised cap with the item", wider.statuses.get_stacks(&"bleed"), 3)
+
+func _test_status_duration_scales() -> void:
+	var bleed := _make_bleed(
+		[_make_scaling(StatusScaling.Axis.DURATION, StatTypes.Stat.BLEED_RATE)]
+	)
+
+	var attacker := _living()
+	attacker.stats.add_modifier(StatTypes.Stat.BLEED_RATE, StatTypes.Modifier.FLAT, 3.0, &"item")
+
+	var victim := _living(500.0)
+	var status := victim.apply_status(bleed, attacker)
+	_check("duration takes the bonus", status.remaining, 8.0)
+
+func _test_status_tick_count_falls_out_of_duration() -> void:
+	# The requested rule - "five ticks, and a new stack resets the count" - needs
+	# no counter of its own. It is duration divided by interval, plus REFRESH.
+	var bleed := _make_bleed()
+
+	var attacker := _living()
+	var victim := _living(500.0)
+	victim.apply_status(bleed, attacker)
+
+	var before := victim.current_hp
+	for tick in 10:
+		victim.tick_statuses(1.0)
+	_check("exactly five ticks land, then it is gone", before - victim.current_hp, 5.0)
+	_check_bool("and it has expired", victim.statuses.has(&"bleed"), false)
+
+	# Reapplying partway through resets the clock, so the total exceeds five.
+	var renewed := _living(500.0)
+	renewed.apply_status(bleed, attacker)
+	var renewed_before := renewed.current_hp
+	for tick in 4:
+		renewed.tick_statuses(1.0)
+	renewed.apply_status(bleed, attacker)
+	for tick in 10:
+		renewed.tick_statuses(1.0)
+	_check_bool(
+		"a refresh extends the tick count (%.0f)" % (renewed_before - renewed.current_hp),
+		renewed_before - renewed.current_hp > 5.0, true
+	)
+
+func _test_status_damage_is_tallied_per_status() -> void:
+	# "Every 1000 fire damage dealt" must not be fed by a sword, so the tally is
+	# per status rather than into DAMAGE_DEALT alone.
+	var burn := _make_bleed()
+	burn.status_id = &"burn"
+	burn.damage_counter = CounterTypes.Counter.BURN_DAMAGE_DEALT
+	burn.damage_per_stack = 3.0
+
+	var attacker := _living()
+	var victim := _living(200.0)
+	victim.apply_status(burn, attacker)
+	victim.tick_statuses(1.0)
+
+	_check_int(
+		"the burn tally moves",
+		attacker.counters.get_value(CounterTypes.Counter.BURN_DAMAGE_DEALT), 3
+	)
+	_check_int(
+		"and the generic damage tally moves too",
+		attacker.counters.get_value(CounterTypes.Counter.DAMAGE_DEALT), 3
+	)
+
+func _test_a_status_on_a_player_behaves_the_same() -> void:
+	# Statuses must work on a player and on a destructible crate exactly as on an
+	# enemy. There is one EntityModel, so this is really a check that nothing has
+	# quietly grown a special case for who can be afflicted.
+	var bleed := _make_bleed()
+	var enemy_side := _living(100.0)
+	var player_side := _living(100.0)
+
+	enemy_side.apply_status(bleed, player_side)
+	player_side.apply_status(bleed, enemy_side)
+
+	enemy_side.tick_statuses(1.0)
+	player_side.tick_statuses(1.0)
+
+	_check("the enemy bleeds", 100.0 - enemy_side.current_hp, 1.0)
+	_check("and so does the player", 100.0 - player_side.current_hp, 1.0)
+
+# --- census -----------------------------------------------------------------
+
+func _test_census_counts_by_status() -> void:
+	var burn := _make_bleed()
+	burn.status_id = &"burn"
+
+	var census := WorldCensus.new()
+	var attacker := _living()
+	var registered: Array[EntityModel] = []
+
+	for index in 5:
+		var entity := _living(100.0)
+		census.register(entity)
+		registered.append(entity)
+		if index < 3:
+			entity.apply_status(burn, attacker)
+
+	_check_int("five registered and alive", census.count_alive(), 5)
+	_check_int("three of them burning", census.count_with_status(&"burn"), 3)
+	_check_int("none carry two statuses", census.count_with_at_least(2), 0)
+
+	registered[0].apply_status(_make_bleed(), attacker)
+	census.invalidate()
+	_check_int("one now carries two", census.count_with_at_least(2), 1)
+
+func _test_census_prunes_what_has_been_freed() -> void:
+	# The reason this is derived rather than counted by signals: a freed entity
+	# has to simply vanish. There is no unregister() to forget to call.
+	var census := WorldCensus.new()
+	var kept := _living(100.0)
+	census.register(kept)
+
+	var doomed := _living(100.0)
+	census.register(doomed)
+	_check_int("both counted", census.count_alive(), 2)
+
+	doomed = null
+	census.invalidate()
+	_check_int("the freed one prunes itself", census.count_alive(), 1)
+
+	# A corpse is still registered but is not alive, which is a different thing
+	# from having been freed.
+	_hit(kept, 500.0)
+	census.invalidate()
+	_check_int("a corpse is not counted alive", census.count_alive(), 0)
+
+func _test_census_caches_within_a_generation() -> void:
+	var census := WorldCensus.new()
+	var entity := _living(100.0)
+	census.register(entity)
+	_check_int("counted once", census.count_alive(), 1)
+
+	# Killed WITHOUT invalidating. The cached answer is deliberately stale for
+	# the rest of the frame - that is what makes twenty queries cost one walk.
+	_hit(entity, 500.0)
+	_check_int("the cache holds for the frame", census.count_alive(), 1)
+
+	census.invalidate()
+	_check_int("and refreshes on the next", census.count_alive(), 0)
 
 # --- assertions ------------------------------------------------------------
 
