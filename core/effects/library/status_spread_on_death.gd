@@ -34,7 +34,11 @@ func execute(host: Variant, inst: EffectInstance, _event: EventPayload) -> void:
 	var applier := active.get_applier()
 	var caught := 0
 
-	for neighbour in census.entities_within(carrier.world_position, spread_radius, carrier):
+	# Resolved from the applier at the moment it spreads, not snapshotted: the
+	# reach belongs to whoever lit the fire, and they are still around to ask.
+	var reach := spread_radius * (1.0 + bonus_for(StatusScaling.Axis.SPREAD_RADIUS, applier))
+
+	for neighbour in census.entities_within(carrier.world_position, reach, carrier):
 		if max_targets > 0 and caught >= max_targets:
 			break
 		# Never re-light something already burning: that would let one death

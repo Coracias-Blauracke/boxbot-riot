@@ -72,6 +72,7 @@ enum Stat {
 	POISON_MAX_STACKS,
 	SLOW_CHANCE,
 	SLOW_POWER,
+	BURN_SPREAD_RADIUS,
 }
 
 ## get_stat() computes: (base + flat) * (1.0 + percent) * mult

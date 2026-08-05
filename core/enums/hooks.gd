@@ -60,6 +60,13 @@ enum Hook {
 	## lingering puddles and chain effects hang.
 	ON_IMPACT,
 	ON_OVERHEAT,
+	## PIPELINE on the ATTACKER, once per impact, with the target known.
+	##
+	## Not the same as CALCULATE_DAMAGE, which fires once per SHOT before any
+	## target exists - that is what lets one ShotSnapshot feed eight pellets.
+	## "+10% damage to burning enemies" needs to see who is being hit, and this
+	## is the only place that does. The mirror image of TAKE_DAMAGE.
+	ON_OUTGOING_DAMAGE,
 	## Fired on every player once per frame. The only hook that fires on a
 	## schedule rather than on an event, which is what "for each burning enemy"
 	## and health regeneration both need - their answer changes with no event to
@@ -97,6 +104,7 @@ const KINDS: Dictionary = {
 	Hook.ON_SHOP_CLOSED: Kind.NOTIFICATION,
 	Hook.ON_IMPACT: Kind.NOTIFICATION,
 	Hook.ON_OVERHEAT: Kind.NOTIFICATION,
+	Hook.ON_OUTGOING_DAMAGE: Kind.PIPELINE,
 	Hook.ON_TICK: Kind.NOTIFICATION,
 }
 

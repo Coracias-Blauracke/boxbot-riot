@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="3_base"]
+[ext_resource type="Script" path="res://core/effects/library/effect_stat_per_world_count.gd" id="4_count"]
+
+[sub_resource type="Resource" id="e_burning"]
+script = ExtResource("4_count")
+status_id = &"burn"
+minimum_status_count = 0
+stat = 8
+modifier_type = 2
+value_per_target = 0.01
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_PYROJOY"
+tier = 3
+base_price = 100
+dynamic_effects = Array[ExtResource("3_base")]([SubResource("e_burning")])

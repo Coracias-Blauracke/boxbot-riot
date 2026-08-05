@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 429 assertions across three suites, no editor, no game window
+# tests — 448 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -124,8 +124,8 @@ spin, burst progress).
 **Hooks split into NOTIFICATION and PIPELINE.** Notifications say "this
 happened" (read-only payload, order irrelevant). Pipelines say "this is about to
 happen, change it" (mutable payload, ordered by `priority`). Armor, resistances
-and stat-based shop pricing are *not expressible* without pipelines. **28 of the
-29 hooks fire**; only `ON_STEP` waits on step detection.
+and stat-based shop pricing are *not expressible* without pipelines. **30 of the
+31 hooks fire**; only `ON_STEP` waits on step detection.
 
 (This line previously read "23 of 31", which was wrong in both numbers. Count
 the entries in `Hooks.KINDS` — it has to cover every hook — rather than trusting
@@ -309,6 +309,12 @@ It holds `WeakRef`s, so a freed enemy prunes itself and there is no
 already answers - duplicating `living_player_count()` would create two counts
 that eventually disagree, which is the same silent-drift bug through another
 door.
+
+**`ON_OUTGOING_DAMAGE` is the attacker's say WITH the target known.**
+`CALCULATE_DAMAGE` cannot serve: it fires once per SHOT, before any target
+exists, which is exactly what lets one `ShotSnapshot` feed eight pellets.
+"+10% damage to burning enemies" has to see who is being hit. Offence runs
+first, then `TAKE_DAMAGE` for defence - the same two-phase shape statuses use.
 
 **`ON_TICK` is the only hook that fires on a SCHEDULE.** Everything else hangs
 on an event. "+1% attack speed for each burning enemy" and health regeneration
@@ -556,7 +562,7 @@ metadata:
 
 | state | stats |
 |---|---|
-| **wired** (19) | MAX_HP, MELEE_DAMAGE, RANGED_DAMAGE, ATTACK_SPEED, CRIT_CHANCE, CRIT_MULTIPLIER, RANGE, PIERCING, BOUNCING, MOVEMENT_SPEED, WEAPON_SLOTS, SHOP_SLOTS, POISON_DAMAGE, SPREAD_ANGLE, PROJECTILE_SPEED, HEAT_CAPACITY, HEAT_DISSIPATION, RECOIL, MAP_SIZE |
+| **wired** (24) | MAX_HP, MELEE_DAMAGE, RANGED_DAMAGE, ATTACK_SPEED, CRIT_CHANCE, CRIT_MULTIPLIER, RANGE, PIERCING, BOUNCING, MOVEMENT_SPEED, WEAPON_SLOTS, SHOP_SLOTS, POISON_DAMAGE, SPREAD_ANGLE, PROJECTILE_SPEED, HEAT_CAPACITY, HEAT_DISSIPATION, RECOIL, MAP_SIZE |
 | **cheap to wire** | ARMOR, LIFESTEAL, DODGE, HP_REGEN, CURRENCY_GAIN — one small effect class each, the mechanism already exists |
 | **needs content too** | STATUS_CHANCE, BLEED_DAMAGE, BURN_DAMAGE — plus authored `StatusEffect.tres`, of which there are currently none |
 | **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |

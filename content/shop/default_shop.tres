@@ -2,19 +2,32 @@
 
 [ext_resource type="Script" path="res://core/data/shop_data.gd" id="1_shop"]
 [ext_resource type="Script" path="res://core/data/item_data.gd" id="2_item"]
-[ext_resource type="Resource" path="res://content/items/scrap_plating.tres" id="3_plating"]
-[ext_resource type="Resource" path="res://content/items/whetstone.tres" id="4_whetstone"]
-[ext_resource type="Resource" path="res://content/items/machined_sights.tres" id="5_sights"]
-[ext_resource type="Resource" path="res://content/items/turbo_springs.tres" id="6_springs"]
-[ext_resource type="Resource" path="res://content/items/riot_shield.tres" id="7_shield"]
-[ext_resource type="Resource" path="res://content/items/lucky_charm.tres" id="8_charm"]
-[ext_resource type="Resource" path="res://content/items/bloodstone.tres" id="9_bloodstone"]
-[ext_resource type="Resource" path="res://content/items/reactor_core.tres" id="10_reactor"]
+[ext_resource type="Resource" path="res://content/items/blood_container.tres" id="3_blood_container"]
+[ext_resource type="Resource" path="res://content/items/bloodstone.tres" id="4_bloodstone"]
+[ext_resource type="Resource" path="res://content/items/cold_fire.tres" id="5_cold_fire"]
+[ext_resource type="Resource" path="res://content/items/diverse_effect.tres" id="6_diverse_effect"]
+[ext_resource type="Resource" path="res://content/items/fuel.tres" id="7_fuel"]
+[ext_resource type="Resource" path="res://content/items/green_sandwich.tres" id="8_green_sandwich"]
+[ext_resource type="Resource" path="res://content/items/internal_furnace.tres" id="9_internal_furnace"]
+[ext_resource type="Resource" path="res://content/items/lucky_charm.tres" id="10_lucky_charm"]
+[ext_resource type="Resource" path="res://content/items/machined_sights.tres" id="11_machined_sights"]
+[ext_resource type="Resource" path="res://content/items/molten_core.tres" id="12_molten_core"]
+[ext_resource type="Resource" path="res://content/items/overflowing_toxins.tres" id="13_overflowing_toxins"]
+[ext_resource type="Resource" path="res://content/items/pacemaker.tres" id="14_pacemaker"]
+[ext_resource type="Resource" path="res://content/items/pyrojoy.tres" id="15_pyrojoy"]
+[ext_resource type="Resource" path="res://content/items/reactor_core.tres" id="16_reactor_core"]
+[ext_resource type="Resource" path="res://content/items/riot_shield.tres" id="17_riot_shield"]
+[ext_resource type="Resource" path="res://content/items/scrap_plating.tres" id="18_scrap_plating"]
+[ext_resource type="Resource" path="res://content/items/sharp_blade.tres" id="19_sharp_blade"]
+[ext_resource type="Resource" path="res://content/items/turbo_springs.tres" id="20_turbo_springs"]
+[ext_resource type="Resource" path="res://content/items/universal_doubler.tres" id="21_universal_doubler"]
+[ext_resource type="Resource" path="res://content/items/whetstone.tres" id="22_whetstone"]
 
 [resource]
 script = ExtResource("1_shop")
-pool = Array[ExtResource("2_item")]([ExtResource("3_plating"), ExtResource("4_whetstone"), ExtResource("5_sights"), ExtResource("6_springs"), ExtResource("7_shield"), ExtResource("8_charm"), ExtResource("9_bloodstone"), ExtResource("10_reactor")])
+pool = Array[ExtResource("2_item")]([ExtResource("3_blood_container"), ExtResource("4_bloodstone"), ExtResource("5_cold_fire"), ExtResource("6_diverse_effect"), ExtResource("7_fuel"), ExtResource("8_green_sandwich"), ExtResource("9_internal_furnace"), ExtResource("10_lucky_charm"), ExtResource("11_machined_sights"), ExtResource("12_molten_core"), ExtResource("13_overflowing_toxins"), ExtResource("14_pacemaker"), ExtResource("15_pyrojoy"), ExtResource("16_reactor_core"), ExtResource("17_riot_shield"), ExtResource("18_scrap_plating"), ExtResource("19_sharp_blade"), ExtResource("20_turbo_springs"), ExtResource("21_universal_doubler"), ExtResource("22_whetstone")])
 offer_count = 4
+allow_duplicate_offers = false
 price_per_wave = 0.12
 reroll_base_cost = 5
 reroll_cost_growth = 1.6

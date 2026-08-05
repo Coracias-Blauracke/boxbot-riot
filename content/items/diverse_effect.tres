@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="3_base"]
+[ext_resource type="Script" path="res://core/effects/library/effect_damage_versus_status.gd" id="4_vs"]
+
+[sub_resource type="Resource" id="e_vs"]
+script = ExtResource("4_vs")
+status_id = &""
+minimum_status_count = 2
+bonus = 0.1
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_DIVERSE_EFFECT"
+tier = 1
+base_price = 35
+dynamic_effects = Array[ExtResource("3_base")]([SubResource("e_vs")])

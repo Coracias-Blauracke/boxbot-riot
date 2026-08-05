@@ -50,6 +50,9 @@ func apply(
 	if not host.rng.chance(RunRandom.Stream.COMBAT, event.chance):
 		return null
 
+	# Typed explicitly: a Dictionary lookup is Variant and `:=` off one is a
+	# parse error that takes the whole file with it.
+	var existing_before: ActiveStatus = _active.get(event.status_id)
 	var status := _land(host, event)
 
 	event.applied = true
@@ -57,6 +60,10 @@ func apply(
 	if applier != null:
 		applier.notify(Hooks.Hook.ON_STATUS_APPLIED, event)
 	host.counters.add(CounterTypes.Counter.STATUS_APPLIED)
+	# Tallied on the APPLIER and only for a FRESH target: refreshing a status
+	# already running must not count as poisoning somebody new.
+	if applier != null and existing_before == null:
+		applier.counters.add(definition.apply_counter)
 
 	status_applied.emit(event.status_id, status.stacks)
 	return status

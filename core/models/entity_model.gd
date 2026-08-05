@@ -176,6 +176,12 @@ func apply_damage(event: DamageEvent) -> float:
 		return 0.0
 
 	event.target = self
+
+	# Offence first with the target now known, then defence - the same two-phase
+	# shape statuses use. The attacker gets to say "more damage to burning
+	# things" before the victim gets to say "I resist fire".
+	if event.source != null:
+		event.source.pipeline(Hooks.Hook.ON_OUTGOING_DAMAGE, event)
 	pipeline(Hooks.Hook.TAKE_DAMAGE, event)
 	if event.cancelled:
 		return 0.0

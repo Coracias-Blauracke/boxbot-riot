@@ -109,6 +109,13 @@ func _initialize() -> void:
 	_test_stat_per_world_count_tracks_a_live_number()
 	_test_burn_spreads_off_a_corpse()
 	_test_authored_statuses_load_and_differ()
+	_test_outgoing_damage_sees_the_target()
+	_test_hits_can_apply_a_status_but_ticks_cannot()
+	_test_damage_bonus_against_a_status()
+	_test_healing_off_a_statused_target()
+	_test_doubling_stacks_only_on_the_applier_side()
+	_test_apply_tally_counts_fresh_targets_only()
+	_test_every_authored_item_loads()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -1295,6 +1302,179 @@ func _test_authored_statuses_load_and_differ() -> void:
 	# Five ticks for everything that ticks, which is the authored rule.
 	_check("bleed lasts five ticks", bleed.base_duration / bleed.tick_interval, 5.0)
 	_check("and so does burn", burn.base_duration / burn.tick_interval, 5.0)
+
+# --- the effect archetypes the authored items needed ------------------------
+
+func _test_outgoing_damage_sees_the_target() -> void:
+	# The distinction that made this hook necessary: CALCULATE_DAMAGE fires once
+	# per SHOT, before a target exists. This one fires per impact and can read
+	# who is being hit.
+	var spy := SpyEffect.new()
+	spy.watched = Hooks.Hook.ON_OUTGOING_DAMAGE
+
+	var attacker := _living()
+	attacker.effects.register(EffectInstance.new(spy, &"watcher"))
+	var victim := _living(100.0)
+
+	_hit(victim, 10.0, attacker)
+	_check_int("the attacker's pipeline ran", spy.calls, 1)
+
+	# And it is a PIPELINE, so it can still change the number.
+	_check_int("it is registered as a pipeline", Hooks.kind_of(Hooks.Hook.ON_OUTGOING_DAMAGE), Hooks.Kind.PIPELINE)
+
+func _test_hits_can_apply_a_status_but_ticks_cannot() -> void:
+	var bleed := _make_bleed()
+
+	var on_hit := EffectApplyStatusOnHit.new()
+	on_hit.status = bleed
+	on_hit.damage_types = [StatTypes.DamageType.MELEE]
+
+	var attacker := _living()
+	attacker.effects.register(EffectInstance.new(on_hit, &"sharp_blade"))
+
+	var victim := _living(200.0)
+	_hit(victim, 5.0, attacker)
+	_check_bool("a melee hit causes bleeding", victim.statuses.has(&"bleed"), true)
+
+	# THE TRAP: bleed deals BLEED damage, which would trigger the same effect and
+	# refresh its own timer every tick - a status that never ends.
+	var before := victim.statuses.get_active(&"bleed").remaining
+	victim.tick_statuses(0.5)
+	var after := victim.statuses.get_active(&"bleed").remaining
+	_check_bool("a bleed tick does not reapply bleed (%.1f -> %.1f)" % [before, after], after < before, true)
+
+	# And a damage type it was not authored for does nothing.
+	var untouched := _living(200.0)
+	var ranged := DamageEvent.new()
+	ranged.source = attacker
+	ranged.amount = 5.0
+	ranged.damage_type = StatTypes.DamageType.RANGED
+	untouched.apply_damage(ranged)
+	_check_bool("a ranged hit does not, on a melee-only item", untouched.statuses.has(&"bleed"), false)
+
+func _test_damage_bonus_against_a_status() -> void:
+	var burn := _make_bleed()
+	burn.status_id = &"burn"
+
+	var fuel := EffectDamageVersusStatus.new()
+	fuel.status_id = &"burn"
+	fuel.bonus = 0.5
+
+	var attacker := _living()
+	attacker.effects.register(EffectInstance.new(fuel, &"fuel"))
+
+	var plain := _living(200.0)
+	_check("no bonus against a clean target", _hit(plain, 10.0, attacker), 10.0)
+
+	var burning := _living(200.0)
+	burning.apply_status(burn, attacker)
+	_check("and +50% against a burning one", _hit(burning, 10.0, attacker), 15.0)
+
+	# The count variant, which is the same class with the other field set.
+	var diverse := EffectDamageVersusStatus.new()
+	diverse.status_id = &""
+	diverse.minimum_status_count = 2
+	diverse.bonus = 0.5
+
+	var counter_attacker := _living()
+	counter_attacker.effects.register(EffectInstance.new(diverse, &"diverse"))
+
+	var one_status := _living(200.0)
+	one_status.apply_status(burn, counter_attacker)
+	_check("one status is not enough", _hit(one_status, 10.0, counter_attacker), 10.0)
+
+	one_status.apply_status(_make_bleed(), counter_attacker)
+	_check("two statuses earn the bonus", _hit(one_status, 10.0, counter_attacker), 15.0)
+
+func _test_healing_off_a_statused_target() -> void:
+	var poison := _make_bleed()
+	poison.status_id = &"poison"
+
+	var sandwich := EffectHealWhenHittingStatus.new()
+	sandwich.status_id = &"poison"
+	sandwich.chance = 1.0
+	sandwich.heal_amount = 3.0
+
+	var attacker := _living(100.0)
+	attacker.effects.register(EffectInstance.new(sandwich, &"green_sandwich"))
+	_hit(attacker, 50.0)
+	_check("the attacker is wounded", attacker.current_hp, 50.0)
+
+	var clean := _living(200.0)
+	_hit(clean, 5.0, attacker)
+	_check("hitting a clean target heals nothing", attacker.current_hp, 50.0)
+
+	var poisoned := _living(200.0)
+	poisoned.apply_status(poison, attacker)
+	_hit(poisoned, 5.0, attacker)
+	_check("hitting a poisoned one heals", attacker.current_hp, 53.0)
+
+func _test_doubling_stacks_only_on_the_applier_side() -> void:
+	var bleed := _make_bleed()
+
+	var doubler := EffectDoubleStatusStacks.new()
+	doubler.chance = 1.0
+	doubler.multiplier = 2
+
+	var attacker := _living()
+	attacker.effects.register(EffectInstance.new(doubler, &"universal_doubler"))
+
+	var victim := _living(500.0)
+	victim.apply_status(bleed, attacker, 2)
+	_check_int("stacks are doubled on application", victim.statuses.get_stacks(&"bleed"), 4)
+
+	# StatusManager runs the pipeline on the applier AND on the target with the
+	# same payload. Without the applier check the holder would also double what
+	# is inflicted ON them, which is the opposite of the item.
+	var holder := _living(500.0)
+	holder.effects.register(EffectInstance.new(doubler, &"universal_doubler"))
+	var enemy := _living()
+	holder.apply_status(bleed, enemy, 2)
+	_check_int("but not what is inflicted on the holder", holder.statuses.get_stacks(&"bleed"), 2)
+
+func _test_apply_tally_counts_fresh_targets_only() -> void:
+	var poison := _make_bleed()
+	poison.status_id = &"poison"
+	poison.apply_counter = CounterTypes.Counter.ENEMIES_POISONED
+
+	var attacker := _living()
+	var first := _living(200.0)
+	var second := _living(200.0)
+
+	first.apply_status(poison, attacker)
+	second.apply_status(poison, attacker)
+	_check_int("two targets poisoned", attacker.counters.get_value(CounterTypes.Counter.ENEMIES_POISONED), 2)
+
+	# Refreshing something already poisoned is not a new victim - otherwise
+	# "every 100 enemies poisoned" would be farmed on one target.
+	first.apply_status(poison, attacker)
+	first.apply_status(poison, attacker)
+	_check_int("refreshing does not count again", attacker.counters.get_value(CounterTypes.Counter.ENEMIES_POISONED), 2)
+
+func _test_every_authored_item_loads() -> void:
+	# A .tres pointing at a deleted effect loads as null and fails silently
+	# mid-wave. The validator catches it too; this catches it in the suite.
+	var pool: ShopData = load("res://content/shop/default_shop.tres")
+	if pool == null:
+		_failed += 1
+		printerr("  FAIL  the authored shop pool did not load")
+		return
+
+	var broken := 0
+	var with_effects := 0
+	for item in pool.pool:
+		if item == null or item.display_key.is_empty():
+			broken += 1
+			continue
+		for effect in item.dynamic_effects:
+			if effect == null:
+				broken += 1
+			else:
+				with_effects += 1
+
+	_check_bool("the pool has grown past the first eight (%d)" % pool.pool.size(), pool.pool.size() >= 19, true)
+	_check_int("nothing in it is broken", broken, 0)
+	_check_bool("and several carry real behaviour (%d)" % with_effects, with_effects >= 7, true)
 
 # --- assertions ------------------------------------------------------------
 

@@ -33,4 +33,5 @@ refresh_mode = 0
 damage_per_stack = 1.0
 damage_type = 4
 damage_counter = 4
+apply_counter = 16
 scaling = Array[ExtResource("2_scale")]([SubResource("s_chance"), SubResource("s_damage"), SubResource("s_rate"), SubResource("s_stacks")])

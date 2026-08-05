@@ -29,6 +29,8 @@ enum Axis {
 	MAX_STACKS,
 	## Seconds added to the authored duration.
 	DURATION,
+	## Fraction added to a spreading status' reach. 0.25 is "+25% radius".
+	SPREAD_RADIUS,
 }
 
 @export var axis: Axis = Axis.DAMAGE

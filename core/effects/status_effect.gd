@@ -31,6 +31,11 @@ enum RefreshMode {
 ## change it, which is a legitimate choice for a scripted debuff.
 @export var scaling: Array[StatusScaling] = []
 
+## Incremented on the APPLIER each time this status lands on a fresh target, for
+## "for every 100 enemies poisoned". Left at STATUS_APPLIED it simply shares the
+## generic tally.
+@export var apply_counter: CounterTypes.Counter = CounterTypes.Counter.STATUS_APPLIED
+
 ## Sums every scaling entry for one axis off the APPLIER's stats.
 ##
 ## Generic and specific stats on the same axis simply add, which is the whole
