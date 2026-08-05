@@ -19,6 +19,30 @@ enum Tab { SHOP, STATS }
 ## sell an item while trying to buy one.
 enum Zone { OFFERS, OWNED }
 
+## One tile in the owned strip.
+##
+## The CHARACTER is one of these, not a special case beside them. It occupies
+## the last tile and describes itself through the same block as everything else,
+## because from the player's side "what am I carrying" and "what did I start
+## with" are the same question. EntityData and ItemData carry the same shape
+## under different names - base_stats/innate_effects against
+## static_stats/dynamic_effects - so this flattens both into one thing the
+## drawing code can read.
+##
+## `item` is null for the character, which is the only real difference: you
+## cannot sell yourself. That falls out of the data rather than needing a branch
+## in the renderer.
+class OwnedEntry extends RefCounted:
+	var display_key: String = ""
+	var modifiers: Array[StatModifier] = []
+	var effects: Array[DynamicEffect] = []
+	var quantity: int = 1
+	var tier_label: String = ""
+	var item: ItemData = null
+
+	func can_sell() -> bool:
+		return item != null
+
 const PAD := 22.0
 
 ## Widest the content column gets. A full-screen panel for one player would
@@ -37,6 +61,9 @@ var shop: ShopManager
 var input: PlayerInput
 var stat_sheet: StatSheet
 
+## Shown as the last tile in the owned strip, exactly like an item.
+var character: CharacterData
+
 var tab: Tab = Tab.SHOP
 var zone: Zone = Zone.OFFERS
 var cursor: int = 0
@@ -46,13 +73,14 @@ var stat_cursor: int = 0
 var waiting_text: String = ""
 
 var _compact: bool = false
-var _owned: Array[ItemData] = []
+var _owned: Array[OwnedEntry] = []
 var _stats: Array[StatMetadata] = []
 
 func bind(
 	p_index: int, p_model: EntityModel, p_shop: ShopManager,
-	p_input: PlayerInput, p_sheet: StatSheet
+	p_input: PlayerInput, p_sheet: StatSheet, p_character: CharacterData = null
 ) -> void:
+	character = p_character
 	player_index = p_index
 	model = p_model
 	shop = p_shop
@@ -82,8 +110,29 @@ func _refresh_owned() -> void:
 	_owned.clear()
 	if model == null:
 		return
-	for item in model.items.get_all():
-		_owned.append(item as ItemData)
+
+	var quantities := model.items.get_all()
+	for key in quantities:
+		var item := key as ItemData
+		var entry := OwnedEntry.new()
+		entry.display_key = item.display_key
+		entry.modifiers = item.static_stats
+		entry.effects = item.dynamic_effects
+		entry.quantity = quantities[key]
+		entry.tier_label = "T%d" % item.tier
+		entry.item = item
+		_owned.append(entry)
+
+	# Last, so it sits where the character tile sits in the genre. Not first and
+	# not elsewhere: the strip is read left to right as "what I have picked up",
+	# and what you started as is the oldest thing in it.
+	if character != null:
+		var self_entry := OwnedEntry.new()
+		self_entry.display_key = character.display_key
+		self_entry.modifiers = character.base_stats
+		self_entry.effects = character.innate_effects
+		self_entry.tier_label = "TY"
+		_owned.append(self_entry)
 
 # --- input -----------------------------------------------------------------
 
@@ -151,8 +200,10 @@ func _handle_shop() -> void:
 
 func _accept() -> void:
 	if zone == Zone.OWNED:
-		if cursor < _owned.size():
-			shop.sell(model, _owned[cursor])
+		# can_sell() is false for the character tile. Nothing else has to know
+		# that the character is in this list at all.
+		if cursor < _owned.size() and _owned[cursor].can_sell():
+			shop.sell(model, _owned[cursor].item)
 			_on_offers_changed()
 		return
 
@@ -266,8 +317,8 @@ func _draw_shop(font: Font, top: float) -> void:
 ## retunes one of them, and at a few hundred items they drift silently - the
 ## text still reads fine, it is just no longer true.
 func _draw_detail(font: Font, top: float) -> float:
-	var item := _highlighted_item()
-	if item == null:
+	var entry := _highlighted()
+	if entry == null:
 		return top
 
 	var left := _column_x()
@@ -276,12 +327,12 @@ func _draw_detail(font: Font, top: float) -> float:
 	var font_size := 13 if _compact else 15
 
 	draw_string(
-		font, Vector2(left, y), tr(item.display_key),
+		font, Vector2(left, y), tr(entry.display_key),
 		HORIZONTAL_ALIGNMENT_LEFT, _column_width(), font_size + 1, Color(0.93, 0.95, 0.99)
 	)
 	y += line
 
-	for modifier in item.static_stats:
+	for modifier in entry.modifiers:
 		if modifier == null:
 			continue
 		y = _draw_modifier_line(font, left, y, line, font_size, modifier)
@@ -289,18 +340,18 @@ func _draw_detail(font: Font, top: float) -> float:
 	# The dynamic half. describe() is implemented by every effect in the
 	# library, and a throwaway instance at one stack is what a single copy does -
 	# which is what the shop is selling.
-	for effect in item.dynamic_effects:
+	for effect in entry.effects:
 		if effect == null:
 			continue
 		draw_string(
-			font, Vector2(left + 10.0, y), "* " + effect.describe(EffectInstance.new(effect, item, 1)),
+			font, Vector2(left + 10.0, y), "* " + effect.describe(EffectInstance.new(effect, entry.item, 1)),
 			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.72, 0.82, 0.95)
 		)
 		y += line
 
-	if zone == Zone.OWNED:
+	if zone == Zone.OWNED and entry.can_sell():
 		draw_string(
-			font, Vector2(left + 10.0, y), "sprzedaj za %d" % shop.data.sell_price_for(item),
+			font, Vector2(left + 10.0, y), "sprzedaj za %d" % shop.data.sell_price_for(entry.item),
 			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.95, 0.86, 0.62)
 		)
 		y += line
@@ -333,12 +384,23 @@ func _draw_modifier_line(
 	)
 	return y + line
 
-func _highlighted_item() -> ItemData:
+func _highlighted() -> OwnedEntry:
 	if zone == Zone.OWNED:
 		return _owned[cursor] if cursor < _owned.size() else null
-	if cursor < shop.offers.size():
-		return shop.offers[cursor].item
-	return null
+	if cursor >= shop.offers.size():
+		return null
+
+	var item := shop.offers[cursor].item
+	if item == null:
+		return null
+
+	var entry := OwnedEntry.new()
+	entry.display_key = item.display_key
+	entry.modifiers = item.static_stats
+	entry.effects = item.dynamic_effects
+	entry.tier_label = "T%d" % item.tier
+	entry.item = item
+	return entry
 
 func _draw_row(
 	font: Font, y: float, height: float, selected: bool, dimmed: bool,
@@ -388,11 +450,12 @@ func _draw_owned(font: Font, top: float) -> void:
 		draw_rect(tile, Color(0.12, 0.14, 0.19))
 		draw_rect(tile, accent if selected else Color(0.3, 0.33, 0.4), false, 2.0 if selected else 1.0)
 		draw_string(
-			font, Vector2(x + 6.0, top + 26.0), "T%d" % _owned[index].tier,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.8, 0.84, 0.9)
+			font, Vector2(x + 6.0, top + 26.0), _owned[index].tier_label,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
+			accent if not _owned[index].can_sell() else Color(0.8, 0.84, 0.9)
 		)
 		# Quantity, because items stack and a strip that hides the stack lies.
-		var count := model.items.get_quantity(_owned[index])
+		var count := _owned[index].quantity
 		if count > 1:
 			draw_string(
 				font, Vector2(x + 6.0, top + 40.0), "x%d" % count,

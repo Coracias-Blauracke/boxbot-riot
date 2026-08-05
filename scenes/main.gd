@@ -64,6 +64,7 @@ var _fallback_pattern: SpawnPattern = SpawnRing.new()
 
 ## Capture only. 0 leaves RunModel's own value alone.
 var _forced_intermission: float = 0.0
+var _capture_shop_owned: bool = false
 
 var _circling: Array[Character] = []
 var _elapsed: float = 0.0
@@ -97,6 +98,11 @@ func _ready() -> void:
 			_camera.default_zoom = float(arg.substr("--capture-zoom=".length()))
 		elif arg.begins_with("--capture-margin="):
 			_camera.group_margin = float(arg.substr("--capture-margin=".length()))
+		elif arg == "--capture-shop-owned":
+			# A UI state that needs input cannot otherwise be photographed at
+			# all, which is a real hole in how this repo verifies the scene
+			# layer. This parks every shop cursor on the owned strip instead.
+			_capture_shop_owned = true
 		elif arg.begins_with("--capture-intermission="):
 			# The shop phase is four seconds, which is not long enough to
 			# reliably photograph. Holding it open is the only way to read the
@@ -125,6 +131,8 @@ func _ready() -> void:
 		models.append(entry.model)
 	_hud.bind(run, models)
 	_shop_screen.bind(run, players, stat_sheet)
+	if _capture_shop_owned:
+		_shop_screen.park_cursor_on_owned()
 
 	run.start_wave()
 	print("wave %d started, boss=%s, duration=%.0fs" % [

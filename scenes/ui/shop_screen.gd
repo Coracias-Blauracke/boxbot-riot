@@ -24,7 +24,8 @@ func bind(p_run: RunModel, players: Array[Character], p_sheet: StatSheet) -> voi
 	for index in players.size():
 		var panel := ShopPanel.new()
 		panel.bind(
-			index, players[index].model, run.shop_for(index), players[index].input, stat_sheet
+			index, players[index].model, run.shop_for(index), players[index].input,
+			stat_sheet, players[index].data as CharacterData
 		)
 		add_child(panel)
 		_panels.append(panel)
@@ -32,6 +33,13 @@ func bind(p_run: RunModel, players: Array[Character], p_sheet: StatSheet) -> voi
 	get_viewport().size_changed.connect(_place_panels)
 	_place_panels()
 	_set_shown(run.phase == WorldTypes.Phase.SHOP)
+
+## Capture only: parks every cursor on the owned strip, so the tile detail can
+## be photographed without a hand on a pad.
+func park_cursor_on_owned() -> void:
+	for panel in _panels:
+		panel.zone = ShopPanel.Zone.OWNED
+		panel.cursor = 0
 
 func _place_panels() -> void:
 	var viewport := Vector2(get_viewport().get_visible_rect().size)

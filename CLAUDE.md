@@ -58,6 +58,13 @@ accident:
 | `--capture-scatter` | drives players to opposite corners to check the camera holds all of them |
 | `--capture-downed` | player 0 stands and dies while the rest kite in a WIDE circle and live — the only way to photograph one player down while the run continues |
 
+`--capture-intermission=N` holds the shop phase open (four seconds is not long
+enough to photograph) and `--capture-shop-owned` parks every shop cursor on the
+owned strip. The second one exists because **a UI state that needs input cannot
+otherwise be photographed at all**, which is a real hole in how this repo
+verifies the scene layer — every selected, hovered or focused state is invisible
+to a capture run until something can put the cursor there.
+
 `--capture-zoom=N` and `--capture-margin=N` override `ArenaCamera` so framing
 can be A/B'd with one variable changed. Note `group_margin` caps how far
 `default_zoom` can actually go: a solo player cannot exceed
@@ -329,9 +336,16 @@ Good and bad come from `StatMetadata.higher_is_better`, NOT from the sign. Less
 spread and less recoil are improvements, so a `-20%` on `SPREAD_ANGLE` is drawn
 green. Colouring by sign would tell the player a good item is a bad one.
 
-**Still missing from the shop UI:** the character tile (its innate effects and
-starting stats — `DynamicEffect.describe()` is the source), item icons, and any
-text at all. `display_key` renders as the raw key through `tr()` until a
+**The character is a TILE, not a panel.** It sits last in the owned strip and
+describes itself through the same block as any item, because from the player's
+side "what am I carrying" and "what did I start with" are one question.
+`EntityData` and `ItemData` carry the same shape under different names —
+`base_stats`/`innate_effects` against `static_stats`/`dynamic_effects` — so the
+strip flattens both into one entry type. The only real difference is that you
+cannot sell yourself, and that falls out of the entry having no item rather than
+out of a branch in the renderer.
+
+**Still missing from the shop UI:** item icons and any text at all. `display_key` renders as the raw key through `tr()` until a
 translation is loaded, which is by design but looks like a placeholder.
 
 **No debug settings are currently active.**
