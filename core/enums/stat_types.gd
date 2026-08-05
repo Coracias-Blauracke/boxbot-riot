@@ -48,6 +48,13 @@ enum Stat {
 	HEAT_DISSIPATION,
 	## Push applied to the wielder when firing. Almost always 0.
 	RECOIL,
+	## How many things this buyer is offered in the shop.
+	##
+	## A STAT for the same reason WEAPON_SLOTS is one: "you see 6 items instead
+	## of 4" is then an ordinary modifier that any item or character effect can
+	## apply, and the shop never learns that such a thing exists. 0 means the
+	## buyer has no opinion and ShopData.offer_count decides.
+	SHOP_SLOTS,
 }
 
 ## get_stat() computes: (base + flat) * (1.0 + percent) * mult

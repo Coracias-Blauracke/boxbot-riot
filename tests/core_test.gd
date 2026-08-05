@@ -91,6 +91,7 @@ func _initialize() -> void:
 	_test_selling_refunds_without_crediting_earnings()
 	_test_reroll_costs_more_every_time()
 	_test_stat_payment_spends_the_stat_not_the_currency()
+	_test_shop_slot_count_comes_from_the_stat()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -744,6 +745,32 @@ func _test_stat_payment_spends_the_stat_not_the_currency() -> void:
 	# purchase kill the buyer, or divide by zero further along.
 	buyer.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.FLAT, -190.0, &"drain")
 	_check_bool("cannot pay a stat down to its floor", shop.buy(buyer, 1), false)
+
+func _test_shop_slot_count_comes_from_the_stat() -> void:
+	# The requirement: one character sees 1 slot, another sees 8. Solved the way
+	# WEAPON_SLOTS already solves it - as a stat - so an ITEM can grant a slot
+	# too, and ShopManager never learns such a thing exists.
+	var shop := _make_shop()
+	var rng := RunRandom.new(4711)
+
+	var plain := _make_buyer()
+	shop.open(plain, 1, rng)
+	_check_int("no opinion falls back to the authored count", shop.offers.size(), 4)
+
+	var narrow := _make_buyer()
+	narrow.stats.add_modifier(StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.BASE, 1.0, &"character")
+	shop.open(narrow, 1, rng)
+	_check_int("a one-slot character sees one", shop.offers.size(), 1)
+
+	var wide := _make_buyer()
+	wide.stats.add_modifier(StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.BASE, 8.0, &"character")
+	shop.open(wide, 1, rng)
+	_check_int("an eight-slot character sees eight", shop.offers.size(), 8)
+
+	# And an item grants one on top, with no special case anywhere.
+	wide.stats.add_modifier(StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.FLAT, 1.0, &"item")
+	shop.open(wide, 1, rng)
+	_check_int("an item adds a slot", shop.offers.size(), 9)
 
 # --- assertions ------------------------------------------------------------
 

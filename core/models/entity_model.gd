@@ -79,11 +79,12 @@ func setup_from_data(data: EntityData) -> void:
 		effects.register(EffectInstance.new(effect, data))
 
 	if data is CharacterData:
+		var character := data as CharacterData
 		stats.add_modifier(
-			StatTypes.Stat.WEAPON_SLOTS,
-			StatTypes.Modifier.BASE,
-			float((data as CharacterData).weapon_slots),
-			data
+			StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, float(character.weapon_slots), data
+		)
+		stats.add_modifier(
+			StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.BASE, float(character.shop_slots), data
 		)
 
 	current_hp = stats.get_stat(StatTypes.Stat.MAX_HP)

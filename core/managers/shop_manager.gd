@@ -179,7 +179,7 @@ func _roll(host: EntityModel, rng: RunRandom) -> void:
 
 	var event := ShopRollEvent.new()
 	event.wave_number = wave_number
-	event.offer_count = data.offer_count
+	event.offer_count = _slots_for(host)
 	event.tier_weights = data.tier_weights_for(wave_number)
 	# A COPY. An effect that filters the pool must not edit the authored
 	# ShopData - Godot caches .tres globally, so the edit would leak into every
@@ -202,6 +202,17 @@ func _roll(host: EntityModel, rng: RunRandom) -> void:
 		offers.append(offer)
 
 	offers_changed.emit()
+
+## How many slots this buyer sees.
+##
+## Read off the SHOP_SLOTS stat rather than straight off ShopData, so a
+## character can start with one slot or eight and an item can grant another,
+## with no branch here - the same trick WEAPON_SLOTS already uses. A buyer with
+## nothing to say reports 0 and the authored default stands, which is what an
+## entity built without CharacterData does.
+func _slots_for(host: EntityModel) -> int:
+	var from_stat := maxi(0, roundi(host.stats.get_stat(StatTypes.Stat.SHOP_SLOTS)))
+	return from_stat if from_stat > 0 else data.offer_count
 
 ## Tier first, then uniformly within it.
 ##
