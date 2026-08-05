@@ -57,6 +57,11 @@ func _init(run_seed: int = 0, world_data: WorldData = null, wave_table: WaveTabl
 	director = WaveDirector.new()
 	director.table = wave_table
 
+	# Authored on the table, not hardcoded here. Still assignable afterwards so
+	# tests and challenge modes can shorten a run without a second .tres.
+	if wave_table != null:
+		total_waves = wave_table.total_waves
+
 ## Players share one RunRandom so the whole run stays reproducible from one seed.
 func add_player(player: EntityModel) -> int:
 	var index := players.size()

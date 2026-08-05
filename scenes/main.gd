@@ -21,6 +21,18 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 ## this dropdown and nothing else - see RunTypes.DeathRule.
 @export var death_rule: RunTypes.DeathRule = RunTypes.DeathRule.REVIVE_NEXT_WAVE
 
+## Share of max HP a revived player stands up on. Exposed alongside death_rule
+## because the two are one decision: a rule that revives and a cost of being
+## revived. Leaving this reachable only from core/ made half the knob authored
+## and half of it welded shut.
+@export_range(0.05, 1.0, 0.05) var revive_hp_fraction: float = 0.5
+
+## 0 draws a fresh seed every run. A FIXED value makes a run reproducible, which
+## is what every A/B capture in this repo depends on - the co-op scaling
+## measurement and the camera framing comparison are both worthless without it.
+## Keep it set while developing; ship with 0.
+@export var run_seed: int = 20260804
+
 var run: RunModel
 var players: Array[Character] = []
 
@@ -67,8 +79,9 @@ func _ready() -> void:
 		elif arg.begins_with("--capture-margin="):
 			_camera.group_margin = float(arg.substr("--capture-margin=".length()))
 
-	run = RunModel.new(20260804, world_data, wave_table)
+	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
+	run.revive_hp_fraction = revive_hp_fraction
 	run.wave_ended.connect(_on_wave_ended)
 	run.run_ended.connect(_on_run_ended)
 	_arena.bind(run.world)

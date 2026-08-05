@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_test_overrides_release()
 	_test_wave_loop()
 	_test_boss_chance_is_independent_per_player()
+	_test_run_length_comes_from_the_table()
 	_test_wave_table_curves()
 	_test_director_respects_availability()
 	_test_director_spreads_spawns_across_the_wave()
@@ -313,6 +314,7 @@ func _make_table() -> WaveTable:
 	table.budget_per_wave = 8.0
 	table.budget_growth = 1.0
 	table.spawn_events = 12
+	table.total_waves = 20
 	table.default_pattern = SpawnRing.new()
 	# Neutral by default so the existing curve assertions keep measuring the
 	# curve rather than the co-op scaling.
@@ -328,6 +330,24 @@ func _enemies_in(groups: Array[SpawnGroup]) -> int:
 	for group in groups:
 		total += group.count
 	return total
+
+## The run length is authored on the table, so a twenty-wave curve and a
+## fifty-wave curve are different content rather than the same content played
+## for longer. It used to be a constant inside RunModel.
+func _test_run_length_comes_from_the_table() -> void:
+	var table := _make_table()
+	table.total_waves = 7
+
+	var run := RunModel.new(1, null, table)
+	_check_int("the table sets the run length", run.total_waves, 7)
+
+	# Still assignable afterwards, so a challenge or a test can shorten a run
+	# without authoring a second table for it.
+	run.total_waves = 2
+	_check_int("and stays overridable", run.total_waves, 2)
+
+	var without_table := RunModel.new(1)
+	_check_bool("no table leaves the default intact", without_table.total_waves > 0, true)
 
 func _test_wave_table_curves() -> void:
 	var table := _make_table()

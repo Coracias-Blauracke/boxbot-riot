@@ -9,6 +9,12 @@ extends Resource
 
 @export var entries: Array[WaveEntry] = []
 
+## How many waves a run lasts. Lives here rather than on RunModel because the
+## escalation curve is what knows when it has run out of road - a table tuned
+## across twenty waves and one tuned across fifty are different content, not the
+## same content played for longer.
+@export var total_waves: int = 20
+
 @export_group("Duration")
 @export var base_duration: float = 20.0
 @export var duration_per_wave: float = 1.5

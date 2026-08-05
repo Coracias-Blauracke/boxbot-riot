@@ -103,6 +103,8 @@ func _validate_wave_table(path: String, table: WaveTable) -> void:
 		_errors.append("%s : base_duration must be positive" % path)
 	if table.spawn_events <= 0:
 		_errors.append("%s : spawn_events must be positive" % path)
+	if table.total_waves <= 0:
+		_errors.append("%s : total_waves must be positive, the run would end at once" % path)
 
 	var reachable_at_one := false
 	for i in table.entries.size():
