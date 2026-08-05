@@ -21,23 +21,11 @@ EventBus="*uid://bu10n1u8fqjhm"
 
 [display]
 
-; Base resolution everything is authored against. 1920x1080 is by far the most
-; common 16:9 desktop resolution, so this is a 1:1 match for most players and a
-; clean 2:3 downscale to 1280x720.
 window/size/viewport_width=1920
 window/size/viewport_height=1080
-
-; The window the game actually opens in. Smaller than the base so it does not
-; fill the whole desktop on launch; the canvas scales to fit.
 window/size/window_width_override=1280
 window/size/window_height_override=720
-
 window/stretch/mode="canvas_items"
-
-; "keep" holds the 16:9 base ratio and letterboxes anything else, so a 21:9
-; screen gets black bars rather than seeing more of the world than intended.
-; "expand" would have handed ultrawide players a wider view of the arena.
-window/stretch/aspect="keep"
 
 [input]
 

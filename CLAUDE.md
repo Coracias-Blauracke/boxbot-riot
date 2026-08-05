@@ -152,6 +152,10 @@ local inside one is silently lost.
 **Watch the import log, not just test results.** Parse errors can leave tests
 passing while silently skipping assertions.
 
+**Never put comments in `project.godot`.** The editor rewrites the whole file
+on save and drops them, along with any setting that happens to equal its
+default. Explanations for project settings belong here instead.
+
 ---
 
 ## Current state
@@ -185,6 +189,41 @@ Currently 1920×1080 with `stretch/aspect = "keep"` (16:9 fills, 21:9
 letterboxes).
 
 ---
+
+## Keeping this file and the tests honest
+
+**This document is part of the work, not a report about it.** A stale
+`CLAUDE.md` is worse than none, because a fresh session trusts it. Update it in
+the SAME commit as the change, never as a follow-up.
+
+What goes stale fastest, and what to do about it:
+
+| when you… | update |
+|---|---|
+| add a `Hooks.Hook` value | the count in *Architecture* and whether it fires |
+| finish a system | move it out of *Known gaps* into *Current state* |
+| add a debug knob | the **DEBUG SETTINGS ACTIVE** block — and delete it when reverted |
+| lose time to a non-obvious trap | *Rules that break things when violated* |
+| settle something in *Undecided* | replace it with the decision and its reason |
+| add or remove tests | the assertion count in *How to run things* |
+
+**Tests ship with the change, not after it.**
+
+- Anything in `core/` is testable headless, so it comes with assertions in the
+  same commit. No exceptions — that layer is Node-free precisely to make this
+  cheap, and skipping it wastes the constraint everything else pays for.
+- A **bug fix** gets a regression test that fails without the fix. Several bugs
+  here recurred in a second place (the cooldown debt lived in four firing
+  patterns) and only a test in the shared base caught that.
+- `scenes/` cannot be unit tested. It ships with a **capture run in the commit
+  message** instead: the numbers before and after, or an A/B with one variable
+  changed. "Looks right" is not a result.
+- New content types get a check in `tools/validate_content.gd`. At the target
+  scale a broken `.tres` loads as null and fails silently mid-wave.
+
+**Run all three suites plus the validator before committing.** They take a few
+seconds and have caught regressions in layers that seemed unrelated to the
+change.
 
 ## Working style that has worked here
 
