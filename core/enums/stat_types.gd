@@ -73,6 +73,7 @@ enum Stat {
 	SLOW_CHANCE,
 	SLOW_POWER,
 	BURN_SPREAD_RADIUS,
+	SLOW_DURATION,
 }
 
 ## get_stat() computes: (base + flat) * (1.0 + percent) * mult

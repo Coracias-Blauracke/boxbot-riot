@@ -31,6 +31,11 @@ enum Axis {
 	DURATION,
 	## Fraction added to a spreading status' reach. 0.25 is "+25% radius".
 	SPREAD_RADIUS,
+	## How strong a stat-modifier status is, as a fraction of its authored
+	## magnitude. A MULTIPLIER rather than an addend, so it is sign-agnostic:
+	## +0.2 makes a -30% slow into -36% and a +25% rage buff into +30%. Adding
+	## instead would strengthen buffs and WEAKEN debuffs with the same number.
+	POWER,
 }
 
 @export var axis: Axis = Axis.DAMAGE

@@ -116,6 +116,7 @@ func _initialize() -> void:
 	_test_doubling_stacks_only_on_the_applier_side()
 	_test_apply_tally_counts_fresh_targets_only()
 	_test_every_authored_item_loads()
+	_test_slow_power_scales_a_debuff_and_a_buff_alike()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -1475,6 +1476,62 @@ func _test_every_authored_item_loads() -> void:
 	_check_bool("the pool has grown past the first eight (%d)" % pool.pool.size(), pool.pool.size() >= 19, true)
 	_check_int("nothing in it is broken", broken, 0)
 	_check_bool("and several carry real behaviour (%d)" % with_effects, with_effects >= 7, true)
+
+func _test_slow_power_scales_a_debuff_and_a_buff_alike() -> void:
+	# POWER multiplies the authored magnitude rather than being added to it,
+	# which is the whole reason one axis can serve a slow and a rage buff. Adding
+	# would strengthen the buff and WEAKEN the debuff with the same number.
+	var slow := StatusStatModifier.new()
+	slow.status_id = &"slow"
+	slow.base_duration = 3.0
+	slow.max_stacks = 1
+	slow.stat = StatTypes.Stat.MOVEMENT_SPEED
+	slow.modifier_type = StatTypes.Modifier.PERCENT
+	slow.value_per_stack = -0.3
+	slow.scaling = [_make_scaling(StatusScaling.Axis.POWER, StatTypes.Stat.SLOW_POWER)]
+
+	var plain := _living()
+	var victim := _living()
+	victim.stats.add_modifier(StatTypes.Stat.MOVEMENT_SPEED, StatTypes.Modifier.BASE, 100.0, &"body")
+	victim.apply_status(slow, plain)
+	_check("authored slow is -30%", victim.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED), 70.0)
+
+	var strong := _living()
+	strong.stats.add_modifier(StatTypes.Stat.SLOW_POWER, StatTypes.Modifier.FLAT, 0.2, &"item")
+
+	var harder := _living()
+	harder.stats.add_modifier(StatTypes.Stat.MOVEMENT_SPEED, StatTypes.Modifier.BASE, 100.0, &"body")
+	harder.apply_status(slow, strong)
+	# -0.3 * 1.2 = -0.36, so a stronger slow makes them SLOWER, not faster.
+	_check("+20% power deepens it to -36%", harder.stats.get_stat(StatTypes.Stat.MOVEMENT_SPEED), 64.0)
+
+	# The same axis on a positive magnitude strengthens rather than reverses it.
+	var rage := StatusStatModifier.new()
+	rage.status_id = &"rage"
+	rage.base_duration = 3.0
+	rage.max_stacks = 1
+	rage.stat = StatTypes.Stat.MELEE_DAMAGE
+	rage.modifier_type = StatTypes.Modifier.PERCENT
+	rage.value_per_stack = 0.25
+	rage.scaling = [_make_scaling(StatusScaling.Axis.POWER, StatTypes.Stat.SLOW_POWER)]
+
+	var buffed := _living()
+	buffed.stats.add_modifier(StatTypes.Stat.MELEE_DAMAGE, StatTypes.Modifier.BASE, 100.0, &"body")
+	buffed.apply_status(rage, strong)
+	_check("and the same +20% strengthens a buff", buffed.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 130.0)
+
+	# Duration scales too, so "slows last a second longer" is an ordinary item.
+	var longer := StatusStatModifier.new()
+	longer.status_id = &"slow"
+	longer.base_duration = 3.0
+	longer.max_stacks = 1
+	longer.scaling = [_make_scaling(StatusScaling.Axis.DURATION, StatTypes.Stat.SLOW_DURATION)]
+
+	var patient := _living()
+	patient.stats.add_modifier(StatTypes.Stat.SLOW_DURATION, StatTypes.Modifier.FLAT, 2.0, &"item")
+	var target := _living()
+	var status := target.apply_status(longer, patient)
+	_check("duration takes its own stat", status.remaining, 5.0)
 
 # --- assertions ------------------------------------------------------------
 
