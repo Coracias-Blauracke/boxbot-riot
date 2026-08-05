@@ -14,7 +14,7 @@ The user converses in Polish; the codebase does not.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 257 assertions across three suites, no editor, no game window
+# tests — 286 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -58,6 +58,11 @@ accident:
 | `--capture-scatter` | drives players to opposite corners to check the camera holds all of them |
 | `--capture-downed` | player 0 stands and dies while the rest kite in a WIDE circle and live — the only way to photograph one player down while the run continues |
 
+`--capture-zoom=N` and `--capture-margin=N` override `ArenaCamera` so framing
+can be A/B'd with one variable changed. Note `group_margin` caps how far
+`default_zoom` can actually go: a solo player cannot exceed
+`viewport_height / (group_margin * 2)`, which is ~2.08 at the authored 260.
+
 `--capture-downed` turns at 0.55 rad/s rather than 1.6 on purpose: speed divided
 by turn rate is the radius, and at 1.6 the survivors trace a ~137-unit circle,
 stay inside the horde and die before the wave can end. Nothing is then observed.
@@ -76,6 +81,7 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
              ItemsManager, WaveDirector, RunRandom, WorldOverrides
   models/    EntityModel, WorldModel, WeaponModel, RunModel
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
+  waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
   behaviors/ MovementBehavior, ChaseBehavior
 scenes/      the view — nodes, physics, rendering
   ui/        Hud, PlayerPanel, PlayerPalette
@@ -125,6 +131,33 @@ tally that "every 500 earned" effects hang on.
 `TargetSelector` (at whom). A pistol and a shotgun differ only by swapping
 `SpreadSingle` for `SpreadCone(8)`. Heat is an orthogonal layer on
 `WeaponModel`, available to every weapon; `heat_per_shot = 0` disables it.
+
+**Waves decompose the same way weapons do.** `WaveTable` says what MAY appear,
+the budget says how much, `WaveDirector` says when, and `SpawnPattern` says
+WHERE. Placement was the missing fourth axis — a single hardcoded policy in the
+scene layer — so an ambush or an arrival from the arena rim was not expressible.
+`SpawnPattern` is deliberately the same shape as `SpreadPattern`: plain data in,
+plain data out, no nodes, testable headless. `SpawnContext` is what makes that
+possible — it hands the camera rectangle and the player positions over as bare
+`Vector2`, at which point they stop being scene facts and become numbers.
+
+The pattern lives on `WaveEntry`, not on the wave, because it is a property of
+the ENEMY: a lurker should ambush and a chaser should walk in from off screen,
+whichever wave they turn up in.
+
+**A spawn decision is a GROUP, not an enemy.** `WaveDirector` emits
+`Array[SpawnGroup]`. It used to return a flat `Array[EnemyData]` with the same
+enemy appended `group_size` times, and the spawner rolled an independent
+position for each — so `WaveEntry.group_size`, which documents itself as a
+cluster, arrived as that many unrelated points on the ring. `default_waves.tres`
+had been authoring `group_size = 3` the whole time. One group, one anchor.
+
+**Co-op scales the RHYTHM, not the batch size.** `budget_per_extra_player` and
+`events_per_extra_player` are both 1.0, so two players get twice the budget AND
+twice the arrivals. Scaling the budget alone would keep twelve arrivals and make
+each one twice the size, which reads as long quiet stretches punctuated by a
+wall. Scaling is linear, not compounding: four players face four times the wave,
+not eight — the budget curve already compounds across waves on its own.
 
 **Crit is rolled ONCE per shot** into a shared `ShotSnapshot`, so all shotgun
 pellets crit together and a piercing shot keeps critting through every enemy.
@@ -211,8 +244,9 @@ Playable vertical slice with a closed loop, win and lose included. Arena with
 bounds from the model, character and enemies from `.tres`, chasing AI with
 separation, contact damage, projectile and melee weapons, waves with
 budget-driven escalation, currency from kills, following camera, 1–4 local
-players, per-player HUD, downed players with a configurable death rule, and a
-run that ends in victory or defeat.
+players, per-player HUD, downed players with a configurable death rule, a run
+that ends in victory or defeat, and a spawn system with swappable placement
+patterns, group arrivals, co-op scaling and authored per-wave modifiers.
 
 **No debug settings are currently active.**
 

@@ -30,6 +30,11 @@ var player: Character
 ## Players driven in a circle by the capture runs. One entry per player rather
 ## than a single flag, because the interesting co-op states need different
 ## players doing different things at once.
+## Used when neither the WaveEntry nor the WaveTable names a pattern. Without
+## it, a table authored before patterns existed would spawn nothing at all and
+## never say why.
+var _fallback_pattern: SpawnPattern = SpawnRing.new()
+
 var _circling: Array[Character] = []
 var _elapsed: float = 0.0
 
@@ -53,6 +58,14 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture-players="):
 			player_count = clampi(int(arg.substr("--capture-players=".length())), 1, 4)
+		# Framing is a feel decision that cannot be settled from a table, so it
+		# has to be A/B-able: same seed, same scripted motion, same shot timings,
+		# one variable changed. Both knobs are needed because group_margin caps
+		# how far default_zoom can actually go - see ArenaCamera.
+		elif arg.begins_with("--capture-zoom="):
+			_camera.default_zoom = float(arg.substr("--capture-zoom=".length()))
+		elif arg.begins_with("--capture-margin="):
+			_camera.group_margin = float(arg.substr("--capture-margin=".length()))
 
 	run = RunModel.new(20260804, world_data, wave_table)
 	run.death_rule = death_rule
@@ -82,8 +95,8 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if run == null:
 		return
-	for enemy_data in run.advance_wave(delta):
-		_spawn_enemy(enemy_data)
+	for group in run.advance_wave(delta):
+		_spawn_group(group)
 
 ## The wave ends on its timer, so whatever is still standing is cleared rather
 ## than left for the player to hunt down one straggler at a time.
@@ -128,48 +141,52 @@ func _spawn_player(index: int) -> Character:
 
 	return node
 
-func _spawn_enemy(enemy_data: EnemyData) -> Enemy:
-	if enemy_data == null or player == null or not is_instance_valid(player):
+## Places a whole group at once, asking its SpawnPattern where.
+##
+## The pattern lives in core/ and takes plain numbers, so this stays the only
+## place that knows a camera exists. It is also why the group survives as a
+## group: one call, one anchor, the cluster arrives together.
+func _spawn_group(group: SpawnGroup) -> void:
+	if group == null or group.enemy == null:
+		return
+
+	var pattern: SpawnPattern = group.pattern if group.pattern != null else _fallback_pattern
+	for point in pattern.positions(_spawn_context(), group.count, run.rng):
+		_spawn_enemy(group.enemy, point)
+
+## Rebuilt per spawn event rather than cached. A stale view rectangle would
+## place a group against a frame the camera has already left, which at speed
+## puts them on screen.
+func _spawn_context() -> SpawnContext:
+	var context := SpawnContext.new()
+	context.view_centre = _camera.global_position
+	context.view_size = _camera.visible_world_size()
+	context.world = run.world
+
+	# LIVING players only. An ambush aimed at a corpse would arrive nowhere
+	# near the people still playing.
+	var living := PackedVector2Array()
+	for entry in players:
+		if is_instance_valid(entry) and entry.model != null and entry.model.is_alive:
+			living.append(entry.global_position)
+	context.player_positions = living
+
+	return context
+
+func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
+	if enemy_data == null:
 		return null
 
 	var model := EntityModel.new(enemy_data)
 	model.rng = run.rng
 
 	var node := ENEMY_SCENE.instantiate() as Enemy
-	node.bind(model, enemy_data, run.world)
 	# No target assigned: the enemy picks the nearest living player itself, and
 	# keeps re-picking as they move apart.
-	node.position = _enemy_spawn_position()
+	node.bind(model, enemy_data, run.world)
+	node.position = at
 	_actors.add_child(node)
 	return node
-
-## Just beyond the edge of what is on screen, not at the arena wall.
-##
-## The arena is much larger than the view now, so spawning at the wall would
-## have enemies walking in from off-map for ten seconds before they threatened
-## anybody. They should arrive from just out of sight instead.
-func _enemy_spawn_position() -> Vector2:
-	var view := _camera.visible_world_size()
-	var centre := _camera.global_position
-	# Past the corner of the view, so nothing pops into existence on screen.
-	var ring := view.length() * 0.5 * 1.12
-
-	for attempt in 8:
-		var angle := run.rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, TAU)
-		var candidate := centre + Vector2.RIGHT.rotated(angle) * ring
-
-		if run.world.is_inside(candidate):
-			return candidate
-
-		# Outside the arena: pull it back to the wall and take it only if that
-		# still leaves it off screen. Near a corner most angles fail this.
-		var clamped := run.world.clamp_to_bounds(candidate)
-		var offset := clamped - centre
-		if absf(offset.x) > view.x * 0.5 or absf(offset.y) > view.y * 0.5:
-			return clamped
-
-	# Boxed in on every side - fall back to the arena rim.
-	return run.world.random_point_on_edge(run.rng)
 
 func _count_enemies() -> int:
 	var total := 0

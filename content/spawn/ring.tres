@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="SpawnRing" format=3]
+
+[ext_resource type="Script" path="res://core/waves/spawn_ring.gd" id="1_ring"]
+
+[resource]
+script = ExtResource("1_ring")
+view_margin = 1.12
+cluster_radius = 46.0

@@ -154,7 +154,9 @@ func start_wave() -> void:
 		player.pipeline(Hooks.Hook.CALCULATE_WAVE, event)
 
 	spawn_boss_this_wave = event.spawn_boss
-	director.begin(wave_number)
+	# The player count is what scales the wave: more players means a bigger
+	# budget AND more frequent arrivals, not the same wave shared out.
+	director.begin(wave_number, players.size())
 
 	for player in players:
 		player.notify(Hooks.Hook.ON_WAVE_STARTED, event)
@@ -208,7 +210,7 @@ func close_shop() -> void:
 ##
 ## Note it does NOT tick statuses: in the running game each actor ticks its own,
 ## and doing it here as well would advance every player's statuses twice.
-func advance_wave(delta: float) -> Array[EnemyData]:
+func advance_wave(delta: float) -> Array[SpawnGroup]:
 	if phase == WorldTypes.Phase.SHOP and auto_intermission > 0.0:
 		_intermission_left -= delta
 		if _intermission_left <= 0.0:

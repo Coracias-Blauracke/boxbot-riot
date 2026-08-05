@@ -4,6 +4,10 @@
 [ext_resource type="Script" path="res://core/waves/wave_entry.gd" id="2_entry"]
 [ext_resource type="Resource" path="res://content/enemies/chaser.tres" id="3_chaser"]
 [ext_resource type="Resource" path="res://content/enemies/brute.tres" id="4_brute"]
+[ext_resource type="Resource" path="res://content/spawn/ring.tres" id="5_ring"]
+[ext_resource type="Resource" path="res://content/spawn/ambush.tres" id="6_ambush"]
+[ext_resource type="Script" path="res://core/waves/wave_modifier.gd" id="7_modifier"]
+[ext_resource type="Resource" path="res://content/waves/horde.tres" id="8_horde"]
 
 [sub_resource type="Resource" id="Resource_chasers"]
 script = ExtResource("2_entry")
@@ -13,6 +17,7 @@ max_wave = 0
 weight = 3.0
 cost = 1.0
 group_size = 3
+pattern = ExtResource("5_ring")
 
 [sub_resource type="Resource" id="Resource_brutes"]
 script = ExtResource("2_entry")
@@ -22,6 +27,7 @@ max_wave = 0
 weight = 1.0
 cost = 4.0
 group_size = 1
+pattern = ExtResource("6_ambush")
 
 [resource]
 script = ExtResource("1_table")
@@ -33,3 +39,7 @@ base_budget = 24.0
 budget_per_wave = 8.0
 budget_growth = 1.05
 spawn_events = 12
+budget_per_extra_player = 1.0
+events_per_extra_player = 1.0
+modifiers = Array[ExtResource("7_modifier")]([ExtResource("8_horde")])
+default_pattern = ExtResource("5_ring")
