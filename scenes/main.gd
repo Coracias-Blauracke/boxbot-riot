@@ -18,6 +18,19 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 ## the rest take a gamepad each.
 @export_range(1, 4) var player_count: int = 1
 
+## Which device drives which player: -1 is the keyboard, 0 and up are gamepads,
+## one entry per player in order.
+##
+## An ARRAY rather than a rule, because no rule survives contact with a real
+## couch. Three pads and one keyboard is an ordinary case, and deriving the
+## device from the player index cannot express it - the keyboard player and the
+## first pad player collide on the same slot. Left empty, it falls back to the
+## old behaviour so nothing has to be authored to launch.
+##
+## This is the placeholder for a join flow, which is still a known gap: the real
+## version assigns a device when somebody presses a button to join.
+@export var player_devices: Array[int] = []
+
 ## What happens to a player who runs out of health. A permadeath challenge is
 ## this dropdown and nothing else - see RunTypes.DeathRule.
 @export var death_rule: RunTypes.DeathRule = RunTypes.DeathRule.REVIVE_NEXT_WAVE
@@ -138,9 +151,8 @@ func _spawn_player(index: int) -> Character:
 	node.bind(model, character_data, run.world)
 	node.player_index = index
 
-	# Player 0 keeps keyboard plus the first pad; everyone else gets one pad.
-	if index > 0:
-		node.motion = MotionSource.Device.new(index)
+	node.input = _device_for(index)
+	node.motion = MotionSource.FromInput.new(node.input)
 
 	# Spread them out so they do not start stacked on one another.
 	node.position = (
@@ -161,6 +173,24 @@ func _spawn_player(index: int) -> Character:
 ## The pattern lives in core/ and takes plain numbers, so this stays the only
 ## place that knows a camera exists. It is also why the group survives as a
 ## group: one call, one anchor, the cluster arrives together.
+## Authored assignment when there is one, otherwise the old rule: player 0 takes
+## the keyboard AND the first pad, everyone after takes the pad matching their
+## index.
+##
+## That fallback is exactly what player_devices exists to escape - it cannot
+## express three pads and one keyboard, because the keyboard player is also
+## holding pad 0. It stays only so the game launches with nothing authored.
+func _device_for(index: int) -> PlayerInput:
+	if index < player_devices.size():
+		var id: int = player_devices[index]
+		# Only the keyboard player also answers to the keyboard; giving it to a
+		# second player would have two of them move on the same key.
+		return PlayerInput.new(id, id == PlayerInput.KEYBOARD)
+
+	if index == 0:
+		return PlayerInput.new(0, true)
+	return PlayerInput.new(index, false)
+
 func _spawn_group(group: SpawnGroup) -> void:
 	if group == null or group.enemy == null:
 		return
