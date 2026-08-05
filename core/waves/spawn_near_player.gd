@@ -36,35 +36,11 @@ func positions(context: SpawnContext, count: int, rng: RunRandom) -> PackedVecto
 	)
 	var anchor := target + Vector2.RIGHT.rotated(angle) * distance
 
-	return _push_clear(_scatter(anchor, count, cluster_radius, context, rng), target, context)
-
-## The floor has to hold for EVERY member, not just for the anchor.
-##
-## Scattering a cluster of radius 40 around an anchor 190 away leaves its
-## nearest member at 150, and a minimum the group routinely beats is not a
-## minimum - it is the average of a range nobody authored. Enforced after the
-## scatter rather than by shrinking the cluster, so the group keeps its shape.
-##
-## One case cannot be satisfied: a player standing against a wall, where pushing
-## clear and staying in bounds are contradictory. Bounds win, because a group
-## outside the arena would be unreachable.
-func _push_clear(
-	points: PackedVector2Array, target: Vector2, context: SpawnContext
-) -> PackedVector2Array:
-	var floor_distance := minf(min_distance, max_distance)
-
-	for i in points.size():
-		var offset := points[i] - target
-		var length := offset.length()
-		if length >= floor_distance:
-			continue
-
-		var direction := offset.normalized() if length > 0.001 else Vector2.RIGHT
-		var pushed := target + direction * floor_distance
-		points[i] = (
-			context.world.clamp_to_bounds(pushed)
-			if context != null and context.world != null
-			else pushed
-		)
-
-	return points
+	# The floor is enforced against EVERY player, not just the one being
+	# ambushed, and on every member rather than on the anchor. See
+	# SpawnPattern._push_clear_of_players for why both of those are necessary.
+	return _push_clear_of_players(
+		_scatter(anchor, count, cluster_radius, context, rng),
+		minf(min_distance, max_distance),
+		context
+	)

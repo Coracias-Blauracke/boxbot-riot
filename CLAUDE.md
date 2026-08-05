@@ -14,7 +14,7 @@ The user converses in Polish; the codebase does not.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 286 assertions across three suites, no editor, no game window
+# tests — 290 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -143,7 +143,19 @@ possible — it hands the camera rectangle and the player positions over as bare
 
 The pattern lives on `WaveEntry`, not on the wave, because it is a property of
 the ENEMY: a lurker should ambush and a chaser should walk in from off screen,
-whichever wave they turn up in.
+whichever wave they turn up in. Four exist: `SpawnRing` (walked in from off
+screen), `SpawnInView` (already here), `SpawnNearPlayer` (ambush) and
+`SpawnEdge` (from the arena wall, a long slow approach).
+
+**Every pattern that can place near a player enforces a clearance, on every
+member, against every player.** Both halves of that were got wrong here first. A
+distance enforced on the group's ANCHOR says nothing about its members — a
+cluster of radius 40 around an anchor 190 away leaves its nearest member at 150.
+And a floor measured only against the TARGETED player still drops a group in a
+second player's lap, which in co-op is the same unfairness with an extra step.
+Hence `SpawnPattern._push_clear_of_players`, shared rather than reimplemented.
+A group appearing on top of somebody is not difficulty; the player had no
+information and no move that would have helped.
 
 **A spawn decision is a GROUP, not an enemy.** `WaveDirector` emits
 `Array[SpawnGroup]`. It used to return a flat `Array[EnemyData]` with the same

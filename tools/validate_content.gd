@@ -172,6 +172,11 @@ func _validate_spawn_pattern(path: String, pattern: SpawnPattern) -> void:
 			_errors.append("%s : min_distance must be positive or the group lands on the player" % path)
 		if ambush.max_distance < ambush.min_distance:
 			_errors.append("%s : max_distance is below min_distance" % path)
+	elif pattern is SpawnInView:
+		# Spawning inside the frame gives the player no approach to react to, so
+		# a missing clearance is the difference between pressure and a coin flip.
+		if (pattern as SpawnInView).clear_radius <= 0.0:
+			_errors.append("%s : clear_radius must be positive, it spawns ON the players" % path)
 
 func _validate_item(path: String, item: ItemData) -> void:
 	if item.display_key.is_empty():

@@ -39,6 +39,8 @@ func _initialize() -> void:
 	_test_ring_places_the_group_off_screen_and_together()
 	_test_ambush_keeps_its_distance_from_every_member()
 	_test_ambush_without_players_still_spawns()
+	_test_in_view_lands_on_screen_but_never_on_a_player()
+	_test_in_view_falls_back_when_no_clear_spot_exists()
 	_test_patterns_stay_inside_the_arena()
 	_test_player_count_scales_budget_and_events()
 	_test_wave_modifier_applies_only_to_its_waves()
@@ -647,6 +649,49 @@ func _test_ambush_without_players_still_spawns() -> void:
 
 	_check_int("an ambush with nobody to ambush still places its group", points.size(), 3)
 
+func _test_in_view_lands_on_screen_but_never_on_a_player() -> void:
+	var pattern := SpawnInView.new()
+	pattern.clear_radius = 230.0
+	pattern.view_inset = 40.0
+	pattern.cluster_radius = 40.0
+
+	# Two players, because the clearance has to hold against BOTH. A floor
+	# measured only against the nearest one still drops a group on the other.
+	var players := PackedVector2Array([Vector2(-200.0, 80.0), Vector2(320.0, -120.0)])
+	var context := _make_context(players)
+	var rng := RunRandom.new(1234)
+
+	var closest := INF
+	var on_screen := 0
+	var total := 0
+
+	for attempt in 200:
+		for point in pattern.positions(context, 3, rng):
+			total += 1
+			for player in players:
+				closest = minf(closest, point.distance_to(player))
+			# Inside the view rectangle - that is the whole difference from the
+			# ring, which only ever places outside it.
+			if absf(point.x) <= context.view_size.x * 0.5 and absf(point.y) <= context.view_size.y * 0.5:
+				on_screen += 1
+
+	_check_bool("nothing lands on a player (closest %.0f)" % closest, closest >= 230.0 - 0.001, true)
+	# Not all of them: pushing clear of a player can shove a member past the
+	# frame edge, which is preferable to dropping it in somebody's lap.
+	_check_bool("the group lands in view (%d of %d)" % [on_screen, total], on_screen > total / 2, true)
+
+func _test_in_view_falls_back_when_no_clear_spot_exists() -> void:
+	# A view so small that every point in it is inside the clearance. Returning
+	# nothing here would stall the wave with no error to explain why.
+	var pattern := SpawnInView.new()
+	pattern.clear_radius = 5000.0
+
+	var context := _make_context(PackedVector2Array([Vector2.ZERO]))
+	context.view_size = Vector2(200.0, 120.0)
+
+	var points := pattern.positions(context, 4, RunRandom.new(77))
+	_check_int("an impossible clearance still places the group", points.size(), 4)
+
 func _test_patterns_stay_inside_the_arena() -> void:
 	# A tight arena, so every pattern is forced against the walls.
 	var context := SpawnContext.new()
@@ -656,7 +701,9 @@ func _test_patterns_stay_inside_the_arena() -> void:
 	context.view_size = Vector2(400.0, 240.0)
 	context.player_positions = PackedVector2Array([Vector2(250.0, 150.0)])
 
-	var patterns: Array[SpawnPattern] = [SpawnRing.new(), SpawnNearPlayer.new(), SpawnEdge.new()]
+	var patterns: Array[SpawnPattern] = [
+		SpawnRing.new(), SpawnNearPlayer.new(), SpawnEdge.new(), SpawnInView.new()
+	]
 	var rng := RunRandom.new(808)
 
 	for pattern in patterns:
