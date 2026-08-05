@@ -73,7 +73,7 @@ func label_for(action: Action) -> String:
 			Action.TAB: return "RB"
 			_: return ""
 	match action:
-		Action.ACCEPT: return "SPACJA"
+		Action.ACCEPT: return "SPACE"
 		Action.CANCEL: return "ESC"
 		Action.REROLL: return "R"
 		Action.READY: return "ENTER"

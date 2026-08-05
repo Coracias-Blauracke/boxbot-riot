@@ -4,8 +4,12 @@ Local co-op horde survivor in the vein of Brotato. Godot 4.7.1, 2D, targeting
 Steam. Up to 4 players share one screen (Steam Remote Play Together handles
 "online"), so there is **no networking** — one process, one game state.
 
-**Language: all code, comments, identifiers and content keys in ENGLISH.**
-The user converses in Polish; the codebase does not.
+**Language: all code, comments, identifiers, UI strings and content keys in
+ENGLISH.** The user converses in Polish; the codebase does not. This was broken
+once by eight shop UI strings, so `validate_content.gd` now fails on any
+non-ASCII character in `core/`, `scenes/`, `tools/` or `tests/`. That guard is
+half of the rule - it catches accented words and misses unaccented ones - but it
+is the half that also breaks fonts and encodings.
 
 ---
 

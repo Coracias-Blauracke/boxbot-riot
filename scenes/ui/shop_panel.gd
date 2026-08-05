@@ -146,7 +146,7 @@ func _refresh_owned() -> void:
 		self_entry.display_key = character.display_key
 		self_entry.modifiers = character.base_stats
 		self_entry.effects = character.innate_effects
-		self_entry.tier_label = "TY"
+		self_entry.tier_label = "YOU"
 		_owned.append(self_entry)
 
 # --- input -----------------------------------------------------------------
@@ -271,7 +271,7 @@ func _draw() -> void:
 func _draw_controls(font: Font) -> void:
 	if input == null:
 		return
-	var hint := "%s kup/sprzedaj   %s przelosuj   %s sklep/staty   %s gotow" % [
+	var hint := "%s buy/sell   %s reroll   %s shop/stats   %s ready" % [
 		input.label_for(PlayerInput.Action.ACCEPT),
 		input.label_for(PlayerInput.Action.REROLL),
 		input.label_for(PlayerInput.Action.TAB),
@@ -291,7 +291,7 @@ func _draw_header(font: Font) -> float:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 22, accent
 	)
 
-	var tabs := "[ SKLEP ]  STATY" if tab == Tab.SHOP else "  SKLEP  [ STATY ]"
+	var tabs := "[ SHOP ]  STATS" if tab == Tab.SHOP else "  SHOP  [ STATS ]"
 	draw_string(
 		font, Vector2(left + 46.0, PAD + 18.0), tabs,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.72, 0.77, 0.86)
@@ -313,7 +313,7 @@ func _draw_header(font: Font) -> float:
 	# waiting for" is exactly the question a full screen of panels creates.
 	var state := (
 		waiting_text if shop.is_ready
-		else "GOTÓW: %s" % input.label_for(PlayerInput.Action.READY)
+		else "READY: %s" % input.label_for(PlayerInput.Action.READY)
 	)
 	draw_string(
 		font, Vector2(left + width - 300.0, PAD + 40.0), state,
@@ -339,7 +339,7 @@ func _draw_shop(font: Font, top: float) -> void:
 		y += row_height
 
 	var reroll_selected := zone == Zone.OFFERS and cursor == shop.offers.size()
-	_draw_row(font, y, row_height, reroll_selected, false, "PRZELOSUJ", "", str(shop.reroll_cost()))
+	_draw_row(font, y, row_height, reroll_selected, false, "REROLL", "", str(shop.reroll_cost()))
 	y += row_height + 12.0
 
 	y = _draw_detail(font, y)
@@ -388,7 +388,7 @@ func _draw_detail(font: Font, top: float) -> float:
 	if zone == Zone.OWNED and entry.can_sell():
 		draw_string(
 			font, Vector2(left + 10.0, y),
-			"%s: sprzedaj za %d" % [
+			"%s: sell for %d" % [
 				input.label_for(PlayerInput.Action.ACCEPT), shop.data.sell_price_for(entry.item)
 			],
 			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.95, 0.86, 0.62)
@@ -474,7 +474,7 @@ func _draw_row(
 func _draw_owned(font: Font, top: float) -> void:
 	if _owned.is_empty():
 		draw_string(
-			font, Vector2(_column_x(), top + 18.0), "brak przedmiotów",
+			font, Vector2(_column_x(), top + 18.0), "nothing owned",
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.45, 0.48, 0.55)
 		)
 		return
