@@ -105,6 +105,10 @@ func _initialize() -> void:
 	_test_census_counts_by_status()
 	_test_census_prunes_what_has_been_freed()
 	_test_census_caches_within_a_generation()
+	_test_census_finds_what_is_nearby()
+	_test_stat_per_world_count_tracks_a_live_number()
+	_test_burn_spreads_off_a_corpse()
+	_test_authored_statuses_load_and_differ()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -1161,6 +1165,136 @@ func _test_census_caches_within_a_generation() -> void:
 
 	census.invalidate()
 	_check_int("and refreshes on the next", census.count_alive(), 0)
+
+func _at(position: Vector2, maximum: float = 100.0) -> EntityModel:
+	var entity := _living(maximum)
+	entity.world_position = position
+	return entity
+
+func _test_census_finds_what_is_nearby() -> void:
+	var census := WorldCensus.new()
+	var centre := _at(Vector2.ZERO)
+	var near := _at(Vector2(50.0, 0.0))
+	var far := _at(Vector2(400.0, 0.0))
+	for entity in [centre, near, far]:
+		census.register(entity)
+
+	var found := census.entities_within(Vector2.ZERO, 100.0, centre)
+	_check_int("only the near one, and not the excluded centre", found.size(), 1)
+	_check_bool("and it is the right one", found[0] == near, true)
+
+	# A corpse is not a spread target: it is filtered by _living().
+	_hit(near, 500.0)
+	census.invalidate()
+	_check_int("a corpse is not nearby", census.entities_within(Vector2.ZERO, 100.0, centre).size(), 0)
+
+func _test_stat_per_world_count_tracks_a_live_number() -> void:
+	# The distinguishing property against EffectStatPerCounter: this number goes
+	# DOWN as well as up, so the effect has to be idempotent rather than additive.
+	var burn := _make_bleed()
+	burn.status_id = &"burn"
+
+	var effect := EffectStatPerWorldCount.new()
+	effect.status_id = &"burn"
+	effect.stat = StatTypes.Stat.ATTACK_SPEED
+	effect.modifier_type = StatTypes.Modifier.PERCENT
+	effect.value_per_target = 0.01
+
+	var census := WorldCensus.new()
+	var player := _living()
+	# A PERCENT modifier scales the base+flat pool, so without a base there is
+	# nothing to scale and the stat sits on its floor. Easy to forget, and the
+	# reason this assertion is written against 1.0 rather than 0.
+	player.stats.add_modifier(StatTypes.Stat.ATTACK_SPEED, StatTypes.Modifier.BASE, 1.0, &"body")
+	player.effects.register(EffectInstance.new(effect, &"pyrojoy"))
+
+	var burning: Array[EntityModel] = []
+	for index in 3:
+		var enemy := _living(100.0)
+		census.register(enemy)
+		enemy.apply_status(burn, player)
+		burning.append(enemy)
+
+	var tick := TickEvent.new()
+	tick.census = census
+	player.notify(Hooks.Hook.ON_TICK, tick)
+	_check("three burning is +3%", player.stats.get_stat(StatTypes.Stat.ATTACK_SPEED), 1.03)
+
+	# One dies. The bonus has to FALL, which an additive effect could not do.
+	_hit(burning[0], 500.0)
+	census.invalidate()
+	player.notify(Hooks.Hook.ON_TICK, tick)
+	_check("and drops back to +2% when one dies", player.stats.get_stat(StatTypes.Stat.ATTACK_SPEED), 1.02)
+
+	# Ticking again with nothing changed must not stack it up.
+	player.notify(Hooks.Hook.ON_TICK, tick)
+	player.notify(Hooks.Hook.ON_TICK, tick)
+	_check("repeated ticks do not accumulate", player.stats.get_stat(StatTypes.Stat.ATTACK_SPEED), 1.02)
+
+func _test_burn_spreads_off_a_corpse() -> void:
+	var burn := StatusSpreadOnDeath.new()
+	burn.status_id = &"burn"
+	burn.base_duration = 2.5
+	burn.tick_interval = 0.5
+	burn.max_stacks = 1
+	burn.damage_per_stack = 1.0
+	burn.spread_radius = 100.0
+	burn.max_targets = 3
+
+	var census := WorldCensus.new()
+	var player := _living()
+	census.register(player)
+
+	var victim := _at(Vector2.ZERO, 3.0)
+	var neighbour := _at(Vector2(60.0, 0.0))
+	var distant := _at(Vector2(500.0, 0.0))
+	for entity in [victim, neighbour, distant]:
+		census.register(entity)
+
+	victim.apply_status(burn, player)
+	_check_bool("the victim is burning", victim.statuses.has(&"burn"), true)
+	_check_bool("the neighbour is not yet", neighbour.statuses.has(&"burn"), false)
+
+	# Burned to death by its own status, which is the case that matters: the
+	# spread has to fire from ON_DEATH, and the status is what killed it.
+	for tick in 6:
+		victim.tick_statuses(0.5)
+
+	_check_bool("the victim died", victim.is_alive, false)
+	_check_bool("and the fire jumped to the neighbour", neighbour.statuses.has(&"burn"), true)
+	_check_bool("but not across the map", distant.statuses.has(&"burn"), false)
+
+	# Credit stays with the original applier through the jump, so a chain still
+	# feeds that player's tallies rather than the corpse's.
+	neighbour.tick_statuses(0.5)
+	_check_bool(
+		"the spreading fire still credits the player",
+		player.counters.get_value(CounterTypes.Counter.DAMAGE_DEALT) > 0, true
+	)
+
+func _test_authored_statuses_load_and_differ() -> void:
+	# The four are ONE mechanic with different numbers. This asserts the numbers
+	# actually differ, because a copy-paste that left them identical would look
+	# perfectly fine in the files.
+	var bleed: StatusEffect = load("res://content/statuses/bleed.tres")
+	var poison: StatusEffect = load("res://content/statuses/poison.tres")
+	var burn: StatusEffect = load("res://content/statuses/burn.tres")
+	var slow: StatusEffect = load("res://content/statuses/slow.tres")
+
+	if bleed == null or poison == null or burn == null or slow == null:
+		_failed += 1
+		printerr("  FAIL  authored statuses did not load")
+		return
+
+	_check_int("bleed caps at ten stacks", bleed.max_stacks, 10)
+	_check_bool("poison stacks effectively without limit", poison.max_stacks > 50, true)
+	_check_int("burn allows exactly one", burn.max_stacks, 1)
+	_check_bool("burn is the one that spreads", burn is StatusSpreadOnDeath, true)
+	_check("slow never ticks", slow.tick_interval, 0.0)
+
+	# Five ticks for everything that ticks, which is the authored rule.
+	_check("bleed lasts five ticks", bleed.base_duration / bleed.tick_interval, 5.0)
+	_check("and so does burn", burn.base_duration / burn.tick_interval, 5.0)
 
 # --- assertions ------------------------------------------------------------
 

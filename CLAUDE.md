@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 410 assertions across three suites, no editor, no game window
+# tests — 429 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -87,10 +87,11 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
   data/      .tres schemas: EntityData, CharacterData, EnemyData, WeaponData, ...
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
+             (statuses carry StatusScaling: which stat feeds which axis)
   events/    EventPayload and its subclasses
   managers/  StatsManager, CounterManager, EffectDispatcher, StatusManager,
              ItemsManager, WaveDirector, RunRandom, WorldOverrides,
-             ShopManager (+ ShopOffer)
+             ShopManager (+ ShopOffer), WorldCensus
   models/    EntityModel, WorldModel, WeaponModel, RunModel
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
@@ -100,7 +101,8 @@ scenes/      the view — nodes, physics, rendering
   input/     PlayerInput (device binding, movement + menus)
 content/     authored .tres: characters, enemies, weapons, items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
-             stats/ (StatMetadata + the StatSheet reading order)
+             stats/ (StatMetadata + the StatSheet reading order),
+             statuses/ (bleed, poison, burn, slow)
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
 ```
@@ -307,6 +309,21 @@ It holds `WeakRef`s, so a freed enemy prunes itself and there is no
 already answers - duplicating `living_player_count()` would create two counts
 that eventually disagree, which is the same silent-drift bug through another
 door.
+
+**`ON_TICK` is the only hook that fires on a SCHEDULE.** Everything else hangs
+on an event. "+1% attack speed for each burning enemy" and health regeneration
+both have answers that change with nothing to hang on, so they need a heartbeat;
+`RunModel.advance_wave` fires it on every player once per frame with the census
+in the payload.
+
+An effect driven by it must be IDEMPOTENT - strip its whole contribution and
+reapply - because a live count goes DOWN as well as up. `EffectStatPerCounter`
+can be additive since a tally only grows; `EffectStatPerWorldCount` cannot.
+
+**`EntityModel.world_position` is written by the view, read by core.** A bare
+`Vector2` handed down once per frame from `Actor`, which is what lets `core/`
+answer "what is within 90 units of this corpse" without ever seeing a Node -
+the same trick `SpawnContext` uses. `core/` never writes it.
 
 **Crit is rolled ONCE per shot** into a shared `ShotSnapshot`, so all shotgun
 pellets crit together and a piercing shot keeps critting through every enemy.

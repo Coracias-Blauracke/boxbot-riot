@@ -294,6 +294,15 @@ func advance_wave(delta: float) -> Array[SpawnGroup]:
 	# frame pay for one walk rather than twenty.
 	census.invalidate()
 
+	# ON_TICK is the only hook that fires on a schedule. Effects whose answer
+	# changes with no event to hang on - "for each burning enemy", regeneration -
+	# have nowhere else to live.
+	var tick := TickEvent.new()
+	tick.delta = delta
+	tick.census = census
+	for player in players:
+		player.notify(Hooks.Hook.ON_TICK, tick)
+
 	if phase == WorldTypes.Phase.SHOP and auto_intermission > 0.0:
 		_intermission_left -= delta
 		if _intermission_left <= 0.0:

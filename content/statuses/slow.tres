@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="StatusStatModifier" format=3]
+
+[ext_resource type="Script" path="res://core/effects/library/status_stat_modifier.gd" id="1_status"]
+[ext_resource type="Script" path="res://core/data/status_scaling.gd" id="2_scale"]
+
+[sub_resource type="Resource" id="s_chance"]
+script = ExtResource("2_scale")
+axis = 0
+stat = 41
+
+[resource]
+script = ExtResource("1_status")
+status_id = &"slow"
+base_duration = 3.0
+max_stacks = 1
+tick_interval = 0.0
+refresh_mode = 0
+scaling = Array[ExtResource("2_scale")]([SubResource("s_chance")])

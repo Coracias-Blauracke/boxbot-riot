@@ -60,6 +60,11 @@ enum Hook {
 	## lingering puddles and chain effects hang.
 	ON_IMPACT,
 	ON_OVERHEAT,
+	## Fired on every player once per frame. The only hook that fires on a
+	## schedule rather than on an event, which is what "for each burning enemy"
+	## and health regeneration both need - their answer changes with no event to
+	## hang on.
+	ON_TICK,
 }
 
 const KINDS: Dictionary = {
@@ -92,6 +97,7 @@ const KINDS: Dictionary = {
 	Hook.ON_SHOP_CLOSED: Kind.NOTIFICATION,
 	Hook.ON_IMPACT: Kind.NOTIFICATION,
 	Hook.ON_OVERHEAT: Kind.NOTIFICATION,
+	Hook.ON_TICK: Kind.NOTIFICATION,
 }
 
 static func kind_of(hook: Hook) -> Kind:

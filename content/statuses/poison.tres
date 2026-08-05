@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="StatusDamageOverTime" format=3]
+
+[ext_resource type="Script" path="res://core/effects/library/status_damage_over_time.gd" id="1_status"]
+[ext_resource type="Script" path="res://core/data/status_scaling.gd" id="2_scale"]
+
+[sub_resource type="Resource" id="s_chance"]
+script = ExtResource("2_scale")
+axis = 0
+stat = 38
+
+[sub_resource type="Resource" id="s_damage"]
+script = ExtResource("2_scale")
+axis = 1
+stat = 23
+
+[sub_resource type="Resource" id="s_rate"]
+script = ExtResource("2_scale")
+axis = 2
+stat = 39
+
+[sub_resource type="Resource" id="s_stacks"]
+script = ExtResource("2_scale")
+axis = 3
+stat = 40
+
+[resource]
+script = ExtResource("1_status")
+status_id = &"poison"
+base_duration = 2.5
+max_stacks = 99
+tick_interval = 0.5
+refresh_mode = 0
+damage_per_stack = 1.0
+damage_type = 4
+damage_counter = 4
+scaling = Array[ExtResource("2_scale")]([SubResource("s_chance"), SubResource("s_damage"), SubResource("s_rate"), SubResource("s_stacks")])

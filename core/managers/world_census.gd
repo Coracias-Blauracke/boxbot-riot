@@ -29,8 +29,12 @@ var _live: Array[EntityModel] = []
 
 ## Called by the spawner, where the model is created anyway.
 func register(entity: EntityModel) -> void:
-	if entity != null:
-		_entities.append(weakref(entity))
+	if entity == null:
+		return
+	_entities.append(weakref(entity))
+	# Handed back weakly so an effect firing on ON_DEATH can still ask what is
+	# nearby. Weak in both directions, so nothing here can keep anything alive.
+	entity.set_census(self)
 
 ## Invalidates the per-frame cache. Called once per tick by the run.
 func invalidate() -> void:
@@ -53,6 +57,22 @@ func count_with_at_least(status_count: int) -> int:
 		if entity.statuses.get_all().size() >= status_count:
 			total += 1
 	return total
+
+## Everything alive within `radius` of a point, for effects that reach outwards -
+## fire jumping off a corpse, an explosion, a chain.
+##
+## Works only because EntityModel carries its world_position as plain data. That
+## is the same trick SpawnContext uses: a Vector2 handed down from the view stops
+## being a scene fact and becomes a number core/ may reason about.
+func entities_within(centre: Vector2, radius: float, exclude: EntityModel = null) -> Array[EntityModel]:
+	var found: Array[EntityModel] = []
+	var limit := radius * radius
+	for entity in _living():
+		if entity == exclude:
+			continue
+		if entity.world_position.distance_squared_to(centre) <= limit:
+			found.append(entity)
+	return found
 
 ## Rebuilt at most once per generation, dropping anything that has been freed.
 ## The pruning is the point: it makes a stale entry impossible rather than
