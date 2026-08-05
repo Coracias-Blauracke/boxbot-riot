@@ -57,6 +57,10 @@ func _validate(path: String) -> void:
 		_validate_item(path, resource)
 	elif resource is WaveTable:
 		_validate_wave_table(path, resource)
+	elif resource is StatSheet:
+		_validate_stat_sheet(path, resource)
+	elif resource is StatMetadata:
+		_validate_stat_metadata(path, resource)
 	elif resource is ShopData:
 		_validate_shop(path, resource)
 	elif resource is WaveModifier:
@@ -181,6 +185,39 @@ func _validate_spawn_pattern(path: String, pattern: SpawnPattern) -> void:
 		# a missing clearance is the difference between pressure and a coin flip.
 		if (pattern as SpawnInView).clear_radius <= 0.0:
 			_errors.append("%s : clear_radius must be positive, it spawns ON the players" % path)
+
+func _validate_stat_metadata(path: String, meta: StatMetadata) -> void:
+	if not StatTypes.Stat.values().has(meta.stat):
+		_errors.append("%s : stat outside the enum (%d)" % [path, meta.stat])
+	if meta.display_key.is_empty():
+		_errors.append("%s : empty display_key (translation key)" % path)
+	# The sheet shows this when the player rests on the row. Blank is a row that
+	# explains nothing, which is worse than no row.
+	if meta.visible_in_ui and meta.description_key.is_empty():
+		_errors.append("%s : visible stat with no description_key" % path)
+
+## THE rule that makes "a new stat shows up on its own" true rather than merely
+## possible: every value in the enum has to be in the sheet exactly once. Add a
+## stat and forget its metadata and this fails here, rather than the stat
+## silently never appearing in the game.
+func _validate_stat_sheet(path: String, sheet: StatSheet) -> void:
+	var seen: Dictionary = {}
+
+	for i in sheet.entries.size():
+		var entry: StatMetadata = sheet.entries[i]
+		if entry == null:
+			_errors.append("%s : entry[%d] is null (deleted metadata?)" % [path, i])
+			continue
+		if seen.has(entry.stat):
+			_errors.append("%s : stat %d appears twice" % [path, entry.stat])
+		seen[entry.stat] = true
+
+	for stat in StatTypes.Stat.values():
+		if not seen.has(stat):
+			_errors.append(
+				"%s : StatTypes.Stat value %d has no metadata, it can never be displayed"
+				% [path, stat]
+			)
 
 func _validate_shop(path: String, shop: ShopData) -> void:
 	if shop.pool.is_empty():

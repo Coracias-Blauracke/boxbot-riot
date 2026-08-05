@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="StatMetadata" format=3]
+
+[ext_resource type="Script" path="res://core/data/stat_metadata.gd" id="1_meta"]
+
+[resource]
+script = ExtResource("1_meta")
+stat = 22
+display_key = "STAT_BLEED_DAMAGE"
+description_key = "STAT_BLEED_DAMAGE_DESC"
+format = 0
+visible_in_ui = true
+higher_is_better = true
+sort_order = 230

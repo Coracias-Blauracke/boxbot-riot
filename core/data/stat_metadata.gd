@@ -18,6 +18,13 @@ enum Format {
 
 @export var stat: StatTypes.Stat
 @export var display_key: String = ""
+
+## Shown when the player rests on this row in the stat sheet. A translation key
+## like display_key, not prose - `tr()` returns the key unchanged while no
+## translation is loaded, so the sheet is readable today and localises later
+## without touching a single content file.
+@export var description_key: String = ""
+
 @export var icon: Texture2D
 @export var format: Format = Format.FLAT
 
