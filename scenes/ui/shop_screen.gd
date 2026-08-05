@@ -102,4 +102,4 @@ func _waiting_on() -> String:
 	for index in run.players.size():
 		if run.players[index].is_alive and not run.shops[index].is_ready:
 			names.append("P%d" % (index + 1))
-	return "czekam: %s" % ", ".join(names) if not names.is_empty() else "startujemy"
+	return "waiting: %s" % ", ".join(names) if not names.is_empty() else "starting"

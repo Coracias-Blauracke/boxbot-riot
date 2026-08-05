@@ -20,6 +20,8 @@ func _initialize() -> void:
 	for path in _collect_resources(CONTENT_ROOT):
 		_validate(path)
 
+	_validate_source_is_english()
+
 	for warning in _warnings:
 		print("  WARN   %s" % warning)
 	for error in _errors:
@@ -27,6 +29,52 @@ func _initialize() -> void:
 
 	print("\nChecked %d files: %d errors, %d warnings" % [_checked, _errors.size(), _warnings.size()])
 	quit(1 if not _errors.is_empty() else 0)
+
+## CLAUDE.md's first rule is that everything in the codebase is in English while
+## the conversation around it is in Polish, and that rule was broken by eight UI
+## strings before anybody noticed.
+##
+## PARTIAL on purpose, and worth being honest about: it catches non-ASCII, which
+## means it finds any Polish word carrying a diacritic and misses one that does
+## not. A word blacklist would be the other half and would go stale the day
+## somebody writes a new word. Half a guard on an explicit rule still beats
+## none, because the accented half is also the half that breaks fonts and
+## encodings.
+##
+## Note it necessarily applies to this file too: an example of a bad string
+## written out here would fail the check it describes.
+const SOURCE_ROOTS: PackedStringArray = ["res://core", "res://scenes", "res://tools", "res://tests"]
+
+func _validate_source_is_english() -> void:
+	for root in SOURCE_ROOTS:
+		for path in _collect_scripts(root):
+			var text := FileAccess.get_file_as_string(path)
+			for index in text.length():
+				var code := text.unicode_at(index)
+				if code > 127:
+					_errors.append(
+						"%s : non-ASCII character '%s' - the codebase is English"
+						% [path, char(code)]
+					)
+					break
+
+func _collect_scripts(dir_path: String) -> PackedStringArray:
+	var found := PackedStringArray()
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return found
+
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			found.append_array(_collect_scripts(full))
+		elif entry.ends_with(".gd"):
+			found.append(full)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return found
 
 func _collect_resources(dir_path: String) -> PackedStringArray:
 	var found := PackedStringArray()
