@@ -14,7 +14,7 @@ The user converses in Polish; the codebase does not.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 376 assertions across three suites, no editor, no game window
+# tests — 384 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -322,8 +322,10 @@ selling, rerolling, stat payment and ready-up — with eight authored items.
 The shop UI is playable: per-player panels laid out by player count, a cursor
 per player driven by that player's own device, offers, reroll, sell from the
 owned strip, a stat sheet that enumerates `StatSheet` rather than the enum, and
-ready-up. `auto_intermission` still runs as a fallback because nothing forces a
-player to press ready.
+ready-up. Readiness goes through `RunModel.set_player_ready()`, never through
+`ShopManager.set_ready()` — the manager's flag is not what the run watches, and
+calling it directly is a bug that no model test catches, because every test
+calls the run's function.
 
 **Item text is DERIVED, never authored per item.** A shop offer describes
 itself from its own `static_stats` and `dynamic_effects` - `StatMetadata`
@@ -351,9 +353,11 @@ translation is loaded, which is by design but looks like a placeholder.
 **No debug settings are currently active.**
 
 **Working but temporary:**
-- `RunModel.auto_intermission = 4.0` closes the shop phase on a timer, because
-  nothing can press ready yet. Set to 0 once the shop UI exists — the HUD's
-  "next in Ns" countdown then becomes "waiting for P2, P4" instead.
+- `RunModel.auto_intermission` is now **0**: the shop waits for every living
+  player to declare ready and does not close itself. Capture runs set it back,
+  because a scripted player never presses anything and would sit in the shop
+  forever — any `--capture` gets 3 seconds unless `--capture-intermission=N`
+  says otherwise.
 - `player_count` in `main.tscn` defaults to 1; raise it to test co-op, or pass
   `--capture-players=N` for a capture run.
 - `death_rule` is an export on `main.tscn`. When challenge modes arrive it wants

@@ -27,12 +27,18 @@ func bind(p_run: RunModel, players: Array[Character], p_sheet: StatSheet) -> voi
 			index, players[index].model, run.shop_for(index), players[index].input,
 			stat_sheet, players[index].data as CharacterData
 		)
+		panel.ready_requested.connect(_on_ready_requested)
 		add_child(panel)
 		_panels.append(panel)
 
 	get_viewport().size_changed.connect(_place_panels)
 	_place_panels()
 	_set_shown(run.phase == WorldTypes.Phase.SHOP)
+
+## Routed through the run rather than set on the shop, because RunModel is what
+## decides that everybody is ready and starts the next wave.
+func _on_ready_requested(index: int, value: bool) -> void:
+	run.set_player_ready(index, value)
 
 ## Capture only: parks every cursor on the owned strip, so the tile detail can
 ## be photographed without a hand on a pad.

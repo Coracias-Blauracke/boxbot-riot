@@ -52,6 +52,8 @@ func _initialize() -> void:
 	_test_ready_up_closes_the_shop()
 	_test_a_downed_player_does_not_hold_the_shop_open()
 	_test_shop_layout_divides_the_screen()
+	_test_readiness_only_counts_when_it_goes_through_the_run()
+	_test_the_shop_waits_by_default()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -893,6 +895,41 @@ func _test_a_downed_player_does_not_hold_the_shop_open() -> void:
 
 	run.set_player_ready(1, true)
 	_check_int("and the survivor alone can start the wave", run.phase, WorldTypes.Phase.COMBAT)
+
+## REGRESSION. The shop panel called ShopManager.set_ready() directly, which
+## flips a flag nobody is watching: RunModel is what checks whether everyone is
+## ready and starts the next wave. Pressing ready in the UI therefore did
+## nothing at all, and no model test caught it because every one of them called
+## the run's function - the very thing the UI was skipping.
+func _test_readiness_only_counts_when_it_goes_through_the_run() -> void:
+	var run := _run_with_shop(1)
+	run.start_wave()
+	run.end_wave()
+	_check_int("in the shop", run.phase, WorldTypes.Phase.SHOP)
+
+	# What the UI used to do.
+	run.shop_for(0).set_ready(true)
+	_check_bool("the flag is set", run.shop_for(0).is_ready, true)
+	_check_int("but the run has not moved", run.phase, WorldTypes.Phase.SHOP)
+	_check_int("and no wave started", run.wave_number, 1)
+
+	# What it does now.
+	run.set_player_ready(0, true)
+	_check_int("routing it through the run starts the wave", run.phase, WorldTypes.Phase.COMBAT)
+	_check_int("and it is the next one", run.wave_number, 2)
+
+## The shop must NOT close itself now that there is a UI to press. Four seconds
+## is not long enough to read one item, let alone buy one.
+func _test_the_shop_waits_by_default() -> void:
+	var run := _run_with_players(1, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.shop_data = _make_run_shop_data()
+	_check("a fresh run does not close its own shop", run.auto_intermission, 0.0)
+
+	run.start_wave()
+	run.end_wave()
+	for tick in 100:
+		run.advance_wave(1.0)
+	_check_int("a hundred seconds later it is still open", run.phase, WorldTypes.Phase.SHOP)
 
 ## ShopLayout lives in scenes/ but touches no Node, so unlike the rest of that
 ## layer it can be checked here rather than only photographed. Worth it: the

@@ -11,6 +11,11 @@ extends Control
 ## are drawn: there is no art yet, and a layout built from anchors and themes
 ## would have to be thrown away when there is.
 
+## Readiness has to go through RunModel, not straight to ShopManager: the run is
+## what checks whether everyone is ready and starts the next wave. Setting it on
+## the manager alone flipped a flag nobody was watching.
+signal ready_requested(index: int, value: bool)
+
 enum Tab { SHOP, STATS }
 
 ## Which row group the cursor is in. Two zones rather than one flat list,
@@ -150,7 +155,7 @@ func _process(delta: float) -> void:
 	if input.triggered(PlayerInput.Action.READY):
 		# Toggling rather than latching, so a player who pressed it by mistake
 		# is not stuck watching everyone else shop.
-		shop.set_ready(not shop.is_ready)
+		ready_requested.emit(player_index, not shop.is_ready)
 		queue_redraw()
 		return
 

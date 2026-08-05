@@ -52,11 +52,16 @@ var _downed: Array[int] = []
 ## spawner reads this rather than having to catch the signal.
 var spawn_boss_this_wave: bool = false
 
-## TEMPORARY. With no shop UI, nothing closes the shop and the run stops dead
-## after wave one. A timed intermission keeps waves coming so the game can be
-## played and tested. Set to 0 once the shop exists - it will then be closed by
-## every player declaring themselves ready instead.
-var auto_intermission: float = 4.0
+## Seconds after which the shop closes ON ITS OWN. 0 means it does not, and
+## waits for every living player to declare ready.
+##
+## 0 now that there is a shop UI to press. It was 4.0 while there was nothing to
+## press, and leaving it there once the UI existed meant the shop shut itself
+## four seconds in, which is not long enough to read one item, let alone buy one.
+##
+## The capture runs set it back, because a scripted player never presses
+## anything and a wave-two capture would otherwise sit in the shop forever.
+var auto_intermission: float = 0.0
 var _intermission_left: float = 0.0
 
 func _init(run_seed: int = 0, world_data: WorldData = null, wave_table: WaveTable = null) -> void:

@@ -113,8 +113,12 @@ func _ready() -> void:
 	run.death_rule = death_rule
 	run.revive_hp_fraction = revive_hp_fraction
 	run.shop_data = shop_data
+	# A capture run has nobody to press ready, so it would sit in the shop
+	# forever. Any capture gets a default; --capture-intermission overrides it.
 	if _forced_intermission > 0.0:
 		run.auto_intermission = _forced_intermission
+	elif OS.get_cmdline_user_args().has("--capture"):
+		run.auto_intermission = 3.0
 	run.wave_ended.connect(_on_wave_ended)
 	run.run_ended.connect(_on_run_ended)
 	_arena.bind(run.world)
