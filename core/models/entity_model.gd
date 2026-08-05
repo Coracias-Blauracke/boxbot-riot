@@ -13,6 +13,7 @@ extends RefCounted
 ## whole game to be run and tested headless, without the editor.
 
 signal died
+signal revived
 signal hp_changed(current: float, maximum: float)
 
 var stats: StatsManager
@@ -144,6 +145,14 @@ func get_max_hp() -> float:
 ## BEFORE_DEATH a chance to cancel a lethal blow, applies the result and then
 ## notifies both sides.
 func apply_damage(event: DamageEvent) -> float:
+	# A corpse takes no further hits. Every blow landing on something already
+	# dead used to award another ENEMIES_KILLED and fire ON_KILL again, because
+	# the credit below only checks `not is_alive`. That was unreachable while
+	# everything was freed the instant it died; downed players now persist, so a
+	# damage-over-time status on one would have farmed kill credit forever.
+	if not is_alive:
+		return 0.0
+
 	event.target = self
 	pipeline(Hooks.Hook.TAKE_DAMAGE, event)
 	if event.cancelled:
@@ -185,11 +194,29 @@ func set_hp(value: float) -> void:
 		notify(Hooks.Hook.ON_DEATH, EventPayload.new())
 		died.emit()
 
+## Brings a downed entity back on `fraction` of its max HP.
+##
+## Deliberately NOT heal(): healing a corpse must stay impossible, or lifesteal
+## and regeneration would quietly undo death. Who may stand up again, and when,
+## is a decision of the run - see RunTypes.DeathRule - and this is the only door
+## it has.
+func revive(fraction: float = 1.0) -> float:
+	if is_alive:
+		return 0.0
+
+	is_alive = true
+	set_hp(get_max_hp() * clampf(fraction, 0.01, 1.0))
+	revived.emit()
+	return current_hp
+
 ## Goes through CALCULATE_HEAL so effects can scale or block healing, then
 ## notifies ON_HEAL with what actually landed. Previously this called set_hp()
 ## directly and both hooks were unreachable.
 func heal(amount: float, source: EntityModel = null) -> float:
-	if amount <= 0.0:
+	# Healing must never raise a corpse. set_hp() would happily push current_hp
+	# back above zero while is_alive stayed false, leaving an entity that is
+	# neither dead nor playable. Standing up goes through revive() only.
+	if amount <= 0.0 or not is_alive:
 		return 0.0
 
 	var event := HealEvent.new()

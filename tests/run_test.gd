@@ -27,6 +27,14 @@ func _initialize() -> void:
 	_test_director_spreads_spawns_across_the_wave()
 	_test_director_ends_on_the_timer()
 	_test_intermission_starts_the_next_wave()
+	_test_one_death_does_not_end_a_co_op_run()
+	_test_revive_rule_stands_players_up_at_the_shop()
+	_test_permanent_rule_leaves_them_down()
+	_test_shared_fate_ends_on_the_first_death()
+	_test_victory_on_the_last_wave()
+	_test_defeat_is_not_overwritten_by_victory()
+	_test_a_corpse_does_not_bank_waves_survived()
+	_test_run_frees_together_with_its_players()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -372,6 +380,151 @@ func _test_intermission_starts_the_next_wave() -> void:
 	run.advance_wave(1.5)
 	_check_int("wave 2 begins", run.wave_number, 2)
 	_check_int("back in combat", run.phase, WorldTypes.Phase.COMBAT)
+
+# --- death rules -----------------------------------------------------------
+
+## A player with a body. EntityModel.new() sits at zero HP and can never die,
+## because set_hp() clamps to zero, sees no change and returns before it can
+## flip is_alive.
+func _run_with_players(count: int, rule: RunTypes.DeathRule) -> RunModel:
+	var run := RunModel.new(4242)
+	run.death_rule = rule
+	for i in count:
+		var player := EntityModel.new()
+		player.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.BASE, 100.0, &"test_body")
+		run.add_player(player)
+	return run
+
+func _kill(victim: EntityModel) -> void:
+	var event := DamageEvent.new()
+	event.amount = 9999.0
+	victim.apply_damage(event)
+
+func _test_one_death_does_not_end_a_co_op_run() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.start_wave()
+
+	_kill(run.players[0])
+	_check_int("one player left standing", run.living_player_count(), 1)
+	_check_bool("the downed one is tracked", run.is_player_downed(0), true)
+	_check_bool("the survivor is not", run.is_player_downed(1), false)
+	_check_bool("the run carries on", run.is_run_over(), false)
+	_check_int("still in combat", run.phase, WorldTypes.Phase.COMBAT)
+
+	_kill(run.players[1])
+	_check_bool("the last death ends it", run.is_run_over(), true)
+	_check_int("as a defeat", run.outcome, RunTypes.Outcome.DEFEAT)
+	_check_int("and the phase closes", run.phase, WorldTypes.Phase.FINISHED)
+
+func _test_revive_rule_stands_players_up_at_the_shop() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.revive_hp_fraction = 0.5
+	run.start_wave()
+
+	_kill(run.players[0])
+	_check_bool("down during the wave", run.players[0].is_alive, false)
+
+	run.end_wave()
+	_check_int("the shop opened", run.phase, WorldTypes.Phase.SHOP)
+	_check_bool("and they are back up", run.players[0].is_alive, true)
+	_check("on the configured fraction of max HP", run.players[0].current_hp, 50.0)
+	_check_bool("no longer counted as down", run.is_player_downed(0), false)
+
+	# Standing up must not cost the survivor anything either.
+	_check("the survivor is untouched", run.players[1].current_hp, 100.0)
+
+func _test_permanent_rule_leaves_them_down() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.PERMANENT)
+	run.start_wave()
+
+	_kill(run.players[0])
+	run.end_wave()
+	_check_int("the shop still opens for the survivor", run.phase, WorldTypes.Phase.SHOP)
+	_check_bool("but the dead stay dead", run.players[0].is_alive, false)
+	_check_bool("and stay on the downed list", run.is_player_downed(0), true)
+	_check_bool("the run is not over yet", run.is_run_over(), false)
+
+	run.close_shop()
+	run.start_wave()
+	_kill(run.players[1])
+	_check_int("it ends with the last survivor", run.outcome, RunTypes.Outcome.DEFEAT)
+
+func _test_shared_fate_ends_on_the_first_death() -> void:
+	var run := _run_with_players(4, RunTypes.DeathRule.SHARED_FATE)
+	run.start_wave()
+
+	_kill(run.players[2])
+	_check_int("three are still alive", run.living_player_count(), 3)
+	_check_bool("and it is over anyway", run.is_run_over(), true)
+	_check_int("as a defeat", run.outcome, RunTypes.Outcome.DEFEAT)
+
+func _test_victory_on_the_last_wave() -> void:
+	var run := _run_with_players(1, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.total_waves = 2
+
+	run.start_wave()
+	run.end_wave()
+	run.close_shop()
+	run.start_wave()
+	run.end_wave()
+
+	_check_int("clearing the last wave wins", run.outcome, RunTypes.Outcome.VICTORY)
+	_check_int("and finishes the run", run.phase, WorldTypes.Phase.FINISHED)
+
+	# A finished run must be inert: nothing may start another wave on top of it.
+	run.start_wave()
+	_check_int("no wave starts after the end", run.wave_number, 2)
+
+func _test_defeat_is_not_overwritten_by_victory() -> void:
+	# The race this exists for: the last player dies on the very frame the
+	# director runs out of time on the final wave. Without one choke point for
+	# the outcome, end_wave() would then overwrite the defeat with a victory.
+	var run := _run_with_players(1, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	run.total_waves = 1
+	run.start_wave()
+
+	_kill(run.players[0])
+	_check_int("dying loses the run", run.outcome, RunTypes.Outcome.DEFEAT)
+
+	run.end_wave()
+	_check_int("the final wave ending does not rewrite it", run.outcome, RunTypes.Outcome.DEFEAT)
+
+func _test_a_corpse_does_not_bank_waves_survived() -> void:
+	var run := _run_with_players(2, RunTypes.DeathRule.PERMANENT)
+	run.start_wave()
+	_kill(run.players[0])
+	run.end_wave()
+
+	_check_int(
+		"the survivor is credited",
+		run.players[1].counters.get_value(CounterTypes.Counter.WAVES_SURVIVED), 1
+	)
+	# Otherwise "every 5 waves survived, gain X" pays a corpse for the rest of
+	# the run, which under PERMANENT is most of it.
+	_check_int(
+		"the corpse is not",
+		run.players[0].counters.get_value(CounterTypes.Counter.WAVES_SURVIVED), 0
+	)
+
+func _test_run_frees_together_with_its_players() -> void:
+	# add_player() connects to the player's `died` signal, and the run holds the
+	# player. If that connection were a strong reference back, the pair would be
+	# a cycle - and RefCounted has no cycle collector, so neither would ever be
+	# freed. Asserted rather than assumed, because this exact shape has leaked
+	# in this codebase before.
+	var run := _run_with_players(2, RunTypes.DeathRule.REVIVE_NEXT_WAVE)
+	# Typed explicitly: weakref() returns Variant, and `:=` off a Variant is a
+	# parse error here - which silently skips the whole suite rather than
+	# failing one assertion.
+	var run_ref: WeakRef = weakref(run)
+	var player_ref: WeakRef = weakref(run.players[0])
+
+	run.start_wave()
+	_kill(run.players[0])
+
+	run = null
+	_check_bool("the run frees", run_ref.get_ref() == null, true)
+	_check_bool("and takes its players with it", player_ref.get_ref() == null, true)
 
 # --- assertions ------------------------------------------------------------
 

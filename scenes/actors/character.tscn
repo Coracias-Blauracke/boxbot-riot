@@ -19,4 +19,3 @@ collision_mask = 0
 
 [node name="WeaponMount" type="Node2D" parent="."]
 script = ExtResource("2_mount")
-weapon_time_scale = 0.25

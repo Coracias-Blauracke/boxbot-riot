@@ -9,6 +9,9 @@ extends RefCounted
 signal phase_changed(phase: WorldTypes.Phase)
 signal wave_started(wave_number: int, spawn_boss: bool)
 signal wave_ended(wave_number: int)
+signal player_downed(player_index: int)
+signal player_revived(player_index: int)
+signal run_ended(outcome: RunTypes.Outcome)
 
 var rng: RunRandom
 var world: WorldModel
@@ -19,6 +22,20 @@ var players: Array[EntityModel] = []
 var wave_number: int = 0
 var total_waves: int = 20
 var phase: WorldTypes.Phase = WorldTypes.Phase.PREPARING
+
+## How death is handled. Changing this is the ENTIRE difference between the
+## normal mode and a permadeath challenge - the wave loop below is shared.
+var death_rule: RunTypes.DeathRule = RunTypes.DeathRule.REVIVE_NEXT_WAVE
+
+## Share of max HP a revived player stands up on. Full would make going down
+## free, and being downed is supposed to cost the team something.
+var revive_hp_fraction: float = 0.5
+
+var outcome: RunTypes.Outcome = RunTypes.Outcome.UNDECIDED
+
+## Indices of players currently down. Under REVIVE_NEXT_WAVE this empties when
+## the shop opens; under the other rules it only ever grows.
+var _downed: Array[int] = []
 
 ## Outcome of the CALCULATE_WAVE pipeline for the wave now in progress; the
 ## spawner reads this rather than having to catch the signal.
@@ -45,11 +62,79 @@ func add_player(player: EntityModel) -> int:
 	var index := players.size()
 	players.append(player)
 	player.rng = rng
+	# Note this does NOT close a reference cycle, despite RunModel holding the
+	# player: a Godot signal connection stores the target by ObjectID, not as a
+	# strong reference. That distinction matters here because RefCounted has no
+	# cycle collector, so run_test.gd asserts it with a weakref rather than
+	# taking it on trust.
+	player.died.connect(_on_player_died)
 	return index
+
+# --- death and the end of the run ------------------------------------------
+
+func living_player_count() -> int:
+	var alive := 0
+	for player in players:
+		if player.is_alive:
+			alive += 1
+	return alive
+
+func is_player_downed(index: int) -> bool:
+	return _downed.has(index)
+
+func is_run_over() -> bool:
+	return outcome != RunTypes.Outcome.UNDECIDED
+
+## Scans rather than taking the dead player as an argument, because the signal
+## carries no sender and two players can go down in the same frame - a shared
+## explosion, or the last tick of a poison both are carrying.
+func _on_player_died() -> void:
+	for index in players.size():
+		if players[index].is_alive or _downed.has(index):
+			continue
+		_downed.append(index)
+		player_downed.emit(index)
+
+	if is_run_over():
+		return
+
+	var lost := (
+		not _downed.is_empty()
+		if death_rule == RunTypes.DeathRule.SHARED_FATE
+		else living_player_count() == 0
+	)
+	if lost:
+		_finish(RunTypes.Outcome.DEFEAT)
+
+## Under REVIVE_NEXT_WAVE the downed stand up when the shop opens, NOT when the
+## next wave starts. They are out for the rest of the wave either way, and a
+## player who cannot spend the currency they died holding falls further behind
+## every wave - which is the spiral this rule exists to avoid.
+func _revive_downed() -> void:
+	if death_rule != RunTypes.DeathRule.REVIVE_NEXT_WAVE:
+		return
+	for index in _downed:
+		players[index].revive(revive_hp_fraction)
+		player_revived.emit(index)
+	_downed.clear()
+
+## The single choke point for ending a run, so the first outcome sticks. The
+## last player can die on the very frame the director runs out of time, and a
+## defeat must not then be overwritten by the victory that wave would have been.
+func _finish(p_outcome: RunTypes.Outcome) -> void:
+	if is_run_over():
+		return
+	outcome = p_outcome
+	phase = WorldTypes.Phase.FINISHED
+	phase_changed.emit(phase)
+	run_ended.emit(outcome)
 
 # --- wave loop -------------------------------------------------------------
 
 func start_wave() -> void:
+	if is_run_over():
+		return
+
 	wave_number += 1
 	phase = WorldTypes.Phase.COMBAT
 
@@ -78,25 +163,36 @@ func start_wave() -> void:
 	wave_started.emit(wave_number, event.spawn_boss)
 
 func end_wave() -> void:
+	# The last player can die on the frame the director runs out of time. The
+	# run is already lost by then and must not be handed a shop.
+	if is_run_over():
+		return
+
 	var event := WaveEvent.new()
 	event.wave_number = wave_number
 	event.context["run"] = self
 
+	# Only the living are credited with surviving. A corpse collecting
+	# WAVES_SURVIVED would feed "every 5 waves, gain X" effects for free, and
+	# under PERMANENT would go on doing so for the rest of the run.
 	for player in players:
-		player.counters.add(CounterTypes.Counter.WAVES_SURVIVED)
+		if player.is_alive:
+			player.counters.add(CounterTypes.Counter.WAVES_SURVIVED)
 		player.notify(Hooks.Hook.ON_WAVE_ENDED, event)
 
 	wave_ended.emit(wave_number)
 
 	if wave_number >= total_waves:
-		phase = WorldTypes.Phase.FINISHED
-		phase_changed.emit(phase)
+		_finish(RunTypes.Outcome.VICTORY)
 	else:
 		open_shop()
 
 func open_shop() -> void:
 	phase = WorldTypes.Phase.SHOP
 	_intermission_left = auto_intermission
+	# Before the notification, so an effect hanging on ON_SHOP_OPENED sees a
+	# living player rather than having to ask whether this one is a corpse.
+	_revive_downed()
 	for player in players:
 		player.notify(Hooks.Hook.ON_SHOP_OPENED, EventPayload.new())
 	phase_changed.emit(phase)
@@ -130,6 +226,12 @@ func advance_wave(delta: float) -> Array[EnemyData]:
 
 func wave_time_remaining() -> float:
 	return director.time_remaining()
+
+## Seconds left of the shop phase. TEMPORARY in the same sense as
+## auto_intermission: once the shop closes on every player declaring themselves
+## ready, this becomes meaningless and the HUD should show readiness instead.
+func intermission_remaining() -> float:
+	return maxf(0.0, _intermission_left)
 
 ## For headless tests, where there are no actor nodes to tick themselves.
 func tick_statuses(delta: float) -> void:

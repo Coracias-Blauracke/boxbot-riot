@@ -14,7 +14,7 @@ The user converses in Polish; the codebase does not.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 210 assertions across three suites, no editor, no game window
+# tests — 257 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -39,11 +39,28 @@ behind the floor.
 
 ```bash
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --path . -- --capture --capture-dir=<abs path> \
-  --capture-shots=8 --capture-interval=0.2 --capture-delay=5.0 \
-  [--capture-still | --capture-circle | --capture-scatter]
+  --capture-shots=8 --capture-interval=0.2 --capture-delay=5.0 [--capture-players=N] \
+  [--capture-still | --capture-circle | --capture-scatter | --capture-downed]
 ```
 
 Create the output directory first or `save_png` fails with error 7.
+
+`--capture-players=N` overrides `main.tscn`'s player count, so a co-op state can
+be photographed without editing the scene and remembering to put it back.
+
+The scripted modes exist because the interesting states are hard to reach by
+accident:
+
+| mode | what it is for |
+|---|---|
+| `--capture-still` | the only way to observe contact damage — enemies never catch a running player |
+| `--capture-circle` | a tight circle keeps the player inside the swarm, which is what exposes missing separation |
+| `--capture-scatter` | drives players to opposite corners to check the camera holds all of them |
+| `--capture-downed` | player 0 stands and dies while the rest kite in a WIDE circle and live — the only way to photograph one player down while the run continues |
+
+`--capture-downed` turns at 0.55 rad/s rather than 1.6 on purpose: speed divided
+by turn rate is the radius, and at 1.6 the survivors trace a ~137-unit circle,
+stay inside the horde and die before the wave can end. Nothing is then observed.
 
 ---
 
@@ -51,7 +68,7 @@ Create the output directory first or `save_png` fails with error 7.
 
 ```
 core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencies
-  enums/     StatTypes, CounterTypes, Hooks, WorldTypes  (all APPEND-ONLY)
+  enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
   data/      .tres schemas: EntityData, CharacterData, EnemyData, WeaponData, ...
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
   events/    EventPayload and its subclasses
@@ -61,6 +78,7 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   behaviors/ MovementBehavior, ChaseBehavior
 scenes/      the view — nodes, physics, rendering
+  ui/        Hud, PlayerPanel, PlayerPalette
 content/     authored .tres: characters, enemies, weapons, items, waves, worlds
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
@@ -116,6 +134,32 @@ character; `enemy.tscn` every enemy and boss. Identity comes from `.tres`. Scene
 inheritance per variant was rejected as fragile and combinatorially useless;
 script inheritance by responsibility (`Actor` → `Character`/`Enemy`) is fine.
 
+**A downed player is not freed; an enemy is.** `Actor._on_model_died()` calls
+`queue_free()`, and `Character` overrides it to go down instead. The model stays
+in `RunModel.players` holding its currency, its items and its HUD panel, because
+`RunTypes.DeathRule` may yet stand it back up — freeing the node would make that
+impossible. Two bugs became reachable the moment corpses started persisting, and
+both are now guarded in `EntityModel`: damage on a corpse awarded a second kill
+(the credit only checked `not is_alive`), and `heal()` raised `current_hp` above
+zero while `is_alive` stayed false.
+
+**Death is a run rule, not a constant.** `RunModel.death_rule` switches between
+revive-next-wave, permadeath and shared-fate, and the wave loop is identical for
+all three. A challenge mode is meant to be that dropdown and nothing else; if a
+future mode needs a second copy of the loop, the rule was modelled wrong.
+Revived players stand up when the SHOP OPENS, not when the next wave starts —
+a player who cannot spend the currency they died holding falls further behind
+every wave, which is the spiral the forgiving rule exists to prevent.
+
+**HUD layout is driven by player count.** One panel per player, one corner each
+(P1 top-left, P2 top-right, P3 bottom-left, P4 bottom-right), right-hand panels
+mirrored so their contents hug the edge they are anchored to. Deliberately not a
+bar along one screen edge: this is a top-down game where the edges are where
+enemies arrive from, and chrome there costs reaction time. Only what players
+genuinely share — wave number and clock — sits in the middle. `PlayerPalette` is
+ONE table used by both the blob on the floor and the corner describing it; a
+panel whose colour does not match its character is worse than no colour at all.
+
 **The arena is larger than the screen.** `ArenaCamera` follows the players and
 widens to hold all of them; scattering to opposite corners pulls the whole map
 into frame, which is intended. Enemies spawn just beyond the view, not at the
@@ -146,8 +190,11 @@ so the failure only shows in the import log.
 
 **GDScript gotchas hit in this repo:** `_get` is a reserved `Object` virtual and
 shadowing it breaks the whole script; `:=` cannot infer a type from `Dictionary`
-access or `get_script()`; lambdas capture by **value**, so assigning to an outer
-local inside one is silently lost.
+access, `get_script()` or **`weakref()`** — all return `Variant`, and the
+resulting warning is treated as an error, which skips the entire suite rather
+than failing one assertion; lambdas capture by **value**, so assigning to an
+outer local inside one is silently lost (capture a one-element `Array` instead —
+the array is a reference, so mutating its contents survives).
 
 **Watch the import log, not just test results.** Parse errors can leave tests
 passing while silently skipping assertions.
@@ -160,27 +207,30 @@ default. Explanations for project settings belong here instead.
 
 ## Current state
 
-Playable vertical slice. Arena with bounds from the model, character and enemies
-from `.tres`, chasing AI with separation, contact damage, projectile and melee
-weapons, waves with budget-driven escalation, currency from kills, following
-camera, 1–4 local players.
+Playable vertical slice with a closed loop, win and lose included. Arena with
+bounds from the model, character and enemies from `.tres`, chasing AI with
+separation, contact damage, projectile and melee weapons, waves with
+budget-driven escalation, currency from kills, following camera, 1–4 local
+players, per-player HUD, downed players with a configurable death rule, and a
+run that ends in victory or defeat.
+
+**No debug settings are currently active.**
 
 **Working but temporary:**
 - `RunModel.auto_intermission = 4.0` closes the shop phase on a timer, because
-  there is no shop UI. Set to 0 once the shop exists.
-- `player_count` in `main.tscn` defaults to 1; raise it to test co-op.
+  there is no shop UI. Set to 0 once the shop exists — the HUD's "next in Ns"
+  countdown then becomes "waiting for P2, P4" instead.
+- `player_count` in `main.tscn` defaults to 1; raise it to test co-op, or pass
+  `--capture-players=N` for a capture run.
+- `death_rule` is an export on `main.tscn`. When challenge modes arrive it wants
+  to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
+  else a challenge varies, so a mode is one authored resource.
 
-**DEBUG SETTINGS CURRENTLY ACTIVE — revert for normal play:**
-- `scenes/actors/character.tscn` → `WeaponMount.weapon_time_scale = 0.25`
-  (4× slow motion, added to evaluate melee by eye; normal is `1.0`)
-- `content/characters/test_character.tres` → `MAX_HP = 3000`
-  (a consequence of the slowdown; normal is `100`)
-
-**Known gaps:** no shop, no UI at all, player death does nothing (the run
-carries on with a corpse), no join flow for co-op, no `BEAM` delivery, no
-explosion/puddle effects on `ON_IMPACT`, no save system, no localisation
-(`display_key` fields exist but nothing consumes them), no art (everything is
-drawn as placeholder circles and lines).
+**Known gaps:** no shop, no menus or pause (the HUD is the only UI), no join
+flow for co-op, no `BEAM` delivery, no explosion/puddle effects on `ON_IMPACT`,
+no save system, no localisation (`display_key` fields exist but nothing consumes
+them — including the HUD, which prints "P1" and raw numbers), no art (everything
+is drawn as placeholder circles, ellipses and lines).
 
 **Undecided:** art style. This gates the base resolution — pixel art wants a low
 base (e.g. 640×360) with integer scaling, and changing it after hundreds of
