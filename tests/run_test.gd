@@ -47,6 +47,10 @@ func _initialize() -> void:
 	_test_wave_modifier_applies_only_to_its_waves()
 	_test_horde_cost_cap_excludes_the_heavy_enemy()
 	_test_a_cap_that_excludes_everything_is_ignored()
+	_test_every_player_gets_their_own_shop()
+	_test_shops_fill_when_the_shop_opens()
+	_test_ready_up_closes_the_shop()
+	_test_a_downed_player_does_not_hold_the_shop_open()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -818,6 +822,76 @@ func _test_a_cap_that_excludes_everything_is_ignored() -> void:
 		"an impossible cap falls back to the full set",
 		table.available_entries(11, table.max_entry_cost_for(11)).size(), 2
 	)
+
+# --- shops in the run ------------------------------------------------------
+
+func _make_run_shop_data() -> ShopData:
+	var item := ItemData.new()
+	item.display_key = "RUN_TEST_ITEM"
+	item.tier = 1
+	item.base_price = 5
+
+	var data := ShopData.new()
+	data.pool = [item]
+	data.offer_count = 3
+	return data
+
+func _run_with_shop(count: int, rule := RunTypes.DeathRule.REVIVE_NEXT_WAVE) -> RunModel:
+	var run := _run_with_players(count, rule)
+	# Ready-up is the way out, not the timer. auto_intermission only exists
+	# because there is no UI to press yet.
+	run.auto_intermission = 0.0
+	run.shop_data = _make_run_shop_data()
+	return run
+
+func _test_every_player_gets_their_own_shop() -> void:
+	var run := _run_with_shop(3)
+
+	_check_int("one shop per player", run.shops.size(), 3)
+	_check_int("indexed to match its RNG sub-stream", run.shop_for(2).player_index, 2)
+	_check_bool("and they are separate objects", run.shop_for(0) != run.shop_for(1), true)
+	_check_bool("out of range is null rather than a crash", run.shop_for(9) == null, true)
+
+func _test_shops_fill_when_the_shop_opens() -> void:
+	var run := _run_with_shop(2)
+	run.start_wave()
+	_check_int("nothing on offer during combat", run.shop_for(0).offers.size(), 0)
+
+	run.end_wave()
+	_check_int("the shop phase fills them", run.shop_for(0).offers.size(), 3)
+	_check_int("for every player, not just the first", run.shop_for(1).offers.size(), 3)
+
+	run.close_shop()
+	_check_int("and closing empties them", run.shop_for(0).offers.size(), 0)
+
+func _test_ready_up_closes_the_shop() -> void:
+	var run := _run_with_shop(2)
+	run.start_wave()
+	run.end_wave()
+	_check_int("in the shop", run.phase, WorldTypes.Phase.SHOP)
+
+	run.set_player_ready(0, true)
+	_check_bool("one player is not everyone", run.all_players_ready(), false)
+	_check_int("so the shop stays open", run.phase, WorldTypes.Phase.SHOP)
+
+	run.set_player_ready(1, true)
+	_check_int("the last one starts the wave", run.phase, WorldTypes.Phase.COMBAT)
+	_check_int("and it is the next one", run.wave_number, 2)
+
+func _test_a_downed_player_does_not_hold_the_shop_open() -> void:
+	# Under PERMANENT a dead player can never press ready again, so counting
+	# them would hold the run hostage for the rest of it.
+	var run := _run_with_shop(2, RunTypes.DeathRule.PERMANENT)
+	run.start_wave()
+	_kill(run.players[0])
+	run.end_wave()
+
+	_check_int("the survivor gets a shop", run.shop_for(1).offers.size(), 3)
+	# Offers a corpse cannot buy would be a whole panel of dead UI.
+	_check_int("the corpse does not", run.shop_for(0).offers.size(), 0)
+
+	run.set_player_ready(1, true)
+	_check_int("and the survivor alone can start the wave", run.phase, WorldTypes.Phase.COMBAT)
 
 # --- assertions ------------------------------------------------------------
 

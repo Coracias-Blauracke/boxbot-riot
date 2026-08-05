@@ -11,6 +11,7 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 @export var world_data: WorldData
 @export var character_data: CharacterData
 @export var wave_table: WaveTable
+@export var shop_data: ShopData
 @export var starting_weapons: Array[WeaponData] = []
 
 ## Local co-op, up to four. Player 0 takes keyboard and the first gamepad;
@@ -82,6 +83,7 @@ func _ready() -> void:
 	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
 	run.revive_hp_fraction = revive_hp_fraction
+	run.shop_data = shop_data
 	run.wave_ended.connect(_on_wave_ended)
 	run.run_ended.connect(_on_run_ended)
 	_arena.bind(run.world)

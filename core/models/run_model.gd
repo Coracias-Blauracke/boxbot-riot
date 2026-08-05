@@ -19,6 +19,17 @@ var overrides: WorldOverrides
 var director: WaveDirector
 
 var players: Array[EntityModel] = []
+
+## ONE SHOP PER PLAYER, index-aligned with `players`. Not one shop shared four
+## ways: each has its own offers, its own reroll count, its own readiness and
+## its own RNG sub-stream. Everything below the shop was already built this way
+## - currency is a per-entity counter and prices come out of a pipeline
+## evaluated per buyer - so a single shared shop would have been the odd one out.
+var shops: Array[ShopManager] = []
+
+## Authored rules, shared by every player's shop. The DATA is common; nothing
+## about the state is.
+var shop_data: ShopData = null
 var wave_number: int = 0
 var total_waves: int = 20
 var phase: WorldTypes.Phase = WorldTypes.Phase.PREPARING
@@ -73,7 +84,17 @@ func add_player(player: EntityModel) -> int:
 	# cycle collector, so run_test.gd asserts it with a weakref rather than
 	# taking it on trust.
 	player.died.connect(_on_player_died)
+
+	# Created here rather than when the shop opens, so the pairing with `players`
+	# can never drift and player_index always matches the RNG sub-stream.
+	var shop := ShopManager.new()
+	shop.player_index = index
+	shops.append(shop)
+
 	return index
+
+func shop_for(index: int) -> ShopManager:
+	return shops[index] if index >= 0 and index < shops.size() else null
 
 # --- death and the end of the run ------------------------------------------
 
@@ -197,18 +218,60 @@ func end_wave() -> void:
 func open_shop() -> void:
 	phase = WorldTypes.Phase.SHOP
 	_intermission_left = auto_intermission
-	# Before the notification, so an effect hanging on ON_SHOP_OPENED sees a
-	# living player rather than having to ask whether this one is a corpse.
+	# Before everything else, so an effect hanging on ON_SHOP_OPENED sees a
+	# living player rather than having to ask whether this one is a corpse - and
+	# so a revived player gets a shop below.
 	_revive_downed()
+
+	for index in players.size():
+		var shop := shops[index]
+		shop.data = shop_data
+		# A player still down does not get a shop. Under PERMANENT they never
+		# will again, and rolling offers for a corpse would put a whole panel of
+		# things on screen that nobody can buy.
+		if players[index].is_alive:
+			shop.open(players[index], wave_number, rng)
+		else:
+			shop.close()
+
 	for player in players:
 		player.notify(Hooks.Hook.ON_SHOP_OPENED, EventPayload.new())
 	phase_changed.emit(phase)
 
 func close_shop() -> void:
+	for shop in shops:
+		shop.close()
 	for player in players:
 		player.notify(Hooks.Hook.ON_SHOP_CLOSED, EventPayload.new())
 	phase = WorldTypes.Phase.PREPARING
 	phase_changed.emit(phase)
+
+## Every LIVING player has to declare themselves ready.
+##
+## The living part matters: under PERMANENT a dead player can never press
+## anything again, so counting them would hold the run hostage for the rest of
+## it. Returns false when nobody is alive at all, because that is a lost run
+## rather than a wave everyone is ready for.
+func all_players_ready() -> bool:
+	var any_living := false
+	for index in players.size():
+		if not players[index].is_alive:
+			continue
+		any_living = true
+		if not shops[index].is_ready:
+			return false
+	return any_living
+
+## The intended way out of the shop phase once there is a UI to press it.
+## `auto_intermission` remains as the fallback until then.
+func set_player_ready(index: int, value: bool) -> void:
+	if index < 0 or index >= shops.size():
+		return
+
+	shops[index].set_ready(value)
+	if phase == WorldTypes.Phase.SHOP and all_players_ready():
+		close_shop()
+		start_wave()
 
 ## Advances the wave and returns whatever should spawn this frame. Ends the wave
 ## on its own once the timer runs out.

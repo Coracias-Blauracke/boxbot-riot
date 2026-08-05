@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Resource_armor"]
+script = ExtResource("2_mod")
+stat = 3
+modifier_type = 1
+value = 4.0
+
+[sub_resource type="Resource" id="Resource_speed"]
+script = ExtResource("2_mod")
+stat = 14
+modifier_type = 2
+value = -0.08
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_RIOT_SHIELD"
+tier = 2
+base_price = 18
+static_stats = Array[ExtResource("2_mod")]([SubResource("Resource_armor"), SubResource("Resource_speed")])
+body_slot = &"offhand"

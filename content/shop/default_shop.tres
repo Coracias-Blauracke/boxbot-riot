@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ShopData" format=3]
+
+[ext_resource type="Script" path="res://core/data/shop_data.gd" id="1_shop"]
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="2_item"]
+[ext_resource type="Resource" path="res://content/items/scrap_plating.tres" id="3_plating"]
+[ext_resource type="Resource" path="res://content/items/whetstone.tres" id="4_whetstone"]
+[ext_resource type="Resource" path="res://content/items/machined_sights.tres" id="5_sights"]
+[ext_resource type="Resource" path="res://content/items/turbo_springs.tres" id="6_springs"]
+[ext_resource type="Resource" path="res://content/items/riot_shield.tres" id="7_shield"]
+[ext_resource type="Resource" path="res://content/items/lucky_charm.tres" id="8_charm"]
+[ext_resource type="Resource" path="res://content/items/bloodstone.tres" id="9_bloodstone"]
+[ext_resource type="Resource" path="res://content/items/reactor_core.tres" id="10_reactor"]
+
+[resource]
+script = ExtResource("1_shop")
+pool = Array[ExtResource("2_item")]([ExtResource("3_plating"), ExtResource("4_whetstone"), ExtResource("5_sights"), ExtResource("6_springs"), ExtResource("7_shield"), ExtResource("8_charm"), ExtResource("9_bloodstone"), ExtResource("10_reactor")])
+offer_count = 4
+price_per_wave = 0.12
+reroll_base_cost = 5
+reroll_cost_growth = 1.6
+sell_ratio = 0.5
+base_tier_weights = PackedFloat32Array(100, 24, 4, 0)
+tier_weight_per_wave = PackedFloat32Array(-3, 1, 1.2, 0.9)

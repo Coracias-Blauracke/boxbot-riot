@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=13 format=3 uid="uid://ypmpa6ofxxh2"]
 
 [ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
@@ -11,12 +11,14 @@
 [ext_resource type="Resource" path="res://content/weapons/sword.tres" id="9_sword"]
 [ext_resource type="Script" path="res://scenes/levels/arena_camera.gd" id="10_camera"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="11_hud"]
+[ext_resource type="Resource" path="res://content/shop/default_shop.tres" id="12_shop"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 world_data = ExtResource("3_world")
 character_data = ExtResource("4_char")
 wave_table = ExtResource("5_waves")
+shop_data = ExtResource("12_shop")
 starting_weapons = Array[ExtResource("8_wdata")]([ExtResource("9_sword")])
 player_count = 1
 

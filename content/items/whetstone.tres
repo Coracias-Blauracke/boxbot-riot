@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Resource_melee"]
+script = ExtResource("2_mod")
+stat = 5
+modifier_type = 1
+value = 3.0
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_WHETSTONE"
+tier = 1
+base_price = 9
+static_stats = Array[ExtResource("2_mod")]([SubResource("Resource_melee")])
