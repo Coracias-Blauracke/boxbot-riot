@@ -14,6 +14,14 @@ extends Resource
 @export_group("Offers")
 @export var offer_count: int = 4
 
+## Whether one roll may show the same item twice.
+##
+## Off by default. Items stack, so a repeat is not meaningless - but with a
+## small pool it fills three of four slots with the same thing and reads as a
+## bug rather than as luck. When the pool cannot supply enough distinct items,
+## repeats come back rather than leaving slots empty.
+@export var allow_duplicate_offers: bool = false
+
 ## Fraction added to every price per wave beyond the first. Keeps late-run
 ## currency from trivialising the shop.
 @export var price_per_wave: float = 0.12

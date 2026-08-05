@@ -51,6 +51,7 @@ func _initialize() -> void:
 	_test_shops_fill_when_the_shop_opens()
 	_test_ready_up_closes_the_shop()
 	_test_a_downed_player_does_not_hold_the_shop_open()
+	_test_shop_layout_divides_the_screen()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -892,6 +893,40 @@ func _test_a_downed_player_does_not_hold_the_shop_open() -> void:
 
 	run.set_player_ready(1, true)
 	_check_int("and the survivor alone can start the wave", run.phase, WorldTypes.Phase.COMBAT)
+
+## ShopLayout lives in scenes/ but touches no Node, so unlike the rest of that
+## layer it can be checked here rather than only photographed. Worth it: the
+## three-player case is the one nobody can hold in their head.
+func _test_shop_layout_divides_the_screen() -> void:
+	var screen := Vector2(1920.0, 1080.0)
+
+	_check("one player takes the whole width", ShopLayout.rect_for(0, 1, screen).size.x, 1920.0)
+
+	var left := ShopLayout.rect_for(0, 2, screen)
+	var right := ShopLayout.rect_for(1, 2, screen)
+	_check("two players split vertically", left.size.x, 960.0)
+	_check("and the second starts at the middle", right.position.x, 960.0)
+	_check("each keeps full height", right.size.y, 1080.0)
+
+	# The corner map has to match the HUD's, or the game teaches two conflicting
+	# spatial rules: P1 top-left, P2 top-right, P3 bottom-left, P4 bottom-right.
+	var corners := [Vector2(0, 0), Vector2(960, 0), Vector2(0, 540), Vector2(960, 540)]
+	var matched := true
+	for index in 4:
+		if ShopLayout.rect_for(index, 4, screen).position != corners[index]:
+			matched = false
+	_check_bool("four players take the HUD's corners", matched, true)
+
+	# Three uses the same quadrants rather than a bespoke split, so no player
+	# gets a differently shaped panel.
+	_check("three players still get quadrants", ShopLayout.rect_for(2, 3, screen).size.y, 540.0)
+	_check_bool(
+		"and the spare quadrant is reported for the wave line",
+		ShopLayout.free_rect(3, screen) == Rect2(Vector2(960, 540), Vector2(960, 540)), true
+	)
+	_check_bool("with none spare at four", ShopLayout.free_rect(4, screen) == Rect2(), true)
+
+	_check_bool("a quarter screen is not compact", ShopLayout.is_compact(ShopLayout.rect_for(0, 4, screen)), false)
 
 # --- assertions ------------------------------------------------------------
 

@@ -42,6 +42,7 @@ var _outcome_detail: Label
 func bind(p_run: RunModel, models: Array[EntityModel]) -> void:
 	run = p_run
 	run.run_ended.connect(_on_run_ended)
+	run.phase_changed.connect(_on_phase_changed)
 
 	_build_banner()
 	_build_overlay()
@@ -150,7 +151,14 @@ func _clock(seconds: float) -> String:
 	var whole := maxi(0, ceili(seconds))
 	return "%d:%02d" % [whole / 60, whole % 60]
 
+## The shop panels are the screen during their phase, and everything the HUD
+## shows is repeated in their headers. Leaving it up meant two currency
+## readouts, and at four players the corner panels landed on top of the shop.
+func _on_phase_changed(phase: WorldTypes.Phase) -> void:
+	visible = phase != WorldTypes.Phase.SHOP
+
 func _on_run_ended(outcome: RunTypes.Outcome) -> void:
+	visible = true
 	var won := outcome == RunTypes.Outcome.VICTORY
 	_outcome_label.text = "RUN COMPLETE" if won else "WIPED OUT"
 	_outcome_label.add_theme_color_override(

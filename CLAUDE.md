@@ -85,7 +85,8 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
   behaviors/ MovementBehavior, ChaseBehavior
 scenes/      the view — nodes, physics, rendering
-  ui/        Hud, PlayerPanel, PlayerPalette
+  ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout
+  input/     PlayerInput (device binding, movement + menus)
 content/     authored .tres: characters, enemies, weapons, items, waves, worlds
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
@@ -136,6 +137,27 @@ tally that "every 500 earned" effects hang on.
 `TargetSelector` (at whom). A pistol and a shotgun differ only by swapping
 `SpreadSingle` for `SpreadCone(8)`. Heat is an orthogonal layer on
 `WeaponModel`, available to every weapon; `heat_per_shot = 0` disables it.
+
+**The shop UI cannot use Godot's focus system.** Focus is ONE per viewport, so
+four panels cannot each hold their own. Every ShopPanel drives its own cursor
+from its own PlayerInput instead, and nothing about the shop is global state.
+That is also why device assignment had to stop being derived from the player
+index first: a panel needs to know which pad is its own.
+
+**Shop panels use the HUD's corner map.** 1 player takes the screen, 2 split it
+left and right, 3 and 4 take quadrants — P1 top-left, P2 top-right, P3
+bottom-left, P4 bottom-right, exactly as in combat, so a player learns where
+they are once. Three deliberately does not give somebody a full-width strip:
+that makes one panel a different SHAPE from the others, so it would have to work
+at three aspect ratios instead of two, and a visibly bigger panel for one person
+on a shared couch reads as unfair. The free quadrant is where the shared wave
+line goes.
+
+**Zero tier weight means "not yet", not "last resort".** Avoiding duplicate
+offers must never fall through to a tier the wave curve has switched off — it
+put a tier 4 item on wave 1 as soon as every other item had been drawn. Repeats
+are the correct fallback for a pool smaller than the shop; breaking the curve is
+not.
 
 **One shop per PLAYER, never one shop shared.** `RunModel.shops` is
 index-aligned with `players`, and each `ShopManager` draws from its own
@@ -290,11 +312,16 @@ patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
 per-player shop MODEL — rolling by tier weight, pipeline pricing, buying,
 selling, rerolling, stat payment and ready-up — with eight authored items.
 
-**The shop has no UI yet.** Everything above is reachable only from code and
-tests. `RunModel.set_player_ready()` is the intended way out of the shop phase
-and nothing can press it, so `auto_intermission` still closes the phase on a
-timer. The UI follows the HUD's rule: one panel per player, in that player's
-corner, because each of them has their own shop.
+The shop UI is playable: per-player panels laid out by player count, a cursor
+per player driven by that player's own device, offers, reroll, sell from the
+owned strip, a stat sheet that enumerates `StatSheet` rather than the enum, and
+ready-up. `auto_intermission` still runs as a fallback because nothing forces a
+player to press ready.
+
+**Still missing from the shop UI:** the character tile (its innate effects and
+starting stats — `DynamicEffect.describe()` is the source), item icons, and any
+text at all. `display_key` renders as the raw key through `tr()` until a
+translation is loaded, which is by design but looks like a placeholder.
 
 **No debug settings are currently active.**
 

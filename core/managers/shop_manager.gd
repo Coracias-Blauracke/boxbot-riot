@@ -188,10 +188,12 @@ func _roll(host: EntityModel, rng: RunRandom) -> void:
 
 	host.pipeline(Hooks.Hook.ROLL_SHOP_ITEMS, event)
 
+	var taken: Array[ItemData] = []
 	for slot in maxi(0, event.offer_count):
-		var item := _draw(event, rng)
+		var item := _draw(event, rng, taken)
 		if item == null:
 			continue
+		taken.append(item)
 
 		var offer := ShopOffer.new()
 		offer.item = item
@@ -220,14 +222,31 @@ func _slots_for(host: EntityModel) -> int:
 ## twenty items twenty times as likely as a tier holding one - the odds would
 ## then be decided by how much content happened to be authored rather than by
 ## the numbers on ShopData.
-func _draw(event: ShopRollEvent, rng: RunRandom) -> ItemData:
+func _draw(event: ShopRollEvent, rng: RunRandom, taken: Array[ItemData]) -> ItemData:
+	# Two passes: distinct items first, then repeats if the pool cannot fill the
+	# shop. A pool smaller than the shop is an authoring choice, not an error.
+	#
+	# ZERO WEIGHT IS EXCLUDED FROM BOTH. It is a stronger statement than "no
+	# duplicates" - it means this tier does not exist yet at this wave. Letting
+	# the dedupe pass fall through to it put a tier 4 item on wave 1 the moment
+	# every other item had already been drawn, which is exactly the thing the
+	# weight curve exists to prevent.
 	var by_tier: Dictionary = {}
-	for item in event.candidates:
-		if item == null:
-			continue
-		if not by_tier.has(item.tier):
-			by_tier[item.tier] = []
-		(by_tier[item.tier] as Array).append(item)
+	var skip_taken := not data.allow_duplicate_offers
+
+	for attempt in 2:
+		for item in event.candidates:
+			if item == null or event.weight_for_tier(item.tier) <= 0.0:
+				continue
+			if skip_taken and taken.has(item):
+				continue
+			if not by_tier.has(item.tier):
+				by_tier[item.tier] = []
+			(by_tier[item.tier] as Array).append(item)
+
+		if not by_tier.is_empty() or not skip_taken:
+			break
+		skip_taken = false
 
 	if by_tier.is_empty():
 		return null

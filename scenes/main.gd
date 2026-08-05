@@ -12,6 +12,7 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 @export var character_data: CharacterData
 @export var wave_table: WaveTable
 @export var shop_data: ShopData
+@export var stat_sheet: StatSheet
 @export var starting_weapons: Array[WeaponData] = []
 
 ## Local co-op, up to four. Player 0 takes keyboard and the first gamepad;
@@ -61,6 +62,9 @@ var player: Character
 ## never say why.
 var _fallback_pattern: SpawnPattern = SpawnRing.new()
 
+## Capture only. 0 leaves RunModel's own value alone.
+var _forced_intermission: float = 0.0
+
 var _circling: Array[Character] = []
 var _elapsed: float = 0.0
 
@@ -76,6 +80,7 @@ var _circle_rate: float = 1.6
 @onready var _actors: Node2D = $Actors
 @onready var _camera: ArenaCamera = $Camera2D
 @onready var _hud: Hud = $Hud
+@onready var _shop_screen: ShopScreen = $ShopScreen
 
 func _ready() -> void:
 	# Capture runs override the scene's player count, so a co-op state can be
@@ -92,11 +97,18 @@ func _ready() -> void:
 			_camera.default_zoom = float(arg.substr("--capture-zoom=".length()))
 		elif arg.begins_with("--capture-margin="):
 			_camera.group_margin = float(arg.substr("--capture-margin=".length()))
+		elif arg.begins_with("--capture-intermission="):
+			# The shop phase is four seconds, which is not long enough to
+			# reliably photograph. Holding it open is the only way to read the
+			# panel at each player count.
+			_forced_intermission = float(arg.substr("--capture-intermission=".length()))
 
 	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
 	run.revive_hp_fraction = revive_hp_fraction
 	run.shop_data = shop_data
+	if _forced_intermission > 0.0:
+		run.auto_intermission = _forced_intermission
 	run.wave_ended.connect(_on_wave_ended)
 	run.run_ended.connect(_on_run_ended)
 	_arena.bind(run.world)
@@ -112,6 +124,7 @@ func _ready() -> void:
 	for entry in players:
 		models.append(entry.model)
 	_hud.bind(run, models)
+	_shop_screen.bind(run, players, stat_sheet)
 
 	run.start_wave()
 	print("wave %d started, boss=%s, duration=%.0fs" % [

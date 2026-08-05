@@ -619,6 +619,18 @@ func _test_shop_rolls_respect_tier_weights() -> void:
 
 	_check_bool("tier 4 shows up once its weight has grown", late_tiers.has(4), true)
 
+	# REGRESSION. Avoiding duplicates used to fall through to a zero-weight tier
+	# once every other item had been drawn: the pool holds four items and the
+	# shop wants four slots, so the tier 4 item was the only distinct one left
+	# and went in on wave 1. Zero weight means "not yet", not "last resort".
+	shop.data.allow_duplicate_offers = false
+	var forced: Array = []
+	for attempt in 30:
+		shop.open(buyer, 1, rng)
+		forced.append_array(_tiers_offered(shop))
+	_check_bool("a zero-weight tier never fills a leftover slot", forced.has(4), false)
+	_check_bool("repeats are preferred to breaking the curve", forced.size() > 30, true)
+
 func _test_shops_are_independent_per_player() -> void:
 	# Two shops, ONE generator, different sub-streams. This is what stops player
 	# 1's rerolls from shifting what player 2 is offered.
