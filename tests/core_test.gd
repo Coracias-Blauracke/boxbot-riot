@@ -93,6 +93,7 @@ func _initialize() -> void:
 	_test_stat_payment_spends_the_stat_not_the_currency()
 	_test_shop_slot_count_comes_from_the_stat()
 	_test_modifier_text_reads_as_a_change_not_a_value()
+	_test_buying_an_authored_item_actually_changes_the_stat()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -825,6 +826,64 @@ func _test_modifier_text_reads_as_a_change_not_a_value() -> void:
 	_check_bool("less spread is an improvement", spread.is_improvement(-0.2), true)
 	_check_bool("more spread is not", spread.is_improvement(0.2), false)
 	_check_bool("more health is", flat.is_improvement(10.0), true)
+
+## END TO END on the REAL content, not on a fabricated item.
+##
+## Every other shop test builds items with no stats on them, so all of them
+## would still pass if buying moved nothing at all. This one goes through the
+## authored .tres, the authored pool and ShopManager.buy(), and then asks the
+## stat.
+func _test_buying_an_authored_item_actually_changes_the_stat() -> void:
+	var shop_data: ShopData = load("res://content/shop/default_shop.tres")
+	var plating: ItemData = load("res://content/items/scrap_plating.tres")
+	var sights: ItemData = load("res://content/items/machined_sights.tres")
+	if shop_data == null or plating == null or sights == null:
+		_failed += 1
+		printerr("  FAIL  authored shop content did not load")
+		return
+
+	_check_bool("the authored pool is not empty", shop_data.pool.is_empty(), false)
+
+	var shop := ShopManager.new()
+	shop.data = shop_data
+	shop.wave_number = 1
+
+	var buyer := _living(100.0)
+	buyer.add_currency(500)
+
+	# Placed by hand rather than rolled, so the assertion is about the purchase
+	# rather than about what the dice offered.
+	var offer := ShopOffer.new()
+	offer.item = plating
+	offer.price = shop.quote(buyer, plating).price
+	shop.offers = [offer]
+
+	var hp_before := buyer.get_max_hp()
+	_check_bool("scrap plating is bought", shop.buy(buyer, 0), true)
+	_check("and max HP actually moves by the authored +10", buyer.get_max_hp(), hp_before + 10.0)
+
+	# The other direction: an item whose whole point is a NEGATIVE modifier on a
+	# stat where less is better.
+	var spread_offer := ShopOffer.new()
+	spread_offer.item = sights
+	shop.offers = [spread_offer]
+
+	buyer.stats.add_modifier(StatTypes.Stat.SPREAD_ANGLE, StatTypes.Modifier.BASE, 10.0, &"weapon")
+	var spread_before := buyer.stats.get_stat(StatTypes.Stat.SPREAD_ANGLE)
+	_check_bool("machined sights are bought", shop.buy(buyer, 0), true)
+	_check_bool(
+		"spread went DOWN (%.1f -> %.1f)" % [spread_before, buyer.stats.get_stat(StatTypes.Stat.SPREAD_ANGLE)],
+		buyer.stats.get_stat(StatTypes.Stat.SPREAD_ANGLE) < spread_before, true
+	)
+	_check(
+		"ranged damage moves by the authored +3",
+		buyer.stats.get_stat(StatTypes.Stat.RANGED_DAMAGE), 3.0
+	)
+
+	# Selling has to hand the stat back, or an item is a one-way purchase that
+	# quietly keeps working after it is gone.
+	shop.sell(buyer, plating)
+	_check("selling gives the max HP back", buyer.get_max_hp(), hp_before)
 
 # --- assertions ------------------------------------------------------------
 
