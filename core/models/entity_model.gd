@@ -169,6 +169,13 @@ signal weapons_changed
 
 var weapons: Array[WeaponData] = []
 
+## The classes this entity's weapons count toward. Injected, because core/ may
+## not load content - the same way rng and the census arrive.
+var weapon_classes: WeaponClassSet = null:
+	set(value):
+		weapon_classes = value
+		_refresh_class_bonuses()
+
 ## Capacity, read off the WEAPON_SLOTS stat so a character starting with eight,
 ## an item granting one and a curse taking one away are all ordinary modifiers.
 func weapon_slots() -> int:
@@ -192,6 +199,7 @@ func add_weapon(weapon: WeaponData) -> bool:
 	if weapon == null or not has_free_weapon_slot():
 		return false
 	weapons.append(weapon)
+	_refresh_class_bonuses()
 	weapons_changed.emit()
 	return true
 
@@ -202,8 +210,39 @@ func remove_weapon(weapon: WeaponData) -> bool:
 	if index < 0:
 		return false
 	weapons.remove_at(index)
+	_refresh_class_bonuses()
 	weapons_changed.emit()
 	return true
+
+## How many carried weapons name this tag. Two copies of one blade is two.
+func weapon_tag_count(tag: StringName) -> int:
+	var total := 0
+	for weapon in weapons:
+		if weapon != null and weapon.tags.has(tag):
+			total += 1
+	return total
+
+## Strips every class bonus and reapplies from scratch.
+##
+## IDEMPOTENT ON PURPOSE, and for the reason EffectStatPerWorldCount is: the
+## count goes DOWN as well as up. Selling the third blade has to take the third
+## blade's bonus away, and an incremental version that adds on acquisition and
+## subtracts on loss breaks permanently the first time an event is missed. A
+## recompute cannot drift.
+##
+## The source is the class RESOURCE, so remove_all_from_source strips exactly
+## that class's contribution and nothing else - the same trick that lets an
+## expiring status remove only what it added when several overlap on one stat.
+func _refresh_class_bonuses() -> void:
+	if weapon_classes == null:
+		return
+
+	for entry in weapon_classes.classes:
+		if entry == null:
+			continue
+		stats.remove_all_from_source(entry)
+		for modifier in entry.modifiers_for(weapon_tag_count(entry.tag)):
+			stats.add_modifier(modifier.stat, modifier.modifier_type, modifier.value, entry)
 
 # --- currency --------------------------------------------------------------
 #

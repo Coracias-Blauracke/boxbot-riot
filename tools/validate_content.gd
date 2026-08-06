@@ -20,6 +20,7 @@ func _initialize() -> void:
 	for path in _collect_resources(CONTENT_ROOT):
 		_validate(path)
 
+	_validate_tags_name_real_classes()
 	_validate_source_is_english()
 
 	for warning in _warnings:
@@ -119,6 +120,10 @@ func _validate(path: String) -> void:
 		_validate_spawn_pattern(path, resource)
 	elif resource is WeaponData:
 		_validate_weapon(path, resource)
+	elif resource is WeaponClassData:
+		_validate_weapon_class(path, resource)
+	elif resource is WeaponClassSet:
+		_validate_weapon_class_set(path, resource)
 	elif resource is CharacterData:
 		_validate_character(path, resource)
 	elif resource is EntityData:
@@ -130,6 +135,14 @@ func _validate(path: String) -> void:
 ## kind and its payload have to agree.
 func _validate_weapon(path: String, weapon: WeaponData) -> void:
 	_validate_entity(path, weapon)
+
+	for tag in weapon.tags:
+		if tag == &"":
+			_errors.append("%s : has an empty tag" % path)
+			continue
+		if not _used_tags.has(tag):
+			_used_tags[tag] = []
+		(_used_tags[tag] as Array).append(path)
 
 	# A null entry in either table is silently skipped at runtime, so a deleted
 	# resource turns into a weapon that quietly stops caring about a stat.
@@ -410,6 +423,69 @@ func _validate_item(path: String, item: ItemData) -> void:
 
 	_validate_modifiers(path, item.static_stats)
 	_validate_effects(path, item.dynamic_effects)
+
+# --- weapon classes ---------------------------------------------------------
+#
+# Tags are strings matched by equality, which is an open invitation to a typo:
+# a weapon tagged &"blades" instead of &"blade" loads fine, validates fine as a
+# file, and simply never counts toward anything. Collected across the whole
+# content tree and checked once at the end, because no single file can see it.
+
+var _declared_tags: Dictionary = {}   # StringName -> true
+var _used_tags: Dictionary = {}       # StringName -> Array[String] of paths
+
+func _validate_weapon_class(path: String, weapon_class: WeaponClassData) -> void:
+	if weapon_class.tag == &"":
+		_errors.append("%s : weapon class has no tag, nothing can name it" % path)
+	else:
+		_declared_tags[weapon_class.tag] = true
+
+	if weapon_class.display_key.is_empty():
+		_errors.append("%s : empty display_key (translation key)" % path)
+	if weapon_class.tiers.is_empty():
+		_warnings.append("%s : weapon class has no tiers, holding them is worth nothing" % path)
+
+	var seen: Dictionary = {}
+	for i in weapon_class.tiers.size():
+		var tier: WeaponClassTier = weapon_class.tiers[i]
+		if tier == null:
+			_errors.append("%s : tiers[%d] is null (deleted resource?)" % [path, i])
+			continue
+		if tier.required <= 0:
+			_errors.append("%s : tiers[%d] requires %d weapons, so it is always on" % [path, i, tier.required])
+		# Bonuses are CUMULATIVE, so two tiers at the same count both apply and
+		# the file reads as though only one does.
+		if seen.has(tier.required):
+			_errors.append("%s : two tiers both require %d, and both will apply" % [path, tier.required])
+		seen[tier.required] = true
+		if tier.modifiers.is_empty():
+			_warnings.append("%s : tiers[%d] grants nothing" % [path, i])
+		_validate_modifiers(path, tier.modifiers)
+
+func _validate_weapon_class_set(path: String, set_data: WeaponClassSet) -> void:
+	if set_data.classes.is_empty():
+		_warnings.append("%s : class set is empty, no weapon can belong to anything" % path)
+
+	var seen: Dictionary = {}
+	for i in set_data.classes.size():
+		var entry: WeaponClassData = set_data.classes[i]
+		if entry == null:
+			_errors.append("%s : classes[%d] is null (deleted resource?)" % [path, i])
+			continue
+		# Two classes sharing a tag both match, so every bonus lands twice.
+		if seen.has(entry.tag):
+			_errors.append("%s : two classes share the tag '%s'" % [path, entry.tag])
+		seen[entry.tag] = true
+
+func _validate_tags_name_real_classes() -> void:
+	for tag in _used_tags:
+		if _declared_tags.has(tag):
+			continue
+		for path in _used_tags[tag]:
+			_warnings.append(
+				"%s : tagged '%s', which no authored class declares, so it counts toward nothing"
+				% [path, tag]
+			)
 
 ## A loadout that does not fit is the worst kind of authoring mistake: the run
 ## starts, the character walks around, and the weapons past the cap are simply

@@ -46,6 +46,16 @@ enum DeliveryKind {
 ## Capacity and dissipation are stats, so items can widen or vent them.
 @export var heat_per_shot: float = 0.0
 
+@export_group("Classes")
+## Which weapon classes this counts toward. PLURAL on purpose: a bayonet is a
+## blade and a gun, and it should raise both counts rather than forcing a choice
+## the fiction does not have.
+##
+## Tags are StringNames matched against WeaponClassData.tag. A tag naming no
+## authored class is inert rather than an error, so a weapon can be tagged
+## before its class exists - the validator warns about it.
+@export var tags: Array[StringName] = []
+
 @export_group("Scaling")
 ## Which of the WIELDER's stats feed this weapon's damage, and how much of each.
 ##
@@ -107,6 +117,11 @@ enum DeliveryKind {
 ## first time somebody buys a damage item and watches nothing happen.
 func detail_notes() -> PackedStringArray:
 	var notes := PackedStringArray()
+
+	# Classes first: which set a weapon belongs to is the reason to buy it over
+	# a stronger one, so it should not be the last line the eye reaches.
+	for tag in tags:
+		notes.append("class %s" % tag)
 
 	for scaling in damage_scaling:
 		if scaling != null:

@@ -22,6 +22,10 @@ signal restart_requested
 @export var shop_data: ShopData
 @export var stat_sheet: StatSheet
 
+## Which weapon classes exist and what holding several is worth. Injected into
+## every player model, because core/ may not load content itself.
+@export var weapon_classes: WeaponClassSet
+
 ## Local co-op, up to four. Player 0 takes keyboard and the first gamepad;
 ## the rest take a gamepad each.
 @export_range(1, 4) var player_count: int = 1
@@ -256,6 +260,9 @@ func _on_run_ended(outcome: RunTypes.Outcome) -> void:
 
 func _spawn_player(index: int) -> Character:
 	var model := EntityModel.new(character_data)
+	# Before any weapon arrives, so the starting loadout is counted too - though
+	# the recompute is idempotent either way.
+	model.weapon_classes = weapon_classes
 	run.add_player(model)
 
 	var node := CHARACTER_SCENE.instantiate() as Character

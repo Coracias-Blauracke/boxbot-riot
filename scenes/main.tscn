@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=13 format=3 uid="uid://ypmpa6ofxxh2"]
 
 [ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="11_hud"]
 [ext_resource type="Resource" path="res://content/shop/default_shop.tres" id="12_shop"]
 [ext_resource type="Resource" path="res://content/stats/stat_sheet.tres" id="13_stats"]
+[ext_resource type="Resource" path="res://content/weapons/classes/default_classes.tres" id="16_classes"]
 [ext_resource type="PackedScene" path="res://scenes/ui/shop_screen.tscn" id="14_shopui"]
 [ext_resource type="PackedScene" path="res://scenes/ui/pause_screen.tscn" id="15_pause"]
 
@@ -19,6 +20,7 @@ character_data = ExtResource("4_char")
 wave_table = ExtResource("5_waves")
 shop_data = ExtResource("12_shop")
 stat_sheet = ExtResource("13_stats")
+weapon_classes = ExtResource("16_classes")
 player_count = 1
 
 [node name="Arena" type="Node2D" parent="."]

@@ -125,6 +125,9 @@ func _initialize() -> void:
 	_test_every_purchasable_describes_itself_the_same_way()
 	_test_weapon_and_item_purchases_are_tallied_apart()
 	_test_the_authored_items_that_were_decorative_now_work()
+	_test_weapon_classes_grant_bonuses_by_count()
+	_test_a_weapon_counts_toward_every_tag_it_names()
+	_test_selling_takes_the_class_bonus_back()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
 	_test_leaving_closes_the_gap_rather_than_leaving_a_hole()
 
@@ -1636,6 +1639,120 @@ func _check(label: String, actual: float, expected: float) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  %s -> got %s, expected %s" % [label, actual, expected])
+
+# --- weapon classes ---------------------------------------------------------
+
+func _make_class(tag: StringName, steps: Array) -> WeaponClassData:
+	var made := WeaponClassData.new()
+	made.tag = tag
+	made.display_key = "CLASS_%s" % String(tag).to_upper()
+
+	# Each step is [required, stat, value] as a FLAT modifier.
+	for step in steps:
+		var modifier := StatModifier.new()
+		modifier.stat = step[1]
+		modifier.modifier_type = StatTypes.Modifier.FLAT
+		modifier.value = step[2]
+
+		var tier := WeaponClassTier.new()
+		tier.required = step[0]
+		tier.modifiers = [modifier]
+		made.tiers.append(tier)
+
+	return made
+
+func _make_tagged_weapon(tags: Array[StringName]) -> WeaponData:
+	var made := WeaponData.new()
+	made.display_key = "W"
+	made.tags = tags
+	return made
+
+func _class_set(entries: Array[WeaponClassData]) -> WeaponClassSet:
+	var made := WeaponClassSet.new()
+	made.classes = entries
+	return made
+
+func _test_weapon_classes_grant_bonuses_by_count() -> void:
+	print("\n-- weapon classes --")
+	var blade := _make_class(&"blade", [
+		[2, StatTypes.Stat.MELEE_DAMAGE, 4.0],
+		[4, StatTypes.Stat.MELEE_DAMAGE, 6.0],
+	])
+
+	var holder := _living(100.0)
+	holder.stats.add_modifier(StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, 6.0, &"body")
+	holder.weapon_classes = _class_set([blade])
+
+	var sword := _make_tagged_weapon([&"blade"] as Array[StringName])
+	holder.add_weapon(sword)
+	_check("one blade is below the threshold", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 0.0)
+
+	holder.add_weapon(sword)
+	_check("two blades cross the first tier", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
+	_check_int("two copies of one weapon count as two", holder.weapon_tag_count(&"blade"), 2)
+
+	holder.add_weapon(sword)
+	_check("three is still the first tier", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
+
+	# CUMULATIVE: crossing the second tier keeps the first. "Highest only" would
+	# read 6.0 here and could not express a class where each step adds.
+	holder.add_weapon(sword)
+	_check("four stacks both tiers", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 10.0)
+	_check_int("and the shop knows nothing is left to reach", blade.next_threshold(4), 0)
+	_check_int("while at two it names the next one", blade.next_threshold(2), 4)
+
+func _test_a_weapon_counts_toward_every_tag_it_names() -> void:
+	print("\n-- two tags at once --")
+	var blade := _make_class(&"blade", [[2, StatTypes.Stat.MELEE_DAMAGE, 4.0]])
+	var gun := _make_class(&"gun", [[2, StatTypes.Stat.RANGED_DAMAGE, 3.0]])
+
+	var holder := _living(100.0)
+	holder.stats.add_modifier(StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, 6.0, &"body")
+	holder.weapon_classes = _class_set([blade, gun])
+
+	# A bayonet is both, and should raise both counts rather than forcing a
+	# choice the fiction does not have.
+	var bayonet := _make_tagged_weapon([&"blade", &"gun"] as Array[StringName])
+	holder.add_weapon(bayonet)
+	holder.add_weapon(bayonet)
+
+	_check_int("it counted as a blade", holder.weapon_tag_count(&"blade"), 2)
+	_check_int("and as a gun", holder.weapon_tag_count(&"gun"), 2)
+	_check("both bonuses land", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
+	_check("at the same time", holder.stats.get_stat(StatTypes.Stat.RANGED_DAMAGE), 3.0)
+
+## THE ONE THAT MATTERS. A count goes DOWN as well as up, and an incremental
+## version that adds on acquisition and subtracts on loss breaks permanently the
+## first time an event is missed - exactly the bug WorldCensus exists to avoid.
+func _test_selling_takes_the_class_bonus_back() -> void:
+	print("\n-- selling a set --")
+	var blade := _make_class(&"blade", [
+		[2, StatTypes.Stat.MELEE_DAMAGE, 4.0],
+		[3, StatTypes.Stat.MELEE_DAMAGE, 6.0],
+	])
+
+	var holder := _living(100.0)
+	holder.stats.add_modifier(StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, 6.0, &"body")
+	holder.weapon_classes = _class_set([blade])
+
+	var sword := _make_tagged_weapon([&"blade"] as Array[StringName])
+	for i in 3:
+		holder.add_weapon(sword)
+	_check("three blades stack both tiers", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 10.0)
+
+	holder.remove_weapon(sword)
+	_check("selling one drops the second tier", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
+
+	holder.remove_weapon(sword)
+	_check("selling another drops the first", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 0.0)
+
+	# IDEMPOTENT: recomputing without anything changing must not stack a second
+	# copy on top of the first, which is what an add-only version would do.
+	# One added, because two were removed from three and one is still carried.
+	holder.add_weapon(sword)
+	_check("back to two blades", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
+	holder.weapon_classes = _class_set([blade])
+	_check("recomputing changes nothing", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
 
 # --- the four items that used to be decorative ------------------------------
 

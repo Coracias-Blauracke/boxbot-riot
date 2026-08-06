@@ -52,6 +52,7 @@ sweep_samples = 6
 [resource]
 script = ExtResource("1_weapon")
 display_key = "WEAPON_SPEAR"
+tags = Array[StringName]([&"blade"])
 tier = 2
 base_price = 40
 collider_radius = 6.0

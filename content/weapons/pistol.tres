@@ -44,6 +44,7 @@ script = ExtResource("5_target")
 [resource]
 script = ExtResource("1_weapon")
 display_key = "WEAPON_PISTOL"
+tags = Array[StringName]([&"gun"])
 tier = 1
 base_price = 25
 collider_radius = 6.0

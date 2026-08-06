@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 554 assertions across three suites, no editor, no game window
+# tests — 570 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -126,7 +126,8 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
   data/      .tres schemas: ShopEntryData (the base every purchasable shares),
              EntityData, CharacterData, EnemyData, WeaponData, ItemData,
-             StatScaling (which stat feeds a weapon, and how much), ...
+             StatScaling (which stat feeds a weapon, and how much),
+             WeaponClassData/Tier/Set (tags and what holding several is worth)
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
              (statuses carry StatusScaling: which stat feeds which axis)
   events/    EventPayload and its subclasses
@@ -143,7 +144,8 @@ scenes/      the view — nodes, physics, rendering
              PauseScreen, JoinView
   input/     PlayerInput (device binding, movement + menus),
              DeviceJoiner (watches devices that have NOT joined)
-content/     authored .tres: characters, enemies, weapons, items, projectiles,
+content/     authored .tres: characters, enemies, weapons (+ classes/), items,
+             projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
              stats/ (StatMetadata + the StatSheet reading order),
              statuses/ (bleed, poison, burn, slow)
@@ -310,6 +312,37 @@ red, because spread is a stat where lower is better and that was already known.
 `base_price` it never uses. That is the same trade as an arena carrying
 MELEE_DAMAGE and is made for the same reason: one shape every consumer can read
 beats a narrower one half of them special-case.
+
+**Weapon CLASSES are tags plus authored thresholds.** A weapon carries
+`tags`, PLURAL, and counts toward every class it names - a bayonet is a blade
+and a gun, and both counts rise, because forcing a choice the fiction does not
+have is how a tag system starts fighting its own content. `WeaponClassData`
+holds the tiers; `WeaponClassSet` says which classes a run knows about, for the
+same reason `ShopData` holds its pools rather than the shop scanning a folder.
+
+Set bonuses are the main build engine in this genre: they are why a player keeps
+a matching weapon over a stronger one, which is the most interesting decision
+the shop offers.
+
+**Tiers are CUMULATIVE, not highest-only.** Holding four of a class whose tiers
+are 2 and 4 grants both. Cumulative is strictly the more expressible rule - one
+big bonus at four is a single tier, while a class where each weapon feels like
+progress needs several, and "highest only" can only express the second by
+repeating the earlier numbers in every later tier, which drifts the moment
+somebody retunes one.
+
+**The bonus is RECOMPUTED, never adjusted.** `EntityModel._refresh_class_bonuses`
+strips every class's contribution by SOURCE and reapplies from the current
+count, because the count goes DOWN as well as up: selling the third blade has to
+take the third blade's bonus with it. An incremental version breaks permanently
+and silently the first time an event is missed - the same argument `WorldCensus`
+is built on. The source is the class RESOURCE, so one class's contribution can
+be stripped without touching another's.
+
+A tag naming no authored class is INERT rather than an error, so a weapon can be
+tagged before its class exists. The validator collects tags across the whole
+tree and warns about the ones nothing declares, because `&"blades"` for
+`&"blade"` loads fine, validates fine per file, and counts toward nothing.
 
 **The shop's KIND MIX is authored, never emergent.** `ShopData` holds two pools
 and a `weapon_offer_chance` rolled per slot, rather than one merged pool. A
@@ -643,6 +676,10 @@ player begins the run with START. It is deliberately a bare join screen - the
 solo/co-op toggle, character select and run rules it will grow are decisions
 taken before a run exists, and this is the place that has them.
 
+Weapons carry CLASS TAGS, and holding several of a class grants authored stat
+bonuses at authored thresholds - two classes exist so far, blade and gun, which
+is what the four authored weapons divide into naturally.
+
 WEAPONS ARE BOUGHT AND SOLD like items. They roll from their own pool at an
 authored chance, take a WEAPON_SLOTS slot, appear in the hands the moment the
 model changes, sit in the owned strip ahead of the items, and describe
@@ -913,9 +950,10 @@ withholds. Both are authored tables now, so that column costs nothing but a
 decision - and a fast weapon without one is the balance hole the whole mechanism
 exists to close.
 
-Authoring one is a single `.tres` and two lines of bookkeeping: give it `tier`
-and `base_price` (they come from `ShopEntryData` now), then add it to
-`default_shop.tres`'s `weapon_pool`. Nothing else — its stat lines are already
+Authoring one is a single `.tres` and three lines of bookkeeping: give it `tier`
+and `base_price` (they come from `ShopEntryData` now), list its `tags`, then add
+it to `default_shop.tres`'s `weapon_pool`. A new CLASS is its own `.tres` plus
+an entry in `default_classes.tres`. Nothing else — its stat lines are already
 `StatModifier`s, so the shop describes it, prices it, sells it and buys it back
 with no code. The validator fails a weapon in the pool priced at 0, warns when
 the pool and `weapon_offer_chance` disagree, and warns about a tier whose weight
