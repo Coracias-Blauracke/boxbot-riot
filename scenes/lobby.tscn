@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/lobby.gd" id="1_lobby"]
+[ext_resource type="Script" path="res://scenes/ui/join_view.gd" id="2_joinview"]
+
+[node name="Lobby" type="Node"]
+script = ExtResource("1_lobby")
+
+[node name="Ui" type="CanvasLayer" parent="."]
+layer = 4
+
+[node name="JoinView" type="Control" parent="Ui"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("2_joinview")

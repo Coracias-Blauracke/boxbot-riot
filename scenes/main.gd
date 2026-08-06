@@ -8,6 +8,14 @@ extends Node2D
 const CHARACTER_SCENE := preload("res://scenes/actors/character.tscn")
 const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 
+## Asked of whoever owns this scene, so the lobby can rebuild the run with the
+## SAME roster instead of reloading the tree and losing who was playing.
+##
+## Falls back to reload_current_scene() when nobody is listening, which keeps
+## main.tscn independently launchable - every capture command in CLAUDE.md
+## points straight at it, and none of them should need a lobby.
+signal restart_requested
+
 @export var world_data: WorldData
 @export var character_data: CharacterData
 @export var wave_table: WaveTable
@@ -196,6 +204,15 @@ func _restart() -> void:
 	# survives a reload and the fresh run would come up frozen with nothing on
 	# screen to say why.
 	get_tree().paused = false
+
+	# The lobby rebuilds this node with the roster it still holds. Reloading the
+	# whole tree would take the lobby with it and every player would have to
+	# join again after every death, which is the opposite of what a restart is
+	# for during a play-test.
+	if not restart_requested.get_connections().is_empty():
+		restart_requested.emit()
+		return
+
 	get_tree().reload_current_scene()
 
 func _quit() -> void:

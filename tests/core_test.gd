@@ -124,6 +124,8 @@ func _initialize() -> void:
 	_test_the_offer_mix_comes_from_the_chance_not_the_pool_sizes()
 	_test_every_purchasable_describes_itself_the_same_way()
 	_test_weapon_and_item_purchases_are_tallied_apart()
+	_test_a_device_joins_once_and_the_keyboard_is_a_device()
+	_test_leaving_closes_the_gap_rather_than_leaving_a_hole()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -1631,6 +1633,60 @@ func _check(label: String, actual: float, expected: float) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  %s -> got %s, expected %s" % [label, actual, expected])
+
+# --- who is playing ---------------------------------------------------------
+
+func _test_a_device_joins_once_and_the_keyboard_is_a_device() -> void:
+	print("\n-- joining --")
+	var roster := PlayerRoster.new()
+
+	_check_int("nobody has joined yet", roster.count(), 0)
+	_check_bool("the keyboard may join", roster.join(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_bool("the first pad may join", roster.join(0), true)
+	_check_int("both are in", roster.count(), 2)
+
+	# "Only one player on the keyboard" is NOT a rule of its own. It falls out of
+	# a device joining once, because the keyboard is one device - which is the
+	# whole reason the old keyboard-plus-pad-0 arrangement needed a special case.
+	_check_bool("the keyboard cannot join twice", roster.join(PlayerRoster.KEYBOARD_DEVICE), false)
+	_check_bool("nor can a pad already in", roster.join(0), false)
+	_check_int("nothing was added", roster.count(), 2)
+
+	# Join order is player order, everywhere downstream.
+	_check_int("first to press is P1", roster.index_of(PlayerRoster.KEYBOARD_DEVICE), 0)
+	_check_int("second is P2", roster.index_of(0), 1)
+	_check_int("a device that never joined has no index", roster.index_of(3), -1)
+
+	_check_bool("a third fits", roster.join(1), true)
+	_check_bool("and a fourth", roster.join(2), true)
+	_check_bool("the roster is full at four", roster.is_full(), true)
+	_check_bool("a fifth is refused", roster.join(3), false)
+	_check_int("four is the ceiling", roster.count(), PlayerRoster.MAX_PLAYERS)
+
+func _test_leaving_closes_the_gap_rather_than_leaving_a_hole() -> void:
+	print("\n-- leaving --")
+	var roster := PlayerRoster.new()
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+	roster.join(0)
+	roster.join(1)
+
+	_check_bool("the middle player leaves", roster.leave(0), true)
+	_check_int("two are left", roster.count(), 2)
+
+	# Every layout downstream is driven by the player COUNT: a hole would leave
+	# an empty HUD corner and a shop panel nobody drives.
+	_check_int("the keyboard is still P1", roster.index_of(PlayerRoster.KEYBOARD_DEVICE), 0)
+	_check_int("the third player moved up into P2", roster.index_of(1), 1)
+
+	_check_bool("leaving twice does nothing", roster.leave(0), false)
+	_check_bool("a freed slot can be rejoined", roster.join(0), true)
+	_check_int("and lands at the end", roster.index_of(0), 2)
+
+	# What the run is actually handed, and it must be a COPY: a run editing the
+	# roster it was given would rewrite the lobby behind its back.
+	var handed := roster.to_player_devices()
+	handed.append(99)
+	_check_int("the roster is unchanged by its reader", roster.count(), 3)
 
 # --- weapons as purchasables -----------------------------------------------
 

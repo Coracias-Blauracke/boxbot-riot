@@ -14,8 +14,14 @@ extends RefCounted
 ##
 ## Scene layer on purpose - it touches Input, which core/ may never do.
 
-## Device ids. Godot numbers pads from 0; -1 is our own marker for the keyboard.
-const KEYBOARD := -1
+## Device ids. Godot numbers pads from 0; the keyboard needs a marker that
+## cannot collide with one.
+##
+## Taken from PlayerRoster rather than declared again here, because the lobby
+## and the run have to agree on the number and scenes/ may depend on core/ while
+## core/ may never depend back. Two -1s in two layers is the kind of duplication
+## that survives until somebody changes one of them.
+const KEYBOARD := PlayerRoster.KEYBOARD_DEVICE
 
 ## Deadzone for treating a stick push as a discrete menu step.
 const STICK_THRESHOLD := 0.6

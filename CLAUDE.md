@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 500 assertions across three suites, no editor, no game window
+# tests — 523 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -49,8 +49,23 @@ behind the floor.
 
 Create the output directory first or `save_png` fails with error 7.
 
-`--capture-players=N` overrides `main.tscn`'s player count, so a co-op state can
-be photographed without editing the scene and remembering to put it back.
+**The game starts on `lobby.tscn` now, and `--capture` starts the run from
+there.** A scripted run has nobody to press SPACE, so without that every capture
+command in this file would sit in the lobby for ever. `--capture-players=N`
+fills the roster (keyboard first, then pads in order) and the run begins at
+once. `--capture-lobby` fills it and STAYS, which is the only way the join
+screen gets photographed.
+
+`main.tscn` is still directly launchable and nothing here requires a lobby:
+
+```bash
+"C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --path . res://scenes/main.tscn -- --capture ...
+```
+
+Launched that way it falls back to its own `player_count` export and restarts
+with `reload_current_scene()`. Both paths are verified; if one of them breaks,
+the difference is whether anything is connected to `main.gd`'s
+`restart_requested`.
 
 The scripted modes exist because the interesting states are hard to reach by
 accident:
@@ -63,6 +78,7 @@ accident:
 | `--capture-downed` | player 0 stands and dies while the rest kite in a WIDE circle and live — the only way to photograph one player down while the run continues |
 | `--capture-pause=N` | toggles the pause menu, which no scripted player can press START for; repeat it to resume |
 | `--capture-restart=N` | restarts the run, and photographs the result into `after_restart/` |
+| `--capture-lobby` | holds the lobby open with the roster filled, instead of starting the run |
 
 `--capture-intermission=N` holds the shop phase open (four seconds is not long
 enough to photograph) and `--capture-shop-owned` parks every shop cursor on the
@@ -116,13 +132,16 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   managers/  StatsManager, CounterManager, EffectDispatcher, StatusManager,
              ItemsManager, WaveDirector, RunRandom, WorldOverrides,
              ShopManager (+ ShopOffer), WorldCensus
-  models/    EntityModel, WorldModel, WeaponModel, RunModel
+  models/    EntityModel, WorldModel, WeaponModel, RunModel, PlayerRoster
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
   behaviors/ MovementBehavior, ChaseBehavior
 scenes/      the view — nodes, physics, rendering
-  ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout
-  input/     PlayerInput (device binding, movement + menus)
+  lobby.gd   the scene the game STARTS on; owns the roster and builds the run
+  ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout,
+             PauseScreen, JoinView
+  input/     PlayerInput (device binding, movement + menus),
+             DeviceJoiner (watches devices that have NOT joined)
 content/     authored .tres: characters, enemies, weapons, items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
              stats/ (StatMetadata + the StatSheet reading order),
@@ -182,8 +201,34 @@ gave player 0 the keyboard plus pad 0 and player N pad N, which cannot express
 three pads and one keyboard — the keyboard player and the first pad player
 collide on the same slot and move together. `PlayerInput` carries the binding
 and answers for BOTH walking and menus, because splitting those produces a
-player who can walk but cannot buy. `main.tscn`'s `player_devices` array is the
-placeholder until a join flow assigns them at runtime.
+player who can walk but cannot buy. `main.tscn`'s `player_devices` array is now
+what the LOBBY injects, and only an authored fallback when the scene is launched
+on its own.
+
+**A DEVICE JOINS ONCE, and "only one player on the keyboard" falls out of it.**
+`PlayerRoster` has no rule about keyboards, because the keyboard is one device;
+the old arrangement needed a special case only because it let player 0 hold the
+keyboard AND pad 0 at the same time. Join ORDER is player order, so whoever
+presses first is P1 in the lobby, in the corner map, in the shop and in the
+palette. Leaving CLOSES THE GAP rather than leaving a hole — every layout
+downstream is driven by the player count, and a hole would mean an empty corner
+and a shop panel nobody drives.
+
+The rules live in `core/` with no Input and no nodes, which is what lets them be
+tested headless; `DeviceJoiner` only watches buttons, and `JoinView` only draws.
+`PlayerInput.KEYBOARD` is taken from `PlayerRoster.KEYBOARD_DEVICE` rather than
+declared twice, because `scenes/` may depend on `core/` and never the reverse.
+
+**The LOBBY owns the run, not the other way round.** `main.tscn` is instantiated
+as a child with `player_count` and `player_devices` injected before
+`add_child()` — the same shape `main.gd` already uses to hand a `Character` its
+model. A run is never instantiated half-described, which is what makes the
+lobby the right home for everything that is decided BEFORE a run and re-decided
+between runs: a solo/co-op toggle, character select, run rules.
+
+Solo is deliberately NOT a second code path. It is one entry in the roster, and
+the run cannot tell the difference — which is why the toggle, when it arrives,
+is a branch in the lobby and nowhere else.
 
 **A device is polled ONCE per frame, guarded inside `PlayerInput`.** Two screens
 hold the same binding now — the pause menu reads every device in every phase, a
@@ -218,14 +263,25 @@ outcome banner still owns the middle of the screen, so the menu moves below it
 and draws no shade of its own — two stacked shades read as 0.92 alpha and
 blacked out the arena entirely.
 
-**Restart is a scene reload, and that is only honest because NOTHING OUTLIVES
-THE SCENE.** No autoloads, and every model hangs off the `RunModel` that
-`main.gd` builds in `_ready`. The day something does outlive it, restart starts
-leaking state into the next run silently. `get_tree().paused` is the one flag
-that does survive, because it lives on the tree rather than the scene, so the
-restart clears it first or the fresh run comes up frozen with nothing on screen
-to say why. `PauseScreen` emits `restart_requested`; `main.gd` owns the tree and
-is the only place that reloads it, which is the seam a main menu will need.
+**Restarting rebuilds the RUN, not the tree.** `PauseScreen` emits
+`restart_requested`, `main.gd` passes it up, and the lobby throws the run node
+away and instantiates a fresh one with the roster it still holds — so the people
+who were playing stay who they were and nobody re-joins after every death.
+
+`main.gd` falls back to `reload_current_scene()` when nothing is connected,
+which is what keeps `main.tscn` independently launchable. That fallback is only
+honest because nothing stateful outlives the scene: every model hangs off the
+`RunModel` built in `_ready`, and the single autoload (`EventBus`) holds signals
+and no state — nothing emits or connects to it today.
+
+(An earlier version of this section said "no autoloads". There is one. It has
+been declared since before the run model existed and three files mention it only
+to say they deliberately do not use it, so the conclusion held while the reason
+given for it did not.)
+
+`get_tree().paused` is the one flag that survives either path, because it lives
+on the TREE rather than the scene, so a restart clears it first or the fresh run
+comes up frozen with nothing on screen to say why.
 
 **Restart obeys `run_seed` and does not work around it.** A fixed seed replays
 the same run, which is what a fixed seed is FOR: dying on wave 4 and immediately
@@ -580,6 +636,12 @@ A run can be PAUSED and RESTARTED: any device opens one shared menu with resume,
 restart and quit, and the same menu opens itself when the run ends, so a wipe no
 longer means closing the executable.
 
+The game starts in a LOBBY: up to four players join by pressing SPACE or A on
+the device they intend to play with, one player per device, and any joined
+player begins the run with START. It is deliberately a bare join screen - the
+solo/co-op toggle, character select and run rules it will grow are decisions
+taken before a run exists, and this is the place that has them.
+
 WEAPONS ARE BOUGHT AND SOLD like items. They roll from their own pool at an
 authored chance, take a WEAPON_SLOTS slot, appear in the hands the moment the
 model changes, sit in the owned strip ahead of the items, and describe
@@ -615,8 +677,9 @@ that makes polishing now a mistake.
   because a scripted player never presses anything and would sit in the shop
   forever — any `--capture` gets 3 seconds unless `--capture-intermission=N`
   says otherwise.
-- `player_count` in `main.tscn` defaults to 1; raise it to test co-op, or pass
-  `--capture-players=N` for a capture run.
+- `player_count` and `player_devices` on `main.tscn` are now INJECTED by the
+  lobby and matter only when that scene is launched on its own. To test co-op,
+  join in the lobby or pass `--capture-players=N`.
 - The test character carries eight `starting_items` purely to exercise bleed:
   two barbed edges and six serrated rounds, which is +90% bleed chance on top of
   each item's own base and therefore certain on every ranged hit. Strip them
@@ -628,7 +691,7 @@ that makes polishing now a mistake.
 **Known gaps, worst first:** only FOUR WEAPONS are authored, which is now a
 content gap rather than an engine one — the acquisition path exists and the
 four axes cover most of what a weapon is, so the next ones are `.tres` files.
-Then: no join flow for co-op, no `BEAM` delivery,
+Then: no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
