@@ -26,5 +26,27 @@ var is_crit: bool = false
 ## "blocked X" rather than just the final number.
 var absorbed: float = 0.0
 
+## The target's defences, SEEDED from their stats before TAKE_DAMAGE runs and
+## resolved after it - the same shape StatusEvent.chance uses, and for the same
+## reason. An effect that wants to say "you cannot dodge fire" or "+8 armor
+## against melee" adjusts a number on the event; the model does the rolling and
+## the arithmetic. Neither the effect nor the model has to know about the other.
+var dodge_chance: float = 0.0
+var armor: float = 0.0
+
+## Set when the dodge roll took the hit away, so the view can say "MISS" rather
+## than drawing a zero.
+var dodged: bool = false
+
+## Whether this is a HIT rather than damage over time. Dodge applies only to
+## hits: dodging a tick of bleeding reads as nonsense and would quietly make
+## every status scale with the dodge stat.
+func is_hit() -> bool:
+	return damage_type in [
+		StatTypes.DamageType.MELEE,
+		StatTypes.DamageType.RANGED,
+		StatTypes.DamageType.ELEMENTAL,
+	]
+
 func final_amount() -> float:
 	return maxf(0.0, amount - absorbed)

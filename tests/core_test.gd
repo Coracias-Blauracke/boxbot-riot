@@ -129,6 +129,10 @@ func _initialize() -> void:
 	_test_a_weapon_counts_toward_every_tag_it_names()
 	_test_selling_takes_the_class_bonus_back()
 	_test_a_threshold_can_grant_a_behaviour_and_take_it_back()
+	_test_armor_halves_at_fifteen_and_never_reaches_all()
+	_test_dodge_is_capped_and_only_answers_hits()
+	_test_armor_takes_a_share_of_what_is_left()
+	_test_the_riot_shield_finally_does_something()
 	_test_merging_two_copies_frees_a_slot()
 	_test_a_full_rack_takes_a_purchase_only_when_it_merges()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
@@ -1799,6 +1803,107 @@ func _test_a_threshold_can_grant_a_behaviour_and_take_it_back() -> void:
 	holder.add_weapon(weapon)
 	holder.notify(Hooks.Hook.ON_KILL, EventPayload.new())
 	_check_int("and back on without stacking a second copy", spy.calls, 2)
+
+# --- defence ----------------------------------------------------------------
+
+func _armoured(armor: float, maximum: float = 1000.0) -> EntityModel:
+	var entity := _living(maximum)
+	entity.stats.add_modifier(StatTypes.Stat.ARMOR, StatTypes.Modifier.BASE, armor, &"test")
+	return entity
+
+## The anchor the whole curve is built from: fifteen armor halves the blow.
+## Diminishing in REDUCTION and linear in SURVIVAL, which is the property that
+## makes armor worth buying for ever without ever making anything untouchable.
+func _test_armor_halves_at_fifteen_and_never_reaches_all() -> void:
+	print("\n-- armor --")
+	_check("no armor takes it all", _hit(_armoured(0.0), 100.0), 100.0)
+	_check("five armor takes a quarter off", _hit(_armoured(5.0), 100.0), 75.0)
+	_check("fifteen halves it", _hit(_armoured(15.0), 100.0), 50.0)
+	_check("thirty leaves a third", _hit(_armoured(30.0), 100.0), 100.0 / 3.0)
+	_check("forty-five leaves a quarter", _hit(_armoured(45.0), 100.0), 25.0)
+
+	# The asymptote is the point. Something ALWAYS gets through, so effects that
+	# hang on taking damage cannot be switched off by stacking armor.
+	var mountain := _hit(_armoured(100000.0), 100.0)
+	_check_bool("absurd armor still lets something through", mountain > 0.0, true)
+	_check_bool("but almost nothing", mountain < 1.0, true)
+
+	# Effective health rises LINEARLY: every point is worth 1/15 of max HP,
+	# which is why there is no level at which armor stops paying.
+	_check("fifteen armor doubles effective health", 100.0 / _hit(_armoured(15.0), 100.0) * 100.0, 200.0)
+	_check("thirty triples it", 100.0 / _hit(_armoured(30.0), 100.0) * 100.0, 300.0)
+
+func _test_dodge_is_capped_and_only_answers_hits() -> void:
+	print("\n-- dodge --")
+	var lucky := _living(1000.0)
+	lucky.stats.add_modifier(StatTypes.Stat.DODGE, StatTypes.Modifier.BASE, 5.0, &"test")
+
+	# Capped in get_stat, so the STAT SHEET shows the ceiling too - a player
+	# stacking dodge past it can see that they have, instead of buying nothing.
+	_check("dodge is capped where the table says", lucky.stats.get_stat(StatTypes.Stat.DODGE), 0.6)
+
+	# Damage over time is not a blow and cannot be dodged. Without this every
+	# status would quietly scale with the dodge stat.
+	var certain := _living(1000.0)
+	certain.stats.add_modifier(StatTypes.Stat.DODGE, StatTypes.Modifier.BASE, 1.0, &"test")
+	certain.rng = RunRandom.new(4)
+
+	var bleed := DamageEvent.new()
+	bleed.amount = 20.0
+	bleed.damage_type = StatTypes.DamageType.BLEED
+	_check("a bleed tick cannot be dodged", certain.apply_damage(bleed), 20.0)
+
+	# A hit at the cap is avoided 60% of the time, so over many swings some land
+	# and some do not. Asserting the RANGE rather than a count keeps this from
+	# breaking when the RNG stream shifts for an unrelated reason.
+	var landed := 0
+	for i in 200:
+		var swing := DamageEvent.new()
+		swing.amount = 1.0
+		swing.damage_type = StatTypes.DamageType.MELEE
+		if certain.apply_damage(swing) > 0.0:
+			landed += 1
+	_check_bool("some blows still land at the cap", landed > 0, true)
+	_check_bool("and many do not", landed < 200, true)
+	_check_bool("the dodges were tallied", certain.counters.get_value(CounterTypes.Counter.DODGES) > 0, true)
+
+## ORDER, asserted rather than assumed. Flat absorption happens first and armor
+## takes its share of what remains; the other way round would charge armor
+## against damage an effect had already removed.
+func _test_armor_takes_a_share_of_what_is_left() -> void:
+	print("\n-- absorb then reduce --")
+	var target := _armoured(15.0)
+
+	var event := DamageEvent.new()
+	event.amount = 100.0
+	event.damage_type = StatTypes.DamageType.MELEE
+	# As though an effect had soaked a flat 20 during TAKE_DAMAGE.
+	event.absorbed = 20.0
+
+	# 80 remain, armor halves them, so 40 land - not 30, which is what taking
+	# half of the original 100 and then the flat 20 would give.
+	_check("armor halves the remainder", target.apply_damage(event), 40.0)
+
+## Against the AUTHORED file, because riot_shield has been documented as
+## decorative since it was written - it granted ARMOR, ARMOR did nothing, and
+## the item displayed perfectly while changing not one number in a fight.
+func _test_the_riot_shield_finally_does_something() -> void:
+	print("\n-- riot shield --")
+	var shield := load("res://content/items/riot_shield.tres") as ItemData
+	_check_bool("it loads", shield != null, true)
+
+	var bare := _living(1000.0)
+	var guarded := _living(1000.0)
+	guarded.add_item(shield)
+
+	var without := _hit(bare, 100.0)
+	var with := _hit(guarded, 100.0)
+	_check_bool("wearing it reduces the blow", with < without, true)
+
+	# The exact figure follows from the curve and the item's authored ARMOR, so
+	# retuning either shows up here rather than in a play-test six weeks later.
+	var armor := guarded.stats.get_stat(StatTypes.Stat.ARMOR)
+	_check("by exactly what the curve says", with, 100.0 * (1.0 - StatTypes.armor_reduction(armor)))
 
 # --- merging ----------------------------------------------------------------
 

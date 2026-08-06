@@ -99,6 +99,11 @@ func get_stat(stat: StatTypes.Stat) -> float:
 	)
 	if StatTypes.FLOORS.has(stat):
 		value = maxf(value, StatTypes.FLOORS[stat])
+	# Capped HERE rather than where the stat is used, so every reader sees the
+	# same number - including the stat sheet, which would otherwise keep
+	# counting up while the game had stopped listening.
+	if StatTypes.CAPS.has(stat):
+		value = minf(value, StatTypes.CAPS[stat])
 	return value
 
 func has_source(source: Variant) -> bool:

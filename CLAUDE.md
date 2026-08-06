@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 595 assertions across three suites, no editor, no game window
+# tests — 613 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -881,8 +881,8 @@ that same pattern with different numbers.
 
 | state | stats |
 |---|---|
-| **read by something** | 35 of 45 |
-| **cheap to wire** | ARMOR, LIFESTEAL, DODGE, HP_REGEN, CURRENCY_GAIN — one small effect class each, the mechanism already exists |
+| **read by something** | 37 of 45 |
+| **cheap to wire** | LIFESTEAL, HP_REGEN, CURRENCY_GAIN — the first two are one decision through CALCULATE_HEAL, as ARMOR and DODGE were one decision through TAKE_DAMAGE |
 | **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
 
 **Do not measure this with `grep "Stat.<NAME>"` alone.** That was the method
@@ -979,13 +979,33 @@ ad-hoc formulas that do not compose. LIFESTEAL and HP_REGEN have the same
 problem through `CALCULATE_HEAL`. The plan is to settle them together once the
 item list shows what the stats are actually for.
 
-Armor is the instructive case: `EffectArmorFromMaxHp` already reduces damage
-through `DamageEvent.absorbed`, so the pipeline plumbing works. What is missing
-is only the bridge from the `ARMOR` STAT into it.
+**ARMOR and DODGE are done, and were settled together as that rule demands.**
+Dodge is rolled first, armor takes a share of what is left:
 
-Two of the twenty-four authored items are decorative because of this and are known
-to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
-display correctly and change nothing. Two is the count again: the four that were
+- `reduction = armor / (armor + StatTypes.ARMOR_HALF_POINT)`, the half point
+  being 15. Diminishing in REDUCTION and linear in SURVIVAL - every point adds
+  1/15 of the holder's health as effective health, so armor never stops paying,
+  while reduction approaches 1.0 without reaching it. Something always gets
+  through, which is what keeps "when you take damage" effects alive at any
+  armor value.
+- `StatTypes.CAPS` is the twin of `FLOORS` and holds DODGE at 0.6. Applied in
+  `get_stat`, so the capped value is what the STAT SHEET shows too and a player
+  can see they have stopped gaining.
+- Dodge answers HITS only, via `DamageEvent.is_hit()`. Dodging a tick of
+  bleeding reads as nonsense and would make every status scale with dodge.
+- Armor takes its share of what REMAINS after flat absorption, never of the
+  original amount, or a hit an effect already soaked would be charged twice.
+
+Both are seeded onto `DamageEvent` before `TAKE_DAMAGE` and resolved after it -
+the shape `StatusEvent.chance` uses - so "you cannot dodge fire" or "+8 armor
+against melee" is an effect adjusting a number, with the model doing the rolling.
+
+`riot_shield` therefore works now, asserted against the authored file. LIFESTEAL
+and HP_REGEN remain, and remain ONE decision through `CALCULATE_HEAL`.
+
+ONE of the twenty-four authored items is still decorative because of this:
+`bloodstone` grants LIFESTEAL, displays correctly and changes nothing.
+`riot_shield` was the other and works now. Two is the count again: the four that were
 decorative because their stat never crossed from holder to weapon now work,
 which was a bug rather than a deferral and is fixed above.
 

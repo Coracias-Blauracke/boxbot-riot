@@ -375,11 +375,30 @@ func apply_damage(event: DamageEvent) -> float:
 	# Offence first with the target now known, then defence - the same two-phase
 	# shape statuses use. The attacker gets to say "more damage to burning
 	# things" before the victim gets to say "I resist fire".
+	# Seeded BEFORE the pipeline so an effect can adjust either, and resolved
+	# after it so the roll happens once, on the final numbers.
+	event.dodge_chance = stats.get_stat(StatTypes.Stat.DODGE)
+	event.armor = stats.get_stat(StatTypes.Stat.ARMOR)
+
 	if event.source != null:
 		event.source.pipeline(Hooks.Hook.ON_OUTGOING_DAMAGE, event)
 	pipeline(Hooks.Hook.TAKE_DAMAGE, event)
 	if event.cancelled:
 		return 0.0
+
+	if _rolls_a_dodge(event):
+		event.dodged = true
+		event.cancelled = true
+		counters.add(CounterTypes.Counter.DODGES)
+		notify(Hooks.Hook.ON_DAMAGE_TAKEN, event)
+		return 0.0
+
+	# Armor takes a share of WHAT IS LEFT, not of the original amount: an effect
+	# that already absorbed a flat 10 has removed that damage, and charging
+	# armor against it again would count the same hit twice.
+	var remaining := event.final_amount()
+	if remaining > 0.0 and event.armor > 0.0:
+		event.absorbed += remaining * StatTypes.armor_reduction(event.armor)
 
 	var final := event.final_amount()
 
@@ -404,6 +423,15 @@ func apply_damage(event: DamageEvent) -> float:
 			event.source.notify(Hooks.Hook.ON_KILL, event)
 
 	return final
+
+## DODGE is a chance to take NOTHING, so it belongs to hits alone - see
+## DamageEvent.is_hit(). Rolled BEFORE armor is applied because avoiding a blow
+## and softening one are different questions, and the other order would have
+## armor reducing damage that was never going to land.
+func _rolls_a_dodge(event: DamageEvent) -> bool:
+	if event.dodge_chance <= 0.0 or not event.is_hit():
+		return false
+	return rng.chance(RunRandom.Stream.COMBAT, event.dodge_chance)
 
 func set_hp(value: float) -> void:
 	var maximum := get_max_hp()
