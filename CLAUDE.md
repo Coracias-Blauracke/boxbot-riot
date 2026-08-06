@@ -481,11 +481,19 @@ that makes polishing now a mistake.
   says otherwise.
 - `player_count` in `main.tscn` defaults to 1; raise it to test co-op, or pass
   `--capture-players=N` for a capture run.
+- The test character carries eight `starting_items` purely to exercise bleed:
+  two barbed edges and six serrated rounds, which is +90% bleed chance on top of
+  each item's own base and therefore certain on every ranged hit. Strip them
+  before judging anything about balance.
 - `death_rule` is an export on `main.tscn`. When challenge modes arrive it wants
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps:** no menus or pause, no join flow for co-op, no `BEAM` delivery,
+**Known gaps, worst first:** there is NO WAY TO RESTART OR PAUSE a run. Nothing
+calls `reload_current_scene` and nothing touches `get_tree().paused`, so a wipe
+means closing the executable and launching it again. That is the single biggest
+obstacle to a play-testing session and should be fixed before content is judged.
+Then: no join flow for co-op, no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
@@ -580,17 +588,22 @@ without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
 
-### Thirteen stats exist and do nothing, ON PURPOSE
-
-Measured, not guessed - grep for `Stat.<NAME>` outside `stat_types.gd` and the
-metadata:
+### Ten of the 45 stats do nothing, ON PURPOSE
 
 | state | stats |
 |---|---|
-| **wired** (24) | MAX_HP, MELEE_DAMAGE, RANGED_DAMAGE, ATTACK_SPEED, CRIT_CHANCE, CRIT_MULTIPLIER, RANGE, PIERCING, BOUNCING, MOVEMENT_SPEED, WEAPON_SLOTS, SHOP_SLOTS, POISON_DAMAGE, SPREAD_ANGLE, PROJECTILE_SPEED, HEAT_CAPACITY, HEAT_DISSIPATION, RECOIL, MAP_SIZE |
+| **read by something** | 35 of 45 |
 | **cheap to wire** | ARMOR, LIFESTEAL, DODGE, HP_REGEN, CURRENCY_GAIN — one small effect class each, the mechanism already exists |
-| **needs content too** | STATUS_CHANCE, BLEED_DAMAGE, BURN_DAMAGE — plus authored `StatusEffect.tres`, of which there are currently none |
 | **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
+
+**Do not measure this with `grep "Stat.<NAME>"` alone.** That was the method
+here and it is now wrong: the eleven per-status axes plus `STATUS_CHANCE` and
+the three status damage stats are reached by a `.tres` naming them through
+`StatusScaling`, so no code ever mentions them and the grep reports them dead.
+Count the content too, or the number will be off by fifteen.
+
+The status stats used to be a third row waiting on authored content. That
+content exists now, which is why the row is gone.
 
 **DO NOT wire these one at a time as they come up.** They are not independent:
 ARMOR, DODGE and MAX_HP are one defensive system, and whether dodge is checked
