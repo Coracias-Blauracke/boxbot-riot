@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 459 assertions across three suites, no editor, no game window
+# tests — 595 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -49,8 +49,23 @@ behind the floor.
 
 Create the output directory first or `save_png` fails with error 7.
 
-`--capture-players=N` overrides `main.tscn`'s player count, so a co-op state can
-be photographed without editing the scene and remembering to put it back.
+**The game starts on `lobby.tscn` now, and `--capture` starts the run from
+there.** A scripted run has nobody to press SPACE, so without that every capture
+command in this file would sit in the lobby for ever. `--capture-players=N`
+fills the roster (keyboard first, then pads in order) and the run begins at
+once. `--capture-lobby` fills it and STAYS, which is the only way the join
+screen gets photographed.
+
+`main.tscn` is still directly launchable and nothing here requires a lobby:
+
+```bash
+"C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --path . res://scenes/main.tscn -- --capture ...
+```
+
+Launched that way it falls back to its own `player_count` export and restarts
+with `reload_current_scene()`. Both paths are verified; if one of them breaks,
+the difference is whether anything is connected to `main.gd`'s
+`restart_requested`.
 
 The scripted modes exist because the interesting states are hard to reach by
 accident:
@@ -61,6 +76,10 @@ accident:
 | `--capture-circle` | a tight circle keeps the player inside the swarm, which is what exposes missing separation |
 | `--capture-scatter` | drives players to opposite corners to check the camera holds all of them |
 | `--capture-downed` | player 0 stands and dies while the rest kite in a WIDE circle and live — the only way to photograph one player down while the run continues |
+| `--capture-pause=N` | toggles the pause menu, which no scripted player can press START for; repeat it to resume |
+| `--capture-restart=N` | restarts the run, and photographs the result into `after_restart/` |
+| `--capture-lobby` | holds the lobby open with the roster filled, instead of starting the run |
+| `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
 
 `--capture-intermission=N` holds the shop phase open (four seconds is not long
 enough to photograph) and `--capture-shop-owned` parks every shop cursor on the
@@ -68,6 +87,27 @@ owned strip. The second one exists because **a UI state that needs input cannot
 otherwise be photographed at all**, which is a real hole in how this repo
 verifies the scene layer — every selected, hovered or focused state is invisible
 to a capture run until something can put the cursor there.
+
+`--capture-pause=N` asks for the pause menu N seconds in, and `--capture-restart=N`
+restarts the run at N seconds. Both close that same hole for the pause screen.
+Two things about them are load-bearing rather than incidental:
+
+- `--capture-pause` calls `PauseScreen.request_toggle()`, **not `open()`**, so it
+  goes through the same gate the button does. Pointed at the shop phase it
+  photographs a shop, because that is what the button would do there. A
+  verification path that skips the gate verifies nothing.
+- It TOGGLES and may be repeated: `--capture-pause=5 --capture-pause=8.2` pauses
+  and then resumes. One entry alone freezes the run and every later shot reads
+  the same numbers, which proves nothing about getting going again.
+- The restarted pass writes into `<capture-dir>/after_restart/` rather than over
+  the first pass. The two sets of PNGs ARE the evidence, so one overwriting the
+  other destroys the measurement it was taken for. The restart also fires once
+  per process — the reloaded scene reads the same command line, and without a
+  static guard it reloads for ever.
+
+Reaching the shop at all needs players who survive wave one, so a shop capture
+is `--capture-players=2 --capture-downed --capture-intermission=N`. The default
+scripted walk pins the player in a corner and dies at about wave second 16.
 
 `--capture-zoom=N` and `--capture-margin=N` override `ArenaCamera` so framing
 can be A/B'd with one variable changed. Note `group_margin` caps how far
@@ -85,21 +125,28 @@ stay inside the horde and die before the wave can end. Nothing is then observed.
 ```
 core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencies
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
-  data/      .tres schemas: EntityData, CharacterData, EnemyData, WeaponData, ...
+  data/      .tres schemas: ShopEntryData (the base every purchasable shares),
+             EntityData, CharacterData, EnemyData, WeaponData, ItemData,
+             StatScaling (which stat feeds a weapon, and how much),
+             WeaponClassData/Tier/Set (tags and what holding several is worth)
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
              (statuses carry StatusScaling: which stat feeds which axis)
   events/    EventPayload and its subclasses
   managers/  StatsManager, CounterManager, EffectDispatcher, StatusManager,
              ItemsManager, WaveDirector, RunRandom, WorldOverrides,
              ShopManager (+ ShopOffer), WorldCensus
-  models/    EntityModel, WorldModel, WeaponModel, RunModel
+  models/    EntityModel, WorldModel, WeaponModel, RunModel, PlayerRoster
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
   behaviors/ MovementBehavior, ChaseBehavior
 scenes/      the view — nodes, physics, rendering
-  ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout
-  input/     PlayerInput (device binding, movement + menus)
-content/     authored .tres: characters, enemies, weapons, items, projectiles,
+  lobby.gd   the scene the game STARTS on; owns the roster and builds the run
+  ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout,
+             PauseScreen, JoinView
+  input/     PlayerInput (device binding, movement + menus),
+             DeviceJoiner (watches devices that have NOT joined)
+content/     authored .tres: characters, enemies, weapons/ (12 families x 4
+             tiers, + classes/), items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
              stats/ (StatMetadata + the StatSheet reading order),
              statuses/ (bleed, poison, burn, slow)
@@ -158,8 +205,221 @@ gave player 0 the keyboard plus pad 0 and player N pad N, which cannot express
 three pads and one keyboard — the keyboard player and the first pad player
 collide on the same slot and move together. `PlayerInput` carries the binding
 and answers for BOTH walking and menus, because splitting those produces a
-player who can walk but cannot buy. `main.tscn`'s `player_devices` array is the
-placeholder until a join flow assigns them at runtime.
+player who can walk but cannot buy. `main.tscn`'s `player_devices` array is now
+what the LOBBY injects, and only an authored fallback when the scene is launched
+on its own.
+
+**A DEVICE JOINS ONCE, and "only one player on the keyboard" falls out of it.**
+`PlayerRoster` has no rule about keyboards, because the keyboard is one device;
+the old arrangement needed a special case only because it let player 0 hold the
+keyboard AND pad 0 at the same time. Join ORDER is player order, so whoever
+presses first is P1 in the lobby, in the corner map, in the shop and in the
+palette. Leaving CLOSES THE GAP rather than leaving a hole — every layout
+downstream is driven by the player count, and a hole would mean an empty corner
+and a shop panel nobody drives.
+
+The rules live in `core/` with no Input and no nodes, which is what lets them be
+tested headless; `DeviceJoiner` only watches buttons, and `JoinView` only draws.
+`PlayerInput.KEYBOARD` is taken from `PlayerRoster.KEYBOARD_DEVICE` rather than
+declared twice, because `scenes/` may depend on `core/` and never the reverse.
+
+**The LOBBY owns the run, not the other way round.** `main.tscn` is instantiated
+as a child with `player_count` and `player_devices` injected before
+`add_child()` — the same shape `main.gd` already uses to hand a `Character` its
+model. A run is never instantiated half-described, which is what makes the
+lobby the right home for everything that is decided BEFORE a run and re-decided
+between runs: a solo/co-op toggle, character select, run rules.
+
+Solo is deliberately NOT a second code path. It is one entry in the roster, and
+the run cannot tell the difference — which is why the toggle, when it arrives,
+is a branch in the lobby and nowhere else.
+
+**A device is polled ONCE per frame, guarded inside `PlayerInput`.** Two screens
+hold the same binding now — the pause menu reads every device in every phase, a
+shop panel reads its own — and a second `poll()` in one frame DESTROYS the edges
+the first produced: `triggered()` is true only on the frame a button goes down,
+so the second caller sees "already held" and reports nothing. The guard makes
+the first poller of the frame win and everybody read the same answer. The
+alternative was a rule saying exactly one screen may poll at a time, which is
+the kind of invariant that holds right up until a third screen exists.
+
+**The pause menu is ONE menu for the whole couch, driven by every device.**
+Deliberately the opposite of the shop, and for the same reason the shop is the
+way it is: a shop panel gets its own cursor because each player is deciding
+something different, whereas here there is a single decision that applies to
+everybody. Binding it to whichever device opened it would mean a pad going flat
+can strand the run. Who reaches for the stick is a couch problem.
+
+**Pause shares READY's physical button, and the PHASE says which it is.** START
+on a pad, ESC on the keyboard. The shop has no clock and closes only when every
+player declares ready, so it is already a stopped state with nothing to pause,
+and `PauseScreen` refuses to open during it. Giving pause a button of its own
+would have spent the one button every player already knows. Polling continuously
+in every phase is what keeps this honest: a menu that only started polling once
+the shop closed would see START still held and open itself the instant somebody
+readied up.
+
+**The pause menu is also the run-over screen.** When the run ends it opens
+itself with RESUME dropped, because "the run is over and there is no way to
+start another" was the same dead end as having no pause at all. A second screen
+saying the same three things would be two things to keep in step. The HUD's
+outcome banner still owns the middle of the screen, so the menu moves below it
+and draws no shade of its own — two stacked shades read as 0.92 alpha and
+blacked out the arena entirely.
+
+**Restarting rebuilds the RUN, not the tree.** `PauseScreen` emits
+`restart_requested`, `main.gd` passes it up, and the lobby throws the run node
+away and instantiates a fresh one with the roster it still holds — so the people
+who were playing stay who they were and nobody re-joins after every death.
+
+`main.gd` falls back to `reload_current_scene()` when nothing is connected,
+which is what keeps `main.tscn` independently launchable. That fallback is only
+honest because nothing stateful outlives the scene: every model hangs off the
+`RunModel` built in `_ready`, and the single autoload (`EventBus`) holds signals
+and no state — nothing emits or connects to it today.
+
+(An earlier version of this section said "no autoloads". There is one. It has
+been declared since before the run model existed and three files mention it only
+to say they deliberately do not use it, so the conclusion held while the reason
+given for it did not.)
+
+`get_tree().paused` is the one flag that survives either path, because it lives
+on the TREE rather than the scene, so a restart clears it first or the fresh run
+comes up frozen with nothing on screen to say why.
+
+**Restart obeys `run_seed` and does not work around it.** A fixed seed replays
+the same run, which is what a fixed seed is FOR: dying on wave 4 and immediately
+trying that exact wave 4 again. A restart that quietly reseeded would take away
+the only tool for retrying one situation, and the way to get a different run is
+already the authored 0.
+
+**A weapon and an item are the SAME transaction.** Both roll by tier, price
+through `CALCULATE_PRICE` per buyer, pay in currency or in a stat, appear in the
+owned strip and sell back. `ShopEntryData` is the base that says so, and the
+only thing subclasses override is what happens at the instant of acquisition -
+an item pushes modifiers into `StatsManager`, a weapon takes a slot. The
+alternative was a `kind` enum and a branch at every one of those sites, which
+costs a branch per KIND per SITE for ever; at a hundred weapons it is the sites
+that get expensive, never the content.
+
+`modifiers()` and `effects()` live there because the two shapes were ALREADY
+identical under different names, and `ShopPanel` was already flattening them by
+hand to put the character in the owned strip. Naming it means the detail block
+derives a weapon's description with no new code at all - a captured shop shows
+`WEAPON_PISTOL` listing `STAT_RANGED_DAMAGE +12` and `STAT_SPREAD_ANGLE +3` in
+red, because spread is a stat where lower is better and that was already known.
+
+`EntityData extends ShopEntryData`, so an enemy carries a `tier` and a
+`base_price` it never uses. That is the same trade as an arena carrying
+MELEE_DAMAGE and is made for the same reason: one shape every consumer can read
+beats a narrower one half of them special-case.
+
+**Weapons are FAMILIES; duplicates are carried, not folded together.**
+`WeaponData.upgrades_into` is a CHAIN rather than a family id plus a tier
+number, because a chain cannot disagree with itself - an id scheme has to answer
+what happens when two weapons claim the same family at one tier, or when a tier
+is missing from the middle, and both are states a validator would need invented
+rules for.
+
+Two carried copies merge into one of the next tier, and that is a PLAYER ACTION
+in the shop, not something the model does on sight. The whole decision depends
+on it: four copies of one weapon complete a class set, one merged copy is
+stronger, and six slots mean you cannot have both. A model that merged
+automatically would take the decision away AND make the class thresholds
+unreachable, because a count of four could never exist.
+
+**Auto-merge fires in exactly one case**: the rack is full and the weapon bought
+duplicates one already carried that has a next tier. Without that,
+`can_take_weapon` would refuse and merging would become impossible exactly when
+it is most wanted - late, with six weak weapons and nowhere to put a seventh. A
+top-tier weapon has nothing to merge into, so a full rack still refuses it.
+
+**The owned strip opens a MENU, and that is a fix as much as a feature.**
+ACCEPT used to sell whatever the cursor was on, which the cursor-reset comment
+in `ShopPanel` already called a hazard. Now it opens MERGE / SELL / CLOSE and
+the destructive option has to be chosen. Merging never asks which copy to
+combine with: every duplicate is identical, so a picker would be a question with
+one answer.
+
+The validator walks the chain for loops, for a tier or price that goes the wrong
+way, and for a tag QUIETLY DROPPED by an upgrade - that last one breaks
+set-building invisibly, because merging two blades would take the blade count
+down by two.
+
+**Weapon CLASSES are tags plus authored thresholds.** A weapon carries
+`tags`, PLURAL, and counts toward every class it names - a bayonet is a blade
+and a gun, and both counts rise, because forcing a choice the fiction does not
+have is how a tag system starts fighting its own content. `WeaponClassData`
+holds the tiers; `WeaponClassSet` says which classes a run knows about, for the
+same reason `ShopData` holds its pools rather than the shop scanning a folder.
+
+Set bonuses are the main build engine in this genre: they are why a player keeps
+a matching weapon over a stronger one, which is the most interesting decision
+the shop offers.
+
+**A threshold may grant a BEHAVIOUR, not only stats.** `WeaponClassTier` carries
+`effects` beside `modifiers`, because the design asked for a class that gives
+nothing from one to five and something powerful at six - which a stat line
+cannot say. The recompute registers and unregisters them with the same
+strip-and-reapply that handles the numbers, and strips what those effects
+themselves added first, through the INSTANCE rather than the class, exactly as
+`ItemsManager` does when an item leaves.
+
+Thresholds are authored individually and NEED NOT BE CONTIGUOUS. Every count
+from one to six, or nothing until six - both are just which tiers exist in the
+array, and neither costs anything the other does not.
+
+**Tiers are CUMULATIVE, not highest-only.** Holding four of a class whose tiers
+are 2 and 4 grants both. Cumulative is strictly the more expressible rule - one
+big bonus at four is a single tier, while a class where each weapon feels like
+progress needs several, and "highest only" can only express the second by
+repeating the earlier numbers in every later tier, which drifts the moment
+somebody retunes one.
+
+**The bonus is RECOMPUTED, never adjusted.** `EntityModel._refresh_class_bonuses`
+strips every class's contribution by SOURCE and reapplies from the current
+count, because the count goes DOWN as well as up: selling the third blade has to
+take the third blade's bonus with it. An incremental version breaks permanently
+and silently the first time an event is missed - the same argument `WorldCensus`
+is built on. The source is the class RESOURCE, so one class's contribution can
+be stripped without touching another's.
+
+A tag naming no authored class is INERT rather than an error, so a weapon can be
+tagged before its class exists. The validator collects tags across the whole
+tree and warns about the ones nothing declares, because `&"blades"` for
+`&"blade"` loads fine, validates fine per file, and counts toward nothing.
+
+**The shop's KIND MIX is authored, never emergent.** `ShopData` holds two pools
+and a `weapon_offer_chance` rolled per slot, rather than one merged pool. A
+merged pool would let the mix be decided by how much content happens to exist -
+authoring thirty weapons would silently make items rarer and invalidate every
+balance judgement made before it. That is the same argument already written into
+`ShopManager._draw` for weighting TIERS rather than items, and the suite asserts
+it directly: with five weapons against one item, chance 0 offers no weapons and
+chance 1 offers no items.
+
+A slot whose rolled kind has nothing left falls back to the other kind rather
+than coming back empty, so an empty weapon pool or an effect that filtered them
+all out still fills the shop.
+
+**Weapons live on `EntityModel`; `WeaponMount` is a VIEW of that list.** It used
+to own the list, which is exactly why a weapon could not be bought, sold, saved
+or authored on a character: the only caller that could add one was `main.gd`,
+and nothing outside the scene layer could see what was carried. `WeaponMount.sync()`
+diffs rather than rebuilding, because a `Weapon` node holds live state - heat,
+burst progress, a swing halfway through its arc - and dropping it because a
+different weapon was sold is a bug that can only surface mid-combat.
+
+Capacity is answered by the MODEL alone. The shop has to ask "is there room"
+before it takes any money, so both must ask the same place; `add_weapon` refuses
+rather than overflowing, and a refusal there means a caller went around
+`can_be_acquired_by`.
+
+**Hooks are shared between purchase kinds; COUNTERS are not.** `ON_ITEM_BOUGHT`
+fires for a weapon too, because a hook hands the entry over and an effect can
+look at what it was. `WEAPONS_BOUGHT` is a separate counter because a counter is
+a NUMBER effects do arithmetic on, and "for every 5 items bought" cannot un-mix
+a weapon folded into the same tally.
 
 **Shop slot count is a STAT, not a shop setting.** `SHOP_SLOTS` works exactly as
 `WEAPON_SLOTS` does, so "this character sees 8 items", "this item grants a slot"
@@ -451,6 +711,34 @@ per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
 rerolling, stat payment and ready-up — and a status system whose four statuses
 differ only by authored numbers. Twenty-four items authored.
 
+A run can be PAUSED and RESTARTED: any device opens one shared menu with resume,
+restart and quit, and the same menu opens itself when the run ends, so a wipe no
+longer means closing the executable.
+
+The game starts in a LOBBY: up to four players join by pressing SPACE or A on
+the device they intend to play with, one player per device, and any joined
+player begins the run with START. It is deliberately a bare join screen - the
+solo/co-op toggle, character select and run rules it will grow are decisions
+taken before a run exists, and this is the place that has them.
+
+Weapons carry CLASS TAGS, and holding several of a class grants authored stat
+bonuses at authored thresholds - two classes exist so far, blade and gun, which
+is what the four authored weapons divide into naturally.
+
+TWELVE WEAPON FAMILIES are authored, four tiers each, 48 files in all, drawn
+from `docs/weapon_list.md` and generated against its tier convention (damage
+x1.55, price x2.2 per step, every axis identical). Five classes exist - gun,
+blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
+`rapid` grants something at every count from one to six, `bouncy` nothing until
+three. Not one of the twelve needed a new effect class.
+
+WEAPONS ARE BOUGHT AND SOLD like items. They roll from their own pool at an
+authored chance, take a WEAPON_SLOTS slot, appear in the hands the moment the
+model changes, sit in the owned strip ahead of the items, and describe
+themselves through the same derived block — a weapon needed no description code
+of its own, because its damage and range were already StatModifiers. A character
+now carries its own `starting_weapons`; `main.tscn` no longer holds a loadout.
+
 The shop UI is playable end to end: per-player panels laid out by player count,
 a cursor per player driven by that player's own device, offers, reroll, buying,
 selling from the owned strip, the character as the last tile, a derived detail
@@ -468,7 +756,8 @@ omission.** The detail block will become a floating tooltip near the cursor with
 its own maximum size and a stick-scroll for long descriptions, as the genre
 does. The overflow rule belongs to THAT window; writing one for the current
 inline block would be designing it twice. Nothing overflows today because no
-authored item has more than two stat lines — which is exactly the sample size
+authored item has more than two stat lines - though a weapon scaling off many
+stats now can, which is the first content that will force the issue — which is exactly the sample size
 that makes polishing now a mistake.
 
 **No debug settings are currently active.**
@@ -479,8 +768,9 @@ that makes polishing now a mistake.
   because a scripted player never presses anything and would sit in the shop
   forever — any `--capture` gets 3 seconds unless `--capture-intermission=N`
   says otherwise.
-- `player_count` in `main.tscn` defaults to 1; raise it to test co-op, or pass
-  `--capture-players=N` for a capture run.
+- `player_count` and `player_devices` on `main.tscn` are now INJECTED by the
+  lobby and matter only when that scene is launched on its own. To test co-op,
+  join in the lobby or pass `--capture-players=N`.
 - The test character carries eight `starting_items` purely to exercise bleed:
   two barbed edges and six serrated rounds, which is +90% bleed chance on top of
   each item's own base and therefore certain on every ranged hit. Strip them
@@ -489,11 +779,7 @@ that makes polishing now a mistake.
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps, worst first:** there is NO WAY TO RESTART OR PAUSE a run. Nothing
-calls `reload_current_scene` and nothing touches `get_tree().paused`, so a wipe
-means closing the executable and launching it again. That is the single biggest
-obstacle to a play-testing session and should be fixed before content is judged.
-Then: no join flow for co-op, no `BEAM` delivery,
+**Known gaps, worst first:** no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
@@ -588,7 +874,7 @@ without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
 
-### Ten of the 45 stats do nothing, ON PURPOSE
+### Ten of the 45 stats do nothing, ON PURPOSE - and eleven more do nothing from a PLAYER
 
 | state | stats |
 |---|---|
@@ -605,6 +891,83 @@ Count the content too, or the number will be off by fifteen.
 The status stats used to be a third row waiting on authored content. That
 content exists now, which is why the row is gone.
 
+### The holder's stats reach their weapons through ONE method
+
+`WeaponModel.combined_stat()` is how a weapon reads any stat, and every one of
+the eleven sites that used to read `stats.get_stat()` directly now goes through
+it. Before that, only MELEE_DAMAGE and RANGED_DAMAGE ever crossed from a holder
+to their weapon: an ITEM granting attack speed, crit, range or spread moved a
+number in the stat sheet and changed nothing about a shot, which made four
+authored items decorative.
+
+Three rules live in that one method, and each was a bug before it existed:
+
+**`StatTypes.NEUTRALS` doubles as the COMBINATION RULE.** A stat's neutral is
+the value at which it contributes nothing - 0 for a quantity, 1.0 for a
+multiplier - so an additive identity means the two are added and a
+multiplicative identity means they are multiplied. One table rather than two,
+because the two facts must never disagree: adding a holder's 1.0 attack speed to
+a weapon's 1.0 doubles every weapon's rate of fire out of nowhere.
+
+*(This file previously predicted the rule would live on `StatMetadata`. It could
+not: `StatMetadata` describes a stat for the UI and is loaded from `content/`,
+which `core/` models cannot reach. `FLOORS` - a genuine gameplay property of a
+stat - was already a const on `StatTypes`, and that is where this belongs too.)*
+
+**Only the DEVIATION from neutral is shared.** Half of a 1.4 attack speed is
+1.2, not 0.7. Halving the value would hand a well-equipped player a slower
+weapon than an empty-handed one.
+
+**Every entity is seeded with its multiplicative neutrals** (`EntityModel._seed_neutrals`).
+A player's ATTACK_SPEED used to read its FLOOR of 0.05 because nothing ever set
+a base, and the moment weapons started inheriting it that would have slowed
+every gun to a twentieth. A floor is not a default.
+
+**A holder's PERCENT scales the WEAPON, not their own copy of the stat.** This
+was the second bug, found while testing the first: `machined_sights` grants -20%
+SPREAD_ANGLE, the holder's own spread is zero, and a fifth of nothing is
+nothing. What the player means by -20% spread is a fifth off the gun they are
+holding, so `_combine_additive` reads the holder's POOLS apart - flat adds,
+percent scales, and a share applies to both alike.
+
+### A weapon's damage can come from any stat
+
+`WeaponData.damage_scaling` is a list of (stat, coefficient): empty means "all
+of my own damage type", which is what every weapon did implicitly before.
+
+That one table covers two things at once. `(RANGED_DAMAGE, 0.5)` is the balance
+lever for fast weapons - a flat bonus applies PER HIT, so without it the fastest
+weapon in the game converts every damage item into more DPS than a slow one, and
+wins by more the longer a run goes on. `(MAX_HP, 0.1)` and
+`(MOVEMENT_SPEED, -0.03)` are weapons built for a build, and they cost no code.
+
+An entry naming the weapon's OWN damage type is a share of the holder's bonuses;
+one naming a FOREIGN stat contributes that stat's VALUE. Different operations,
+deliberately, because "half my ranged damage" and "a tenth of my max HP" are
+different sentences.
+
+Only STATS can appear there. "The lower your health, the harder you hit" reads
+`current_hp`, which is state rather than a stat and changes between shots -
+that belongs in a `CALCULATE_DAMAGE` effect, which already exists. The table for
+stats, the hook for state.
+
+**There is no cap on how many stats one weapon reads, and signs may be mixed.**
+Thirty entries with alternating signs are asserted in `weapon_test`, and a shot
+scaled below zero deals NOTHING rather than healing what it hits, because
+`DamageEvent.final_amount()` floors at zero. Two practical limits rather than
+rules: `inheritance_share` scans its list per read, so a very long table is
+linear work on a hot path, and the shop's detail block still has NO OVERFLOW
+handling - a weapon with thirty scaling lines draws thirty of them straight off
+the panel.
+
+`WeaponData.stat_inheritance` is the same shape for the other question: how much
+of the holder's attack speed, crit or range reaches this weapon at all. Unlisted
+stats transfer in FULL, so a weapon says only what it withholds.
+
+Both are DERIVED into the shop's detail block by `detail_notes()`, because a
+mechanic the player cannot see reads as a bug - buy +50% ranged damage, watch
+half of it vanish, conclude the item is broken.
+
 **DO NOT wire these one at a time as they come up.** They are not independent:
 ARMOR, DODGE and MAX_HP are one defensive system, and whether dodge is checked
 before armor, whether armor scales with max HP, and whether either has
@@ -619,7 +982,9 @@ is only the bridge from the `ARMOR` STAT into it.
 
 Two of the twenty-four authored items are decorative because of this and are known
 to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
-display correctly and change nothing.
+display correctly and change nothing. Two is the count again: the four that were
+decorative because their stat never crossed from holder to weapon now work,
+which was a bug rather than a deferral and is fixed above.
 
 **Weapons are cheaper than items.** They decompose onto four axes that already
 exist — `FiringPattern` × delivery × `SpreadPattern` × `TargetSelector` — so
@@ -627,6 +992,21 @@ most new weapons are a new combination rather than new code. Naming those four
 per weapon immediately exposes what the engine is missing. One hole is already
 known: **`BEAM` delivery is not implemented**, so anything laser-shaped is
 blocked.
+
+**The list wants a SCALING COLUMN** beside the four axes: which stats feed each
+weapon's damage and at what share, and how much attack speed or crit it
+withholds. Both are authored tables now, so that column costs nothing but a
+decision - and a fast weapon without one is the balance hole the whole mechanism
+exists to close.
+
+Authoring one is a single `.tres` and three lines of bookkeeping: give it `tier`
+and `base_price` (they come from `ShopEntryData` now), list its `tags`, then add
+it to `default_shop.tres`'s `weapon_pool`. A new CLASS is its own `.tres` plus
+an entry in `default_classes.tres`. Nothing else — its stat lines are already
+`StatModifier`s, so the shop describes it, prices it, sells it and buys it back
+with no code. The validator fails a weapon in the pool priced at 0, warns when
+the pool and `weapon_offer_chance` disagree, and warns about a tier whose weight
+is zero at every wave, which is content that loads fine and is never seen.
 
 ---
 

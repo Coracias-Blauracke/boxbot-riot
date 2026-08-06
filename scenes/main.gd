@@ -8,12 +8,23 @@ extends Node2D
 const CHARACTER_SCENE := preload("res://scenes/actors/character.tscn")
 const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 
+## Asked of whoever owns this scene, so the lobby can rebuild the run with the
+## SAME roster instead of reloading the tree and losing who was playing.
+##
+## Falls back to reload_current_scene() when nobody is listening, which keeps
+## main.tscn independently launchable - every capture command in CLAUDE.md
+## points straight at it, and none of them should need a lobby.
+signal restart_requested
+
 @export var world_data: WorldData
 @export var character_data: CharacterData
 @export var wave_table: WaveTable
 @export var shop_data: ShopData
 @export var stat_sheet: StatSheet
-@export var starting_weapons: Array[WeaponData] = []
+
+## Which weapon classes exist and what holding several is worth. Injected into
+## every player model, because core/ may not load content itself.
+@export var weapon_classes: WeaponClassSet
 
 ## Local co-op, up to four. Player 0 takes keyboard and the first gamepad;
 ## the rest take a gamepad each.
@@ -46,6 +57,12 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 ## is what every A/B capture in this repo depends on - the co-op scaling
 ## measurement and the camera framing comparison are both worthless without it.
 ## Keep it set while developing; ship with 0.
+##
+## RESTART OBEYS THIS AND DOES NOT WORK AROUND IT. Reloading the scene reads the
+## export again, so a fixed seed replays the same run - which is what a fixed
+## seed is for: dying on wave 4 and immediately trying that exact wave 4 again.
+## A restart that quietly reseeded would take away the only tool for retrying
+## one situation, and the way to get a different run is already the authored 0.
 @export var run_seed: int = 20260804
 
 var run: RunModel
@@ -65,6 +82,22 @@ var _fallback_pattern: SpawnPattern = SpawnRing.new()
 ## Capture only. 0 leaves RunModel's own value alone.
 var _forced_intermission: float = 0.0
 var _capture_shop_owned: bool = false
+var _capture_shop_menu: bool = false
+
+## Capture only, in seconds from startup.
+##
+## A LIST because each entry TOGGLES: repeating the flag is what makes resuming
+## observable at all. One entry freezes the run and every shot after it reads
+## the same numbers, which proves nothing about getting going again.
+var _capture_pause_at: Array[float] = []
+
+## Capture only, seconds from startup. 0 is off.
+var _capture_restart_at: float = 0.0
+
+## How many times this process has restarted. STATIC because the whole point of
+## a restart is that everything else is thrown away - an instance variable would
+## come back as 0 and --capture-restart would reload for ever.
+static var _restarts: int = 0
 
 var _circling: Array[Character] = []
 var _elapsed: float = 0.0
@@ -82,6 +115,7 @@ var _circle_rate: float = 1.6
 @onready var _camera: ArenaCamera = $Camera2D
 @onready var _hud: Hud = $Hud
 @onready var _shop_screen: ShopScreen = $ShopScreen
+@onready var _pause_screen: PauseScreen = $PauseScreen
 
 func _ready() -> void:
 	# Capture runs override the scene's player count, so a co-op state can be
@@ -98,6 +132,10 @@ func _ready() -> void:
 			_camera.default_zoom = float(arg.substr("--capture-zoom=".length()))
 		elif arg.begins_with("--capture-margin="):
 			_camera.group_margin = float(arg.substr("--capture-margin=".length()))
+		elif arg == "--capture-shop-menu":
+			# Parks the cursor AND opens the tile menu on it.
+			_capture_shop_owned = true
+			_capture_shop_menu = true
 		elif arg == "--capture-shop-owned":
 			# A UI state that needs input cannot otherwise be photographed at
 			# all, which is a real hole in how this repo verifies the scene
@@ -108,6 +146,13 @@ func _ready() -> void:
 			# reliably photograph. Holding it open is the only way to read the
 			# panel at each player count.
 			_forced_intermission = float(arg.substr("--capture-intermission=".length()))
+		elif arg.begins_with("--capture-pause="):
+			# Same hole as --capture-shop-owned: a screen that only opens when
+			# somebody presses a button cannot be photographed by a run with
+			# nobody at the controls.
+			_capture_pause_at.append(float(arg.substr("--capture-pause=".length())))
+		elif arg.begins_with("--capture-restart="):
+			_capture_restart_at = float(arg.substr("--capture-restart=".length()))
 
 	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
@@ -136,14 +181,65 @@ func _ready() -> void:
 	_hud.bind(run, models)
 	_shop_screen.bind(run, players, stat_sheet)
 	if _capture_shop_owned:
-		_shop_screen.park_cursor_on_owned()
+		_shop_screen.park_cursor_on_owned(_capture_shop_menu)
+
+	# Every device, because the pause menu is one menu for the whole couch - see
+	# PauseScreen for why it is not owned by whoever opened it.
+	var inputs: Array[PlayerInput] = []
+	for entry in players:
+		inputs.append(entry.input)
+	_pause_screen.bind(run, inputs)
+	_pause_screen.restart_requested.connect(_restart)
+	_pause_screen.quit_requested.connect(_quit)
 
 	run.start_wave()
-	print("wave %d started, boss=%s, duration=%.0fs" % [
-		run.wave_number, run.spawn_boss_this_wave, run.director.duration
+	print("wave %d started, boss=%s, duration=%.0fs, restarts=%d" % [
+		run.wave_number, run.spawn_boss_this_wave, run.director.duration, _restarts
 	])
 
+	_schedule_capture_events()
 	_maybe_start_capture()
+
+# --- restart ---------------------------------------------------------------
+
+## A scene reload, which is only honest because nothing outlives the scene:
+## there are no autoloads and every model hangs off the RunModel built in
+## _ready. The day something does outlive it, this starts leaking state into
+## the next run silently, which is why it is worth writing down.
+func _restart() -> void:
+	print("restart requested on wave %d, phase=%s" % [run.wave_number, _phase_name()])
+	_restarts += 1
+	# Unpaused FIRST. The flag lives on the TREE, not on the scene, so it
+	# survives a reload and the fresh run would come up frozen with nothing on
+	# screen to say why.
+	get_tree().paused = false
+
+	# The lobby rebuilds this node with the roster it still holds. Reloading the
+	# whole tree would take the lobby with it and every player would have to
+	# join again after every death, which is the opposite of what a restart is
+	# for during a play-test.
+	if not restart_requested.get_connections().is_empty():
+		restart_requested.emit()
+		return
+
+	get_tree().reload_current_scene()
+
+func _quit() -> void:
+	get_tree().paused = false
+	get_tree().quit()
+
+## Capture only. Both of these exist because a screen reached by pressing a
+## button is invisible to a run with nobody pressing anything.
+func _schedule_capture_events() -> void:
+	# request_toggle rather than open: the capture has to go through the same
+	# gate the button does, or it can photograph a state no player could reach.
+	for at in _capture_pause_at:
+		if at > 0.0:
+			get_tree().create_timer(at).timeout.connect(_pause_screen.request_toggle)
+	# Once per process. Without the guard the reloaded scene reads the same
+	# command line and restarts again, for ever.
+	if _capture_restart_at > 0.0 and _restarts == 0:
+		get_tree().create_timer(_capture_restart_at).timeout.connect(_restart)
 
 func _physics_process(delta: float) -> void:
 	if run == null:
@@ -169,6 +265,9 @@ func _on_run_ended(outcome: RunTypes.Outcome) -> void:
 
 func _spawn_player(index: int) -> Character:
 	var model := EntityModel.new(character_data)
+	# Before any weapon arrives, so the starting loadout is counted too - though
+	# the recompute is idempotent either way.
+	model.weapon_classes = weapon_classes
 	run.add_player(model)
 
 	var node := CHARACTER_SCENE.instantiate() as Character
@@ -193,9 +292,12 @@ func _spawn_player(index: int) -> Character:
 		if item != null:
 			model.add_item(item)
 
-	for weapon_data in starting_weapons:
+	# Same for the loadout, and from the CHARACTER rather than from an export on
+	# this scene. The rack in the hands follows the model, so nothing here has to
+	# tell the view about them.
+	for weapon_data in character_data.starting_weapons:
 		if weapon_data != null:
-			node.equip(weapon_data)
+			model.add_weapon(weapon_data)
 
 	return node
 
@@ -310,6 +412,13 @@ func _maybe_start_capture() -> void:
 		push_error("--capture needs --capture-dir=<path>")
 		return
 
+	# A restarted pass writes beside the first one rather than over it. The two
+	# sets of PNGs ARE the evidence that a restart produced a fresh run, so one
+	# overwriting the other would destroy the measurement it was taken for.
+	if _restarts > 0:
+		output_dir = output_dir.path_join("after_restart")
+		DirAccess.make_dir_recursive_absolute(output_dir)
+
 	# Deterministic input, so a recorded run is reproducible.
 	#   --capture-still  keeps the player put; the only way to observe contact
 	#                    damage, since enemies never catch a running player.
@@ -354,7 +463,12 @@ func _maybe_start_capture() -> void:
 		elif arg.begins_with("--capture-delay="):
 			capture.start_delay = float(arg.substr("--capture-delay=".length()))
 	capture.state_provider = _describe_state
-	capture.finished.connect(func() -> void: get_tree().quit())
+	# The pass BEFORE a scheduled restart must not close the window when it runs
+	# out of shots, or it takes the restart down with it and the second half of
+	# the comparison is never taken. Measured: the run quit at 11s and the
+	# restart was scheduled for 12s.
+	if _capture_restart_at <= 0.0 or _restarts > 0:
+		capture.finished.connect(func() -> void: get_tree().quit())
 	add_child(capture)
 	capture.start()
 
@@ -394,12 +508,18 @@ func _describe_state() -> String:
 		# DOWN rather than "hp0". The whole point of the change is that a player
 		# model outlives its own death, so a capture has to be able to tell "at
 		# zero health, still in the run" from "no longer here at all".
-		per_player += " p%d=(%.0f,%.0f)%s$%d" % [
+		# The rack as the MODEL sees it and as the mount actually built it, both.
+		# They are the same number only if the view really is following the
+		# model - which is the whole claim weapons in the shop rest on, and a
+		# single count could not tell a working sync from a stale one.
+		per_player += " p%d=(%.0f,%.0f)%s$%d wp%d/%d" % [
 			index,
 			entry.global_position.x,
 			entry.global_position.y,
 			"hp%.0f" % entry.model.current_hp if entry.model.is_alive else "DOWN",
 			entry.model.get_currency(),
+			entry.model.weapons.size(),
+			entry.get_weapons().size(),
 		]
 
 	return "w%d %s t-%.0fs alive=%d/%d enemies=%d bleed=%d burn=%d shots=%d zoom=%.2f%s" % [

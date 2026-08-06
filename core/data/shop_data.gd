@@ -8,11 +8,29 @@ extends Resource
 ## numbers is meaningless without the others - a reroll cost only means anything
 ## against the prices it competes with.
 
-## Everything that may ever be offered. Tier decides how often, not whether.
+## Every ITEM that may ever be offered. Tier decides how often, not whether.
 @export var pool: Array[ItemData] = []
+
+## Every WEAPON that may ever be offered.
+##
+## A SECOND POOL rather than weapons dropped into the first one, and this is the
+## decision that has to survive a hundred weapons. A merged pool would let the
+## mix be decided by how much content happens to exist: authoring thirty weapons
+## would silently make items rarer and invalidate every balance judgement made
+## before it. That is precisely the reasoning already written into
+## ShopManager._draw about weighting tiers rather than items - the odds must
+## come from the numbers here, never from the size of a folder.
+@export var weapon_pool: Array[WeaponData] = []
 
 @export_group("Offers")
 @export var offer_count: int = 4
+
+## Chance that any ONE slot rolls a weapon rather than an item.
+##
+## Rolled per slot, so a shop is usually a mix and occasionally all of one kind,
+## which is what makes a roll feel like a roll. If a wave curve is ever wanted
+## here, it belongs beside tier_weight_per_wave below rather than in the shop.
+@export_range(0.0, 1.0) var weapon_offer_chance: float = 0.35
 
 ## Whether one roll may show the same item twice.
 ##
@@ -59,11 +77,27 @@ func tier_weights_for(wave_number: int) -> PackedFloat32Array:
 
 	return result
 
-func price_for(item: ItemData, wave_number: int) -> int:
-	if item == null:
+func price_for(entry: ShopEntryData, wave_number: int) -> int:
+	if entry == null:
 		return 0
 	var scale := 1.0 + price_per_wave * float(maxi(1, wave_number) - 1)
-	return maxi(0, roundi(float(item.base_price) * scale))
+	return maxi(0, roundi(float(entry.base_price) * scale))
 
-func sell_price_for(item: ItemData) -> int:
-	return maxi(0, floori(float(item.base_price) * sell_ratio)) if item != null else 0
+func sell_price_for(entry: ShopEntryData) -> int:
+	return maxi(0, floori(float(entry.base_price) * sell_ratio)) if entry != null else 0
+
+## Everything offerable, in one list, for the roll pipeline to filter.
+##
+## Merged HERE rather than authored merged: an effect that says "never offer
+## melee" wants one list to filter, while the odds still come from two authored
+## pools and the chance above. Copies, because Godot caches .tres globally and
+## an effect editing this array would damage every other player's shop.
+func all_candidates() -> Array[ShopEntryData]:
+	var candidates: Array[ShopEntryData] = []
+	for item in pool:
+		if item != null:
+			candidates.append(item)
+	for weapon in weapon_pool:
+		if weapon != null:
+			candidates.append(weapon)
+	return candidates

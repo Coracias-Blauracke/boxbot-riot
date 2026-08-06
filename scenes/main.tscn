@@ -1,19 +1,17 @@
-[gd_scene load_steps=15 format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=13 format=3 uid="uid://ypmpa6ofxxh2"]
 
 [ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
 [ext_resource type="Resource" path="res://content/worlds/test_arena.tres" id="3_world"]
 [ext_resource type="Resource" path="res://content/characters/test_character.tres" id="4_char"]
 [ext_resource type="Resource" path="res://content/waves/default_waves.tres" id="5_waves"]
-[ext_resource type="Resource" path="res://content/weapons/pistol.tres" id="6_pistol"]
-[ext_resource type="Resource" path="res://content/weapons/shotgun.tres" id="7_shotgun"]
-[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="8_wdata"]
-[ext_resource type="Resource" path="res://content/weapons/sword.tres" id="9_sword"]
 [ext_resource type="Script" path="res://scenes/levels/arena_camera.gd" id="10_camera"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="11_hud"]
 [ext_resource type="Resource" path="res://content/shop/default_shop.tres" id="12_shop"]
 [ext_resource type="Resource" path="res://content/stats/stat_sheet.tres" id="13_stats"]
+[ext_resource type="Resource" path="res://content/weapons/classes/default_classes.tres" id="16_classes"]
 [ext_resource type="PackedScene" path="res://scenes/ui/shop_screen.tscn" id="14_shopui"]
+[ext_resource type="PackedScene" path="res://scenes/ui/pause_screen.tscn" id="15_pause"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -22,7 +20,7 @@ character_data = ExtResource("4_char")
 wave_table = ExtResource("5_waves")
 shop_data = ExtResource("12_shop")
 stat_sheet = ExtResource("13_stats")
-starting_weapons = Array[ExtResource("8_wdata")]([ExtResource("6_pistol")])
+weapon_classes = ExtResource("16_classes")
 player_count = 1
 
 [node name="Arena" type="Node2D" parent="."]
@@ -36,3 +34,5 @@ script = ExtResource("10_camera")
 [node name="Hud" parent="." instance=ExtResource("11_hud")]
 
 [node name="ShopScreen" parent="." instance=ExtResource("14_shopui")]
+
+[node name="PauseScreen" parent="." instance=ExtResource("15_pause")]

@@ -16,10 +16,17 @@ var offer_count: int = 0
 ## Index 0 is tier 1. Same shape as ShopData.tier_weights_for().
 var tier_weights: PackedFloat32Array = PackedFloat32Array()
 
-## The pool this roll may draw from. A COPY, so an effect that removes entries
-## cannot damage the authored ShopData - Godot caches .tres globally and the
-## edit would leak into every other player's shop and every later run.
-var candidates: Array[ItemData] = []
+## Everything this roll may draw from, items and weapons in one list. A COPY, so
+## an effect that removes entries cannot damage the authored ShopData - Godot
+## caches .tres globally and the edit would leak into every other player's shop
+## and every later run.
+##
+## ONE list rather than one per kind: an effect that filters the pool - "never
+## offer melee", "only tier 1 this wave" - should not have to know how many
+## kinds of purchasable exist, or it breaks the day a third one is added. Which
+## kind fills a given slot is decided when the slot is drawn, from
+## ShopData.weapon_offer_chance.
+var candidates: Array[ShopEntryData] = []
 
 ## Tiers are 1-based; the array is not.
 func weight_for_tier(tier: int) -> float:

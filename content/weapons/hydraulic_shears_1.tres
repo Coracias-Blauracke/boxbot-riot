@@ -1,0 +1,64 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/weapons/firing_instant.gd" id="3_instant"]
+[ext_resource type="Script" path="res://core/weapons/spread_single.gd" id="4_single"]
+[ext_resource type="Script" path="res://core/weapons/target_nearest.gd" id="5_nearest"]
+[ext_resource type="Resource" path="res://content/weapons/hydraulic_shears_2.tres" id="6_next"]
+[ext_resource type="Script" path="res://core/weapons/swing_pattern.gd" id="7_swing"]
+
+[sub_resource type="Resource" id="mod_5"]
+script = ExtResource("2_mod")
+stat = 5
+modifier_type = 0
+value = 20
+
+[sub_resource type="Resource" id="mod_11"]
+script = ExtResource("2_mod")
+stat = 11
+modifier_type = 0
+value = 110
+
+[sub_resource type="Resource" id="mod_9"]
+script = ExtResource("2_mod")
+stat = 9
+modifier_type = 0
+value = 0.25
+
+[sub_resource type="Resource" id="fire"]
+script = ExtResource("3_instant")
+base_interval = 0.8
+
+[sub_resource type="Resource" id="spread"]
+script = ExtResource("4_single")
+
+[sub_resource type="Resource" id="target"]
+script = ExtResource("5_nearest")
+
+[sub_resource type="Resource" id="swing"]
+script = ExtResource("7_swing")
+motion = 1
+arc_degrees = 30
+reach = 90
+hitbox_radius = 14
+duration = 0.3
+windup_ratio = 0.3
+
+[resource]
+script = ExtResource("1_weapon")
+display_key = "WEAPON_HYDRAULIC_SHEARS_I"
+tier = 1
+base_price = 24
+collider_radius = 7.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("mod_5"), SubResource("mod_11"), SubResource("mod_9")])
+tags = Array[StringName]([&"blade"])
+upgrades_into = ExtResource("6_next")
+firing = SubResource("fire")
+spread = SubResource("spread")
+targeting = SubResource("target")
+delivery = 1
+melee_combo = Array[ExtResource("7_swing")]([SubResource("swing")])
+alternate_swing_sides = true
+heat_per_shot = 0
+falloff_multiplier = 1.0

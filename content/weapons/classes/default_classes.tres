@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="WeaponClassSet" format=3]
+
+[ext_resource type="Script" path="res://core/data/weapon_class_set.gd" id="1_set"]
+[ext_resource type="Script" path="res://core/data/weapon_class_data.gd" id="2_class"]
+[ext_resource type="Resource" path="res://content/weapons/classes/gun.tres" id="c_gun"]
+[ext_resource type="Resource" path="res://content/weapons/classes/blade.tres" id="c_blade"]
+[ext_resource type="Resource" path="res://content/weapons/classes/rapid.tres" id="c_rapid"]
+[ext_resource type="Resource" path="res://content/weapons/classes/bouncy.tres" id="c_bouncy"]
+[ext_resource type="Resource" path="res://content/weapons/classes/bloody.tres" id="c_bloody"]
+
+[resource]
+script = ExtResource("1_set")
+classes = Array[ExtResource("2_class")]([ExtResource("c_gun"), ExtResource("c_blade"), ExtResource("c_rapid"), ExtResource("c_bouncy"), ExtResource("c_bloody")])

@@ -35,6 +35,11 @@ enum Counter {
 	## that rewards burning specifically must not be fed by a sword.
 	BURN_DAMAGE_DEALT,
 	ENEMIES_POISONED,
+	## Kept apart from ITEMS_BOUGHT rather than folded into it. "For every 5
+	## items bought" must not be fed by a weapon purchase: they are different
+	## decisions with different costs, and one counter covering both would make
+	## every such effect quietly wrong the moment weapons became buyable.
+	WEAPONS_BOUGHT,
 }
 
 ## When a counter resets.

@@ -1,0 +1,79 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/weapons/firing_instant.gd" id="3_instant"]
+[ext_resource type="Script" path="res://core/weapons/spread_cone.gd" id="4_cone"]
+[ext_resource type="Script" path="res://core/weapons/target_nearest.gd" id="5_nearest"]
+[ext_resource type="Resource" path="res://content/weapons/sanguine_sprayer_4.tres" id="6_next"]
+[ext_resource type="Resource" path="res://content/projectiles/bullet.tres" id="7_bullet"]
+[ext_resource type="Script" path="res://core/effects/library/effect_apply_status_on_hit.gd" id="8_onhit"]
+[ext_resource type="Resource" path="res://content/statuses/bleed.tres" id="9_bleed"]
+[ext_resource type="Script" path="res://core/effects/library/effect_heal_when_hitting_status.gd" id="10_healhit"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="11_effectbase"]
+
+[sub_resource type="Resource" id="mod_6"]
+script = ExtResource("2_mod")
+stat = 6
+modifier_type = 0
+value = 10
+
+[sub_resource type="Resource" id="mod_11"]
+script = ExtResource("2_mod")
+stat = 11
+modifier_type = 0
+value = 280
+
+[sub_resource type="Resource" id="mod_9"]
+script = ExtResource("2_mod")
+stat = 9
+modifier_type = 0
+value = 0.05
+
+[sub_resource type="Resource" id="mod_26"]
+script = ExtResource("2_mod")
+stat = 26
+modifier_type = 0
+value = 14
+
+[sub_resource type="Resource" id="fire"]
+script = ExtResource("3_instant")
+base_interval = 0.7
+
+[sub_resource type="Resource" id="spread"]
+script = ExtResource("4_cone")
+count = 5
+
+[sub_resource type="Resource" id="target"]
+script = ExtResource("5_nearest")
+
+[sub_resource type="Resource" id="on_hit"]
+script = ExtResource("8_onhit")
+status = ExtResource("9_bleed")
+damage_types = Array[int]([1])
+stacks = 1
+base_chance = 0.25
+
+[sub_resource type="Resource" id="heal_hit"]
+script = ExtResource("10_healhit")
+status_id = &"bleed"
+chance = 0.2
+heal_amount = 1.0
+
+[resource]
+script = ExtResource("1_weapon")
+display_key = "WEAPON_SANGUINE_SPRAYER_III"
+tier = 3
+base_price = 223
+collider_radius = 6.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("mod_6"), SubResource("mod_11"), SubResource("mod_9"), SubResource("mod_26")])
+tags = Array[StringName]([&"bloody"])
+upgrades_into = ExtResource("6_next")
+firing = SubResource("fire")
+spread = SubResource("spread")
+targeting = SubResource("target")
+delivery = 0
+projectile = ExtResource("7_bullet")
+heat_per_shot = 0
+falloff_multiplier = 1.0
+innate_effects = Array[ExtResource("11_effectbase")]([SubResource("on_hit"), SubResource("heal_hit")])

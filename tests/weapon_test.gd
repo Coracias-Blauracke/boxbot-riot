@@ -35,6 +35,13 @@ func _initialize() -> void:
 	_test_swing_curve_override()
 	_test_blade_points_outward()
 	_test_blade_tilt_offset()
+	_test_the_wielder_stats_now_reach_the_weapon()
+	_test_a_multiplier_multiplies_rather_than_adding()
+	_test_inheritance_can_withhold_part_of_a_stat()
+	_test_damage_scales_off_whatever_stat_it_names()
+	_test_half_scaling_halves_the_bonus_not_the_weapon()
+	_test_a_weapon_says_what_it_scales_with()
+	_test_a_weapon_may_scale_off_many_stats_in_both_directions()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -475,6 +482,220 @@ class GuaranteedCrit extends DynamicEffect:
 			shot.crit_chance = 1.0
 
 # --- assertions ------------------------------------------------------------
+
+# --- what a weapon inherits from whoever is holding it ----------------------
+
+func _scaling(stat: StatTypes.Stat, coefficient: float) -> StatScaling:
+	var entry := StatScaling.new()
+	entry.stat = stat
+	entry.coefficient = coefficient
+	return entry
+
+func _weapon_from(data: WeaponData) -> WeaponModel:
+	var weapon := WeaponModel.new(data)
+	weapon.rng = RunRandom.new(1234)
+	return weapon
+
+## REGRESSION. Only MELEE_DAMAGE and RANGED_DAMAGE ever crossed from holder to
+## weapon; every other combat stat was read off the weapon alone, which made
+## four authored items decorative - the stat sheet moved and no shot changed.
+func _test_the_wielder_stats_now_reach_the_weapon() -> void:
+	var wielder := EntityModel.new()
+	wielder.stats.add_modifier(StatTypes.Stat.CRIT_CHANCE, StatTypes.Modifier.FLAT, 0.25, &"item")
+	wielder.stats.add_modifier(StatTypes.Stat.RANGE, StatTypes.Modifier.FLAT, 50.0, &"item")
+	wielder.stats.add_modifier(StatTypes.Stat.PIERCING, StatTypes.Modifier.FLAT, 2.0, &"item")
+
+	var weapon := _make_weapon()
+	weapon.stats.add_modifier(StatTypes.Stat.CRIT_CHANCE, StatTypes.Modifier.BASE, 0.1, &"weapon")
+	weapon.stats.add_modifier(StatTypes.Stat.RANGE, StatTypes.Modifier.BASE, 300.0, &"weapon")
+
+	_check("with no wielder a weapon is only itself", weapon.combined_stat(StatTypes.Stat.RANGE), 300.0)
+
+	weapon.set_wielder(wielder)
+	_check("the holder's crit chance arrives", weapon.combined_stat(StatTypes.Stat.CRIT_CHANCE), 0.35)
+	_check("so does their range", weapon.combined_stat(StatTypes.Stat.RANGE), 350.0)
+	_check("and their piercing", weapon.combined_stat(StatTypes.Stat.PIERCING), 2.0)
+
+## The trap this whole mechanism exists to avoid. ATTACK_SPEED is a multiplier
+## neutral at 1.0, so ADDING the holder's 1.0 to the weapon's 1.0 would double
+## every weapon's rate of fire out of nowhere.
+func _test_a_multiplier_multiplies_rather_than_adding() -> void:
+	var wielder := EntityModel.new()
+	var weapon := _make_weapon()
+	weapon.set_wielder(wielder)
+
+	# A player carrying nothing must leave the weapon exactly as it was. Before
+	# EntityModel seeded neutrals this read the FLOOR of 0.05 and would have
+	# slowed every weapon in the game to a twentieth of its rate.
+	_check("a holder with no bonuses changes nothing", weapon.combined_stat(StatTypes.Stat.ATTACK_SPEED), 1.0)
+
+	wielder.stats.add_modifier(StatTypes.Stat.ATTACK_SPEED, StatTypes.Modifier.FLAT, 0.4, &"item")
+	_check("+40% on the holder is x1.4, not +1.4", weapon.combined_stat(StatTypes.Stat.ATTACK_SPEED), 1.4)
+
+	var fast := _make_weapon(2.0)
+	fast.set_wielder(wielder)
+	_check("and it composes with the weapon's own rate", fast.combined_stat(StatTypes.Stat.ATTACK_SPEED), 2.8)
+
+func _test_inheritance_can_withhold_part_of_a_stat() -> void:
+	var wielder := EntityModel.new()
+	wielder.stats.add_modifier(StatTypes.Stat.ATTACK_SPEED, StatTypes.Modifier.FLAT, 0.4, &"item")
+	wielder.stats.add_modifier(StatTypes.Stat.RANGE, StatTypes.Modifier.FLAT, 100.0, &"item")
+
+	var data := WeaponData.new()
+	data.stat_inheritance = [
+		_scaling(StatTypes.Stat.ATTACK_SPEED, 0.5),
+		_scaling(StatTypes.Stat.RANGE, 0.0),
+	]
+
+	var weapon := _weapon_from(data)
+	weapon.set_wielder(wielder)
+	weapon.stats.add_modifier(StatTypes.Stat.RANGE, StatTypes.Modifier.BASE, 300.0, &"weapon")
+
+	# HALF OF THE DEVIATION, not half of the number: half of a 1.4 attack speed
+	# is 1.2. Halving the value itself would hand a well-equipped player a
+	# SLOWER weapon than an empty-handed one.
+	_check("half of +40% is +20%", weapon.combined_stat(StatTypes.Stat.ATTACK_SPEED), 1.2)
+	_check("a share of zero takes nothing", weapon.combined_stat(StatTypes.Stat.RANGE), 300.0)
+	# Unlisted stats are unaffected and still transfer in full.
+	_check("what is not listed still arrives whole", weapon.inheritance_share(StatTypes.Stat.CRIT_CHANCE), 1.0)
+
+func _test_damage_scales_off_whatever_stat_it_names() -> void:
+	var wielder := EntityModel.new()
+	wielder.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.BASE, 100.0, &"char")
+	wielder.stats.add_modifier(StatTypes.Stat.MOVEMENT_SPEED, StatTypes.Modifier.BASE, 200.0, &"char")
+	wielder.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 10.0, &"char")
+
+	# A weapon that grows with health and shrinks as its owner runs. Neither
+	# needs a line of code - both are two entries in a .tres.
+	var data := WeaponData.new()
+	data.damage_scaling = [
+		_scaling(StatTypes.Stat.MAX_HP, 0.1),
+		_scaling(StatTypes.Stat.MOVEMENT_SPEED, -0.02),
+	]
+
+	var weapon := _weapon_from(data)
+	weapon.set_wielder(wielder)
+	weapon.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"weapon")
+
+	# 12 own + 10% of 100 max HP - 2% of 200 speed = 12 + 10 - 4.
+	var shot := weapon.build_shot(data)
+	_check("damage comes from the stats it names", shot.amount, 18.0)
+
+	# And ONLY from those. A table that silently kept the damage type as well
+	# would be a table nobody could read.
+	_check_bool("the holder's ranged damage is not added too", is_equal_approx(shot.amount, 28.0), false)
+
+func _test_half_scaling_halves_the_bonus_not_the_weapon() -> void:
+	var wielder := EntityModel.new()
+	wielder.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 10.0, &"char")
+
+	var data := WeaponData.new()
+	data.damage_scaling = [_scaling(StatTypes.Stat.RANGED_DAMAGE, 0.5)]
+
+	var weapon := _weapon_from(data)
+	weapon.set_wielder(wielder)
+	weapon.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"weapon")
+
+	# The WEAPON's own 12 is untouched and only the holder's 10 is halved. This
+	# is the whole lever: a flat bonus applies per hit, so without it a very
+	# fast weapon converts every damage item into far more DPS than a slow one.
+	_check("the weapon keeps all of its own damage", weapon.build_shot(data).amount, 17.0)
+
+	var empty := WeaponData.new()
+	var plain := _weapon_from(empty)
+	plain.set_wielder(wielder)
+	plain.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"weapon")
+	_check("an empty table still means all of it", plain.build_shot(empty).amount, 22.0)
+
+## A mechanic the player cannot see reads as a bug: buy +50% ranged damage,
+## watch half of it disappear, conclude the item is broken. The text is DERIVED
+## from the same tables the arithmetic uses, so it cannot drift from them.
+func _test_a_weapon_says_what_it_scales_with() -> void:
+	var plain := WeaponData.new()
+	_check_int("a weapon with no tables says nothing", plain.detail_notes().size(), 0)
+
+	var data := WeaponData.new()
+	data.damage_scaling = [
+		_scaling(StatTypes.Stat.RANGED_DAMAGE, 0.5),
+		_scaling(StatTypes.Stat.MAX_HP, 0.1),
+	]
+	data.stat_inheritance = [_scaling(StatTypes.Stat.ATTACK_SPEED, 0.5)]
+
+	var notes := data.detail_notes()
+	_check_int("one line per entry", notes.size(), 3)
+	# The SAME key the stat sheet shows, built from the enum rather than spelled
+	# again - two spellings of one name is how a screen disagrees with itself.
+	_check_bool("names the stat as the sheet does", notes[0] == "scales 50% with STAT_RANGED_DAMAGE", true)
+	_check_bool("and the foreign one too", notes[1] == "scales 10% with STAT_MAX_HP", true)
+	_check_bool("inheritance reads differently", notes[2] == "inherits 50% of STAT_ATTACK_SPEED", true)
+
+## THIRTY stats at once, half of them pulling the other way.
+##
+## Asserted rather than assumed, because "it is just a list" is exactly the kind
+## of claim that turns out to have a cap, a lookup that only checks the first
+## match, or a sign that gets lost somewhere. The table is walked in full and
+## every entry lands, positive and negative alike.
+func _test_a_weapon_may_scale_off_many_stats_in_both_directions() -> void:
+	var wielder := EntityModel.new()
+	var data := WeaponData.new()
+	var expected := 0.0
+	var used := 0
+
+	for stat in StatTypes.Stat.values():
+		# The weapon's own damage type takes the other path - a share of the
+		# holder's bonuses rather than a stat's value - and is covered above.
+		if stat == StatTypes.Stat.RANGED_DAMAGE or stat == StatTypes.Stat.MELEE_DAMAGE:
+			continue
+		# The crit pair is held out for a reason worth recording: piling +10 onto
+		# the holder's CRIT_CHANCE made every shot in this test a guaranteed
+		# crit, and +10 on CRIT_MULTIPLIER turned the weapon's 2.0 into 22.0, so
+		# the total came out 22x. That was the inheritance working exactly as
+		# intended and the test asking the wrong question.
+		if stat == StatTypes.Stat.CRIT_CHANCE or stat == StatTypes.Stat.CRIT_MULTIPLIER:
+			continue
+		if used >= 30:
+			break
+
+		wielder.stats.add_modifier(stat, StatTypes.Modifier.FLAT, 10.0, &"test")
+		# Alternating, so a sign that was being dropped or taken as absolute
+		# would show up as a wrong total rather than as a plausible one.
+		var coefficient := 0.5 if used % 2 == 0 else -0.25
+		data.damage_scaling.append(_scaling(stat, coefficient))
+		# Read back rather than assumed to be 10: floors and neutrals apply, and
+		# the expectation has to be whatever the stat actually reports.
+		expected += wielder.stats.get_stat(stat) * coefficient
+		used += 1
+
+	var weapon := _weapon_from(data)
+	weapon.set_wielder(wielder)
+	weapon.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"weapon")
+
+	_check_int("thirty stats feed one weapon", used, 30)
+	_check("and every one of them lands", weapon.build_shot(data).amount, 12.0 + expected)
+	_check_int("each gets its own line in the shop", data.detail_notes().size(), 30)
+
+	# Scaled far enough into the negative, a shot comes out below zero. It must
+	# deal NOTHING rather than heal what it hits - DamageEvent.final_amount()
+	# floors at zero, which is what makes deep negative scaling safe to author.
+	var cursed := WeaponData.new()
+	cursed.damage_scaling = [_scaling(StatTypes.Stat.MOVEMENT_SPEED, -1.0)]
+	var runner := EntityModel.new()
+	runner.stats.add_modifier(StatTypes.Stat.MOVEMENT_SPEED, StatTypes.Modifier.BASE, 200.0, &"char")
+
+	var weak := _weapon_from(cursed)
+	weak.set_wielder(runner)
+	weak.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"weapon")
+
+	var shot := weak.build_shot(cursed)
+	_check("a shot can go negative", shot.amount, -188.0)
+
+	var victim := EntityModel.new()
+	victim.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.BASE, 50.0, &"body")
+	victim.set_hp(50.0)
+	var event := DamageEvent.new()
+	event.amount = shot.amount
+	victim.apply_damage(event)
+	_check("but it heals nothing", victim.current_hp, 50.0)
 
 func _check(label: String, actual: float, expected: float) -> void:
 	if is_equal_approx(actual, expected):

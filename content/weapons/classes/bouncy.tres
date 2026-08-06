@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="WeaponClassData" format=3]
+
+[ext_resource type="Script" path="res://core/data/weapon_class_data.gd" id="1_class"]
+[ext_resource type="Script" path="res://core/data/weapon_class_tier.gd" id="2_tier"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="m0_0"]
+script = ExtResource("3_mod")
+stat = 13
+modifier_type = 1
+value = 1
+
+[sub_resource type="Resource" id="t0"]
+script = ExtResource("2_tier")
+required = 3
+modifiers = Array[ExtResource("3_mod")]([SubResource("m0_0")])
+
+[sub_resource type="Resource" id="m1_0"]
+script = ExtResource("3_mod")
+stat = 13
+modifier_type = 1
+value = 2
+
+[sub_resource type="Resource" id="t1"]
+script = ExtResource("2_tier")
+required = 6
+modifiers = Array[ExtResource("3_mod")]([SubResource("m1_0")])
+
+[resource]
+script = ExtResource("1_class")
+tag = &"bouncy"
+display_key = "CLASS_BOUNCY"
+tiers = Array[ExtResource("2_tier")]([SubResource("t0"), SubResource("t1")])

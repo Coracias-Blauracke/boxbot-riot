@@ -20,6 +20,7 @@ func _initialize() -> void:
 	for path in _collect_resources(CONTENT_ROOT):
 		_validate(path)
 
+	_validate_tags_name_real_classes()
 	_validate_source_is_english()
 
 	for warning in _warnings:
@@ -119,6 +120,12 @@ func _validate(path: String) -> void:
 		_validate_spawn_pattern(path, resource)
 	elif resource is WeaponData:
 		_validate_weapon(path, resource)
+	elif resource is WeaponClassData:
+		_validate_weapon_class(path, resource)
+	elif resource is WeaponClassSet:
+		_validate_weapon_class_set(path, resource)
+	elif resource is CharacterData:
+		_validate_character(path, resource)
 	elif resource is EntityData:
 		_validate_entity(path, resource)
 	else:
@@ -128,6 +135,44 @@ func _validate(path: String) -> void:
 ## kind and its payload have to agree.
 func _validate_weapon(path: String, weapon: WeaponData) -> void:
 	_validate_entity(path, weapon)
+
+	_validate_upgrade_chain(path, weapon)
+
+	for tag in weapon.tags:
+		if tag == &"":
+			_errors.append("%s : has an empty tag" % path)
+			continue
+		if not _used_tags.has(tag):
+			_used_tags[tag] = []
+		(_used_tags[tag] as Array).append(path)
+
+	# A null entry in either table is silently skipped at runtime, so a deleted
+	# resource turns into a weapon that quietly stops caring about a stat.
+	var valid_stats := StatTypes.Stat.values()
+	for i in weapon.damage_scaling.size():
+		var scaling: StatScaling = weapon.damage_scaling[i]
+		if scaling == null:
+			_errors.append("%s : damage_scaling[%d] is null (deleted resource?)" % [path, i])
+		elif not valid_stats.has(scaling.stat):
+			_errors.append("%s : damage_scaling[%d] names a stat outside the enum" % [path, i])
+
+	for i in weapon.stat_inheritance.size():
+		var scaling: StatScaling = weapon.stat_inheritance[i]
+		if scaling == null:
+			_errors.append("%s : stat_inheritance[%d] is null (deleted resource?)" % [path, i])
+		elif not valid_stats.has(scaling.stat):
+			_errors.append("%s : stat_inheritance[%d] names a stat outside the enum" % [path, i])
+
+	# Withholding a MULTIPLICATIVE stat is expressed as a share of the holder's
+	# deviation from neutral, so a share is a proportion. Above 1 it amplifies,
+	# which is legal; below 0 on a multiplier inverts the holder's bonus into a
+	# penalty, which is almost certainly a typo rather than a design.
+	for scaling in weapon.stat_inheritance:
+		if scaling != null and scaling.coefficient < 0.0 and StatTypes.is_multiplicative(scaling.stat):
+			_warnings.append(
+				"%s : inherits a NEGATIVE share of %s, so its holder's bonus becomes a penalty"
+				% [path, StatTypes.Stat.keys()[scaling.stat]]
+			)
 
 	if weapon.firing == null:
 		_errors.append("%s : weapon has no firing pattern, it will never attack" % path)
@@ -316,12 +361,45 @@ func _validate_shop(path: String, shop: ShopData) -> void:
 		if shop.pool[i] == null:
 			_errors.append("%s : pool[%d] is null (deleted item?)" % [path, i])
 
-	# A tier with items but no weight is content that can never be drawn - it
-	# loads fine, validates fine, and is simply never seen.
+	for i in shop.weapon_pool.size():
+		if shop.weapon_pool[i] == null:
+			_errors.append("%s : weapon_pool[%d] is null (deleted weapon?)" % [path, i])
+
+	# A weapon offered at a price of zero is free, and a shop that gives weapons
+	# away is not a shop. Checked here rather than on the weapon, because a
+	# weapon that is never sold is entitled to leave its price alone.
+	for weapon in shop.weapon_pool:
+		if weapon != null and weapon.base_price <= 0:
+			_errors.append(
+				"%s : '%s' is in the weapon pool with base_price %d"
+				% [path, weapon.display_key, weapon.base_price]
+			)
+
+	# The mix is authored, so the two ends of the knob have to mean something. A
+	# chance above zero with nothing to draw from silently falls back to items
+	# and the setting reads as broken rather than as empty.
+	if shop.weapon_offer_chance > 0.0 and shop.weapon_pool.is_empty():
+		_warnings.append(
+			"%s : weapon_offer_chance is %.2f but the weapon pool is empty"
+			% [path, shop.weapon_offer_chance]
+		)
+	if shop.weapon_offer_chance <= 0.0 and not shop.weapon_pool.is_empty():
+		_warnings.append(
+			"%s : weapon pool has %d entries but weapon_offer_chance is 0, none can appear"
+			% [path, shop.weapon_pool.size()]
+		)
+
+	# A tier with content but no weight can never be drawn - it loads fine,
+	# validates fine, and is simply never seen. Weapons roll on the same curve,
+	# so a tier 3 weapon in a run whose tier 3 weight is always zero is exactly
+	# the same silent hole.
 	var tiers_present := {}
 	for item in shop.pool:
 		if item != null:
 			tiers_present[item.tier] = true
+	for weapon in shop.weapon_pool:
+		if weapon != null:
+			tiers_present[weapon.tier] = true
 
 	var late := shop.tier_weights_for(30)
 	var early := shop.tier_weights_for(1)
@@ -347,6 +425,132 @@ func _validate_item(path: String, item: ItemData) -> void:
 
 	_validate_modifiers(path, item.static_stats)
 	_validate_effects(path, item.dynamic_effects)
+
+## Merging walks `upgrades_into` until it runs out, so a chain that loops back
+## on itself is an infinite one. Nothing at runtime would catch it: the game
+## only ever takes ONE step along the chain, so the loop is invisible until a
+## player merges their way around it for ever.
+func _validate_upgrade_chain(path: String, weapon: WeaponData) -> void:
+	var seen: Dictionary = {weapon: true}
+	var link := weapon
+
+	while link.upgrades_into != null:
+		var next := link.upgrades_into
+		if seen.has(next):
+			_errors.append("%s : upgrade chain loops back on itself" % path)
+			return
+		seen[next] = true
+
+		# A merge is meant to be a step UP. None of these can be checked at
+		# runtime, because a weapon has no idea what it was merged from.
+		if next.tier < link.tier:
+			_warnings.append(
+				"%s : '%s' upgrades into a LOWER tier (%d -> %d)"
+				% [path, link.display_key, link.tier, next.tier]
+			)
+		if next.base_price <= link.base_price:
+			_warnings.append(
+				"%s : '%s' upgrades into something no more expensive (%d -> %d)"
+				% [path, link.display_key, link.base_price, next.base_price]
+			)
+		# A tier that quietly drops a tag breaks set-building in the least
+		# visible way possible: the player merges two blades and their blade
+		# count goes DOWN by two.
+		for tag in link.tags:
+			if not next.tags.has(tag):
+				_warnings.append(
+					"%s : '%s' upgrades into something that is no longer '%s'"
+					% [path, link.display_key, tag]
+				)
+
+		link = next
+
+# --- weapon classes ---------------------------------------------------------
+#
+# Tags are strings matched by equality, which is an open invitation to a typo:
+# a weapon tagged &"blades" instead of &"blade" loads fine, validates fine as a
+# file, and simply never counts toward anything. Collected across the whole
+# content tree and checked once at the end, because no single file can see it.
+
+var _declared_tags: Dictionary = {}   # StringName -> true
+var _used_tags: Dictionary = {}       # StringName -> Array[String] of paths
+
+func _validate_weapon_class(path: String, weapon_class: WeaponClassData) -> void:
+	if weapon_class.tag == &"":
+		_errors.append("%s : weapon class has no tag, nothing can name it" % path)
+	else:
+		_declared_tags[weapon_class.tag] = true
+
+	if weapon_class.display_key.is_empty():
+		_errors.append("%s : empty display_key (translation key)" % path)
+	if weapon_class.tiers.is_empty():
+		_warnings.append("%s : weapon class has no tiers, holding them is worth nothing" % path)
+
+	var seen: Dictionary = {}
+	for i in weapon_class.tiers.size():
+		var tier: WeaponClassTier = weapon_class.tiers[i]
+		if tier == null:
+			_errors.append("%s : tiers[%d] is null (deleted resource?)" % [path, i])
+			continue
+		if tier.required <= 0:
+			_errors.append("%s : tiers[%d] requires %d weapons, so it is always on" % [path, i, tier.required])
+		# Bonuses are CUMULATIVE, so two tiers at the same count both apply and
+		# the file reads as though only one does.
+		if seen.has(tier.required):
+			_errors.append("%s : two tiers both require %d, and both will apply" % [path, tier.required])
+		seen[tier.required] = true
+		if tier.modifiers.is_empty():
+			_warnings.append("%s : tiers[%d] grants nothing" % [path, i])
+		_validate_modifiers(path, tier.modifiers)
+
+func _validate_weapon_class_set(path: String, set_data: WeaponClassSet) -> void:
+	if set_data.classes.is_empty():
+		_warnings.append("%s : class set is empty, no weapon can belong to anything" % path)
+
+	var seen: Dictionary = {}
+	for i in set_data.classes.size():
+		var entry: WeaponClassData = set_data.classes[i]
+		if entry == null:
+			_errors.append("%s : classes[%d] is null (deleted resource?)" % [path, i])
+			continue
+		# Two classes sharing a tag both match, so every bonus lands twice.
+		if seen.has(entry.tag):
+			_errors.append("%s : two classes share the tag '%s'" % [path, entry.tag])
+		seen[entry.tag] = true
+
+func _validate_tags_name_real_classes() -> void:
+	for tag in _used_tags:
+		if _declared_tags.has(tag):
+			continue
+		for path in _used_tags[tag]:
+			_warnings.append(
+				"%s : tagged '%s', which no authored class declares, so it counts toward nothing"
+				% [path, tag]
+			)
+
+## A loadout that does not fit is the worst kind of authoring mistake: the run
+## starts, the character walks around, and the weapons past the cap are simply
+## not there. add_weapon refuses rather than overflowing, so nothing errors.
+func _validate_character(path: String, character: CharacterData) -> void:
+	_validate_entity(path, character)
+
+	if character.weapon_slots <= 0:
+		_errors.append("%s : weapon_slots must be positive, nothing can be carried" % path)
+
+	for i in character.starting_weapons.size():
+		if character.starting_weapons[i] == null:
+			_errors.append("%s : starting_weapons[%d] is null (deleted weapon?)" % [path, i])
+
+	var carried := character.starting_weapons.size()
+	if carried > character.weapon_slots:
+		_errors.append(
+			"%s : starts with %d weapons but has %d slots, the rest are dropped in silence"
+			% [path, carried, character.weapon_slots]
+		)
+
+	for i in character.starting_items.size():
+		if character.starting_items[i] == null:
+			_errors.append("%s : starting_items[%d] is null (deleted item?)" % [path, i])
 
 func _validate_entity(path: String, entity: EntityData) -> void:
 	if entity.display_key.is_empty():

@@ -46,6 +46,60 @@ enum DeliveryKind {
 ## Capacity and dissipation are stats, so items can widen or vent them.
 @export var heat_per_shot: float = 0.0
 
+@export_group("Family")
+## The next tier up, or null on the top tier.
+##
+## A CHAIN rather than a shared family id plus a tier number: the chain cannot
+## disagree with itself. An id-and-tier scheme has to answer what happens when
+## two weapons claim the same family at the same tier, or when a tier is missing
+## from the middle, and both are states a validator has to invent rules for.
+## Following a pointer has neither problem.
+##
+## Two carried copies of a weapon with an upgrade can be merged into one of the
+## next tier, which frees a slot. Null here means "top of the chain": the weapon
+## is still perfectly good, it simply cannot be merged any further.
+@export var upgrades_into: WeaponData
+
+@export_group("Classes")
+## Which weapon classes this counts toward. PLURAL on purpose: a bayonet is a
+## blade and a gun, and it should raise both counts rather than forcing a choice
+## the fiction does not have.
+##
+## Tags are StringNames matched against WeaponClassData.tag. A tag naming no
+## authored class is inert rather than an error, so a weapon can be tagged
+## before its class exists - the validator warns about it.
+@export var tags: Array[StringName] = []
+
+@export_group("Scaling")
+## Which of the WIELDER's stats feed this weapon's damage, and how much of each.
+##
+## EMPTY MEANS "all of my own damage type", which is what every weapon authored
+## before this did implicitly. Listing anything replaces that default outright
+## rather than adding to it: a weapon that wants full ranged damage AND a share
+## of max HP lists both, because a list that silently keeps something you did
+## not write is a list nobody can read.
+##
+## This is the balance lever for fast weapons. A flat damage bonus applies PER
+## HIT, so its value scales with rate of fire; without a coefficient the fastest
+## weapon in the game wins by more the longer a run goes on. It is also what
+## makes a weapon that scales off MAX_HP or MOVEMENT_SPEED expressible with no
+## code at all.
+##
+## Only STATS can appear here. "The lower your health, the harder you hit" reads
+## current_hp, which is state rather than a stat, and belongs in a
+## CALCULATE_DAMAGE effect where it can change between shots.
+@export var damage_scaling: Array[StatScaling] = []
+
+## How much of the wielder's OTHER combat stats reaches this weapon.
+##
+## Unlisted stats transfer in FULL. Before this existed they did not transfer at
+## all - only damage did - which quietly made four authored items decorative.
+##
+## Note this is a different question from damage_scaling above: that one adds a
+## number to one shot, this one changes a stat that firing intervals, spread,
+## range and projectile speed are all read from.
+@export var stat_inheritance: Array[StatScaling] = []
+
 @export_group("Damage falloff")
 ## Distance in world units at which damage starts dropping, and where it bottoms
 ## out. A strong balance lever: it stops shotguns being good at every range.
@@ -57,3 +111,65 @@ enum DeliveryKind {
 ## Push applied to the wielder on firing. Almost always 0; a shotgun that shoves
 ## you backwards turns recoil into a movement option.
 @export var recoil: float = 0.0
+
+# --- acquisition -----------------------------------------------------------
+#
+# The one purchasable with a CAPACITY. That capacity is the WEAPON_SLOTS stat,
+# so "this character carries eight" and "this item grants a slot" stay ordinary
+# modifiers and neither ShopManager nor this file ever learns they exist - the
+# same arrangement SHOP_SLOTS already has.
+#
+# A weapon's own base_stats belong to the WEAPON, not to the wielder: Weapon
+# builds a WeaponModel from this resource. So acquiring one deliberately pushes
+# nothing into the buyer's StatsManager, which is exactly where it differs from
+# an item.
+
+## What this weapon does with its holder's stats, in words.
+##
+## Derived, never authored: the numbers below ARE the tables, so the text cannot
+## drift from them. Without it the scaling is invisible and reads as a bug the
+## first time somebody buys a damage item and watches nothing happen.
+func detail_notes() -> PackedStringArray:
+	var notes := PackedStringArray()
+
+	# Classes first: which set a weapon belongs to is the reason to buy it over
+	# a stronger one, so it should not be the last line the eye reaches.
+	for tag in tags:
+		notes.append("class %s" % tag)
+
+	for scaling in damage_scaling:
+		if scaling != null:
+			notes.append("scales %d%% with %s" % [
+				roundi(scaling.coefficient * 100.0), _stat_key(scaling.stat)
+			])
+
+	for scaling in stat_inheritance:
+		if scaling != null:
+			notes.append("inherits %d%% of %s" % [
+				roundi(scaling.coefficient * 100.0), _stat_key(scaling.stat)
+			])
+
+	return notes
+
+## The same key StatMetadata authors and the stat sheet already shows, built
+## from the enum rather than looked up - core/ has no access to the sheet, and
+## two spellings of one name is how a screen ends up disagreeing with itself.
+static func _stat_key(stat: StatTypes.Stat) -> String:
+	return "STAT_%s" % StatTypes.Stat.keys()[stat]
+
+## A free slot, or a full rack this purchase would merge into. See
+## EntityModel.can_take_weapon for why the second case has to exist.
+func can_be_acquired_by(host: Variant) -> bool:
+	return (host as EntityModel).can_take_weapon(self)
+
+func can_be_sold() -> bool:
+	return true
+
+func owned_quantity(host: Variant) -> int:
+	return (host as EntityModel).weapon_count(self)
+
+func acquire(host: Variant) -> void:
+	(host as EntityModel).take_weapon(self)
+
+func release(host: Variant) -> void:
+	(host as EntityModel).remove_weapon(self)

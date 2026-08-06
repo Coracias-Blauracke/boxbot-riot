@@ -58,11 +58,11 @@ func set_ready(value: bool) -> void:
 ## Runs CALCULATE_PRICE and hands back the whole event rather than an int,
 ## because the pipeline can also decide this buyer pays with a STAT and the
 ## caller has to know which.
-func quote(host: EntityModel, item: ItemData) -> PriceEvent:
+func quote(host: EntityModel, entry: ShopEntryData) -> PriceEvent:
 	var event := PriceEvent.new()
 	event.buyer = host
-	event.item = item
-	event.base_price = data.price_for(item, wave_number) if data != null else 0
+	event.entry = entry
+	event.base_price = data.price_for(entry, wave_number) if data != null else 0
 	event.price = event.base_price
 
 	host.pipeline(Hooks.Hook.CALCULATE_PRICE, event)
@@ -85,19 +85,26 @@ func buy(host: EntityModel, index: int) -> bool:
 		return false
 
 	var offer := offers[index]
-	if offer.sold or offer.item == null:
+	if offer.sold or offer.entry == null:
+		return false
+
+	# Asked of the ENTRY rather than decided here. A weapon refuses when the rack
+	# is full; an item never refuses. ShopManager stays as ignorant of
+	# WEAPON_SLOTS as it already is of SHOP_SLOTS, which is what keeps "this
+	# curse costs you a slot" an ordinary modifier.
+	if not offer.entry.can_be_acquired_by(host):
 		return false
 
 	# Re-quoted at the moment of purchase rather than trusting the number on
 	# screen. An item bought two slots ago can have changed what this one costs,
 	# and a displayed price is a view, not a contract.
-	var event := quote(host, offer.item)
+	var event := quote(host, offer.entry)
 	if not _can_pay(host, event):
 		return false
 
 	_pay(host, event)
-	host.add_item(offer.item)
-	host.counters.add(CounterTypes.Counter.ITEMS_BOUGHT)
+	offer.entry.acquire(host)
+	host.counters.add(_purchase_counter(offer.entry))
 
 	offer.sold = true
 	offer.price = event.price
@@ -108,12 +115,27 @@ func buy(host: EntityModel, index: int) -> bool:
 	offers_changed.emit()
 	return true
 
-func sell(host: EntityModel, item: ItemData) -> bool:
-	if item == null or data == null or host.items.get_quantity(item) <= 0:
+## Which tally a purchase lands in.
+##
+## Counters are kept apart here where the HOOKS deliberately are not, and the
+## difference is real. A hook hands the entry over, so an effect can look at
+## what was bought and decide; a counter is a NUMBER that effects do arithmetic
+## on, and "for every 5 items bought" cannot un-mix a weapon somebody folded
+## into the same tally.
+func _purchase_counter(entry: ShopEntryData) -> CounterTypes.Counter:
+	return (
+		CounterTypes.Counter.WEAPONS_BOUGHT if entry is WeaponData
+		else CounterTypes.Counter.ITEMS_BOUGHT
+	)
+
+func sell(host: EntityModel, entry: ShopEntryData) -> bool:
+	if entry == null or data == null or not entry.can_be_sold():
+		return false
+	if entry.owned_quantity(host) <= 0:
 		return false
 
-	var refund := data.sell_price_for(item)
-	host.remove_item(item)
+	var refund := data.sell_price_for(entry)
+	entry.release(host)
 
 	# Deliberately NOT add_currency(): that also credits CURRENCY_EARNED, and a
 	# buy-then-sell loop would then farm every "for each 500 earned" effect for
@@ -122,8 +144,8 @@ func sell(host: EntityModel, item: ItemData) -> bool:
 
 	var event := PriceEvent.new()
 	event.buyer = host
-	event.item = item
-	event.base_price = item.base_price
+	event.entry = entry
+	event.base_price = entry.base_price
 	event.price = refund
 	host.notify(Hooks.Hook.ON_ITEM_SOLD, event)
 	return true
@@ -181,23 +203,30 @@ func _roll(host: EntityModel, rng: RunRandom) -> void:
 	event.wave_number = wave_number
 	event.offer_count = _slots_for(host)
 	event.tier_weights = data.tier_weights_for(wave_number)
-	# A COPY. An effect that filters the pool must not edit the authored
-	# ShopData - Godot caches .tres globally, so the edit would leak into every
-	# other player's shop and every later run in the same session.
-	event.candidates = data.pool.duplicate()
+	# A COPY, items and weapons together. An effect that filters the pool must
+	# not edit the authored ShopData - Godot caches .tres globally, so the edit
+	# would leak into every other player's shop and every later run in the same
+	# session.
+	event.candidates = data.all_candidates()
 
 	host.pipeline(Hooks.Hook.ROLL_SHOP_ITEMS, event)
 
-	var taken: Array[ItemData] = []
+	var taken: Array[ShopEntryData] = []
 	for slot in maxi(0, event.offer_count):
-		var item := _draw(event, rng, taken)
-		if item == null:
+		# Rolled PER SLOT, from an authored chance rather than from how many of
+		# each kind exist. Authoring thirty weapons must not silently make items
+		# rarer - the same reason tiers are weighted rather than items.
+		var want_weapon := rng.chance(
+			RunRandom.Stream.SHOP, data.weapon_offer_chance, player_index
+		)
+		var entry := _draw(event, rng, taken, want_weapon)
+		if entry == null:
 			continue
-		taken.append(item)
+		taken.append(entry)
 
 		var offer := ShopOffer.new()
-		offer.item = item
-		var quoted := quote(host, item)
+		offer.entry = entry
+		var quoted := quote(host, entry)
 		offer.price = quoted.price
 		offer.pay_with_stat = quoted.pay_with_stat
 		offer.uses_stat_payment = quoted.uses_stat_payment
@@ -222,7 +251,21 @@ func _slots_for(host: EntityModel) -> int:
 ## twenty items twenty times as likely as a tier holding one - the odds would
 ## then be decided by how much content happened to be authored rather than by
 ## the numbers on ShopData.
-func _draw(event: ShopRollEvent, rng: RunRandom, taken: Array[ItemData]) -> ItemData:
+## The kind asked for, or the other kind rather than an empty slot.
+##
+## The fallback matters more than it looks: a run with no weapons authored yet,
+## a pool an effect has filtered down to items, or a weapon list exhausted by
+## the no-duplicates rule would all otherwise hand back short shops with holes
+## in them. A slot is filled with something or the shop is lying about its size.
+func _draw(
+	event: ShopRollEvent, rng: RunRandom, taken: Array[ShopEntryData], want_weapon: bool
+) -> ShopEntryData:
+	var picked := _draw_of_kind(event, rng, taken, want_weapon)
+	return picked if picked != null else _draw_of_kind(event, rng, taken, not want_weapon)
+
+func _draw_of_kind(
+	event: ShopRollEvent, rng: RunRandom, taken: Array[ShopEntryData], want_weapon: bool
+) -> ShopEntryData:
 	# Two passes: distinct items first, then repeats if the pool cannot fill the
 	# shop. A pool smaller than the shop is an authoring choice, not an error.
 	#
@@ -235,14 +278,16 @@ func _draw(event: ShopRollEvent, rng: RunRandom, taken: Array[ItemData]) -> Item
 	var skip_taken := not data.allow_duplicate_offers
 
 	for attempt in 2:
-		for item in event.candidates:
-			if item == null or event.weight_for_tier(item.tier) <= 0.0:
+		for entry in event.candidates:
+			if entry == null or (entry is WeaponData) != want_weapon:
 				continue
-			if skip_taken and taken.has(item):
+			if event.weight_for_tier(entry.tier) <= 0.0:
 				continue
-			if not by_tier.has(item.tier):
-				by_tier[item.tier] = []
-			(by_tier[item.tier] as Array).append(item)
+			if skip_taken and taken.has(entry):
+				continue
+			if not by_tier.has(entry.tier):
+				by_tier[entry.tier] = []
+			(by_tier[entry.tier] as Array).append(entry)
 
 		if not by_tier.is_empty() or not skip_taken:
 			break
@@ -264,4 +309,4 @@ func _draw(event: ShopRollEvent, rng: RunRandom, taken: Array[ItemData]) -> Item
 		return null
 
 	var options: Array = by_tier[picked]
-	return rng.pick(RunRandom.Stream.SHOP, options, player_index) as ItemData
+	return rng.pick(RunRandom.Stream.SHOP, options, player_index) as ShopEntryData

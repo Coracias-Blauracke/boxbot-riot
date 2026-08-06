@@ -81,9 +81,26 @@ func _init(data: EntityData = null) -> void:
 	effects = EffectDispatcher.new()
 	statuses = StatusManager.new()
 	stats.stat_changed.connect(_on_stat_changed)
+	_seed_neutrals()
 
 	if data != null:
 		setup_from_data(data)
+
+## Every multiplicative stat starts at the value that means "no effect".
+##
+## Without this a player's ATTACK_SPEED reads its FLOOR of 0.05, because nothing
+## ever set a base for it - and the moment a weapon starts inheriting its
+## wielder's attack speed, that 0.05 would slow every weapon in the game to a
+## twentieth of its rate. A floor is not a default; this is the default.
+##
+## Seeded for EVERY entity rather than for players, because "everything carries
+## the full stat set" is the decision the whole stat system rests on, and an
+## enemy whose attack speed reads 0.05 is wrong in exactly the same way.
+func _seed_neutrals() -> void:
+	for stat in StatTypes.NEUTRALS:
+		stats.add_modifier(
+			stat, StatTypes.Modifier.BASE, StatTypes.NEUTRALS[stat], &"stat_neutral"
+		)
 
 func setup_from_data(data: EntityData) -> void:
 	if data == null:
@@ -131,6 +148,181 @@ func add_item(item: ItemData, quantity: int = 1) -> void:
 
 func remove_item(item: ItemData, quantity: int = 1) -> void:
 	items.remove_item(self, item, quantity)
+
+# --- weapons ---------------------------------------------------------------
+#
+# WHAT IS CARRIED IS MODEL STATE; the nodes in the hands are a view of it. It
+# used to be the other way round - WeaponMount owned the list and main.gd was
+# the only caller - which is why a weapon could not be bought, sold, saved or
+# even authored on a character: nothing outside the scene could see it.
+#
+# A plain array rather than a WeaponsManager. ItemsManager exists because items
+# have real bookkeeping (per-copy modifier handles, effect instances, stacks);
+# a weapon pushes nothing into the buyer's stats, because its base_stats belong
+# to the WeaponModel the Weapon node builds. There is no state here to manage,
+# and a manager holding one array would be a layer that only forwards.
+#
+# Duplicates are allowed on purpose: two of the same pistol is an ordinary
+# loadout in this genre, and it falls out of a list rather than needing a count.
+
+signal weapons_changed
+
+var weapons: Array[WeaponData] = []
+
+## The classes this entity's weapons count toward. Injected, because core/ may
+## not load content - the same way rng and the census arrive.
+var weapon_classes: WeaponClassSet = null:
+	set(value):
+		weapon_classes = value
+		_refresh_class_bonuses()
+
+## Capacity, read off the WEAPON_SLOTS stat so a character starting with eight,
+## an item granting one and a curse taking one away are all ordinary modifiers.
+func weapon_slots() -> int:
+	return maxi(0, roundi(stats.get_stat(StatTypes.Stat.WEAPON_SLOTS)))
+
+func has_free_weapon_slot() -> bool:
+	return weapons.size() < weapon_slots()
+
+func weapon_count(weapon: WeaponData) -> int:
+	var total := 0
+	for entry in weapons:
+		if entry == weapon:
+			total += 1
+	return total
+
+## Refuses rather than overflowing. The shop asks first through
+## WeaponData.can_be_acquired_by, so a refusal here means a caller went around
+## it - and silently carrying a ninth weapon in six slots is worse than nothing
+## happening.
+func add_weapon(weapon: WeaponData) -> bool:
+	if weapon == null or not has_free_weapon_slot():
+		return false
+	weapons.append(weapon)
+	_refresh_class_bonuses()
+	weapons_changed.emit()
+	return true
+
+# --- merging ---------------------------------------------------------------
+#
+# Duplicates are CARRIED, not folded together on sight. That is what makes the
+# shop pose a question rather than run an algorithm: four copies of one weapon
+# complete a class set, one merged copy is stronger, and six slots mean you
+# cannot have both. A model that merged automatically on every duplicate would
+# take the decision away and quietly make the class thresholds unreachable.
+
+## Two copies of something that has a next tier.
+func can_merge_weapon(weapon: WeaponData) -> bool:
+	return weapon != null and weapon.upgrades_into != null and weapon_count(weapon) >= 2
+
+## Two in, one out. Never blocked by capacity, because it frees a slot.
+func merge_weapon(weapon: WeaponData) -> bool:
+	if not can_merge_weapon(weapon):
+		return false
+
+	# Mutated directly rather than through remove_weapon twice: that would
+	# recompute the class bonuses three times and emit three signals for one
+	# player action, and the view would rebuild the rack mid-merge.
+	weapons.erase(weapon)
+	weapons.erase(weapon)
+	weapons.append(weapon.upgrades_into)
+
+	_refresh_class_bonuses()
+	weapons_changed.emit()
+	return true
+
+## Whether a purchase can land at all.
+##
+## A full rack normally refuses. It accepts one case: the weapon duplicates
+## something already carried that HAS a next tier, so the purchase merges
+## instead of overflowing and the count comes out unchanged. Without that
+## exception merging becomes impossible exactly when it is most wanted - late,
+## with six weak weapons and nowhere to put the seventh.
+func can_take_weapon(weapon: WeaponData) -> bool:
+	if weapon == null:
+		return false
+	if has_free_weapon_slot():
+		return true
+	return weapon.upgrades_into != null and weapon_count(weapon) >= 1
+
+## Adds, or merges when there is no room. The auto-merge is deliberately the
+## ONLY automatic one - everywhere else merging is something the player asks
+## for.
+func take_weapon(weapon: WeaponData) -> bool:
+	if not can_take_weapon(weapon):
+		return false
+	if has_free_weapon_slot():
+		return add_weapon(weapon)
+
+	# One carried copy is consumed and replaced by the next tier: the same
+	# arithmetic as adding then merging, without ever holding seven weapons.
+	weapons.erase(weapon)
+	weapons.append(weapon.upgrades_into)
+	_refresh_class_bonuses()
+	weapons_changed.emit()
+	return true
+
+## Removes ONE copy, not every copy. Selling one of two identical pistols must
+## leave the other one in your hands.
+func remove_weapon(weapon: WeaponData) -> bool:
+	var index := weapons.find(weapon)
+	if index < 0:
+		return false
+	weapons.remove_at(index)
+	_refresh_class_bonuses()
+	weapons_changed.emit()
+	return true
+
+## WeaponClassData -> Array[EffectInstance] currently granted by it. Held only
+## so the recompute can strip what an effect of its own added.
+var _class_effects: Dictionary = {}
+
+## How many carried weapons name this tag. Two copies of one blade is two.
+func weapon_tag_count(tag: StringName) -> int:
+	var total := 0
+	for weapon in weapons:
+		if weapon != null and weapon.tags.has(tag):
+			total += 1
+	return total
+
+## Strips every class bonus and reapplies from scratch.
+##
+## IDEMPOTENT ON PURPOSE, and for the reason EffectStatPerWorldCount is: the
+## count goes DOWN as well as up. Selling the third blade has to take the third
+## blade's bonus away, and an incremental version that adds on acquisition and
+## subtracts on loss breaks permanently the first time an event is missed. A
+## recompute cannot drift.
+##
+## The source is the class RESOURCE, so remove_all_from_source strips exactly
+## that class's contribution and nothing else - the same trick that lets an
+## expiring status remove only what it added when several overlap on one stat.
+func _refresh_class_bonuses() -> void:
+	if weapon_classes == null:
+		return
+
+	for entry in weapon_classes.classes:
+		if entry == null:
+			continue
+
+		# Modifiers an EFFECT of this class added carry the INSTANCE as their
+		# source, not the class, so they have to be stripped through the
+		# instances before the instances themselves are dropped. Same order
+		# ItemsManager uses when an item leaves.
+		for instance in _class_effects.get(entry, []):
+			stats.remove_all_from_source(instance)
+		effects.unregister_source(entry)
+		stats.remove_all_from_source(entry)
+
+		var count := weapon_tag_count(entry.tag)
+		for modifier in entry.modifiers_for(count):
+			stats.add_modifier(modifier.stat, modifier.modifier_type, modifier.value, entry)
+
+		var created: Array[EffectInstance] = []
+		for effect in entry.effects_for(count):
+			var instance := EffectInstance.new(effect, entry)
+			effects.register(instance)
+			created.append(instance)
+		_class_effects[entry] = created
 
 # --- currency --------------------------------------------------------------
 #
