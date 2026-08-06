@@ -145,8 +145,8 @@ scenes/      the view — nodes, physics, rendering
              PauseScreen, JoinView
   input/     PlayerInput (device binding, movement + menus),
              DeviceJoiner (watches devices that have NOT joined)
-content/     authored .tres: characters, enemies, weapons (+ classes/), items,
-             projectiles,
+content/     authored .tres: characters, enemies, weapons/ (12 families x 4
+             tiers, + classes/), items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
              stats/ (StatMetadata + the StatSheet reading order),
              statuses/ (bleed, poison, burn, slow)
@@ -725,6 +725,13 @@ Weapons carry CLASS TAGS, and holding several of a class grants authored stat
 bonuses at authored thresholds - two classes exist so far, blade and gun, which
 is what the four authored weapons divide into naturally.
 
+TWELVE WEAPON FAMILIES are authored, four tiers each, 48 files in all, drawn
+from `docs/weapon_list.md` and generated against its tier convention (damage
+x1.55, price x2.2 per step, every axis identical). Five classes exist - gun,
+blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
+`rapid` grants something at every count from one to six, `bouncy` nothing until
+three. Not one of the twelve needed a new effect class.
+
 WEAPONS ARE BOUGHT AND SOLD like items. They roll from their own pool at an
 authored chance, take a WEAPON_SLOTS slot, appear in the hands the moment the
 model changes, sit in the owned strip ahead of the items, and describe
@@ -772,10 +779,7 @@ that makes polishing now a mistake.
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps, worst first:** only FOUR WEAPONS are authored, which is now a
-content gap rather than an engine one — the acquisition path exists and the
-four axes cover most of what a weapon is, so the next ones are `.tres` files.
-Then: no `BEAM` delivery,
+**Known gaps, worst first:** no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,

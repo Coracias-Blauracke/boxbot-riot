@@ -64,8 +64,20 @@ func _park_now() -> void:
 		_panels[index].cursor = 0
 		# The tile menu opens on a button, so a capture run cannot reach it at
 		# all - the same hole parking the cursor exists to close.
-		if _park_open_menu:
-			_panels[index].open_tile_menu()
+		if not _park_open_menu:
+			continue
+
+		# A DUPLICATE, so the menu has a MERGE row to draw. Granted the same way
+		# and for the same reason the currency above is: the state exists in a
+		# real game the moment somebody buys a second copy, and a capture with
+		# nobody at the controls cannot get there on its own. The menu itself is
+		# still built by the code the button reaches.
+		var carried := run.players[index].weapons
+		if not carried.is_empty():
+			run.players[index].add_weapon(carried[0])
+		_panels[index]._on_offers_changed()
+		_panels[index].cursor = 0
+		_panels[index].open_tile_menu()
 
 func _place_panels() -> void:
 	var viewport := Vector2(get_viewport().get_visible_rect().size)

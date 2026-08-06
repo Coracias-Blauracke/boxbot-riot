@@ -6,45 +6,28 @@
 
 [sub_resource type="Resource" id="m0_0"]
 script = ExtResource("3_mod")
-stat = 5
+stat = 13
 modifier_type = 1
-value = 4
+value = 1
 
 [sub_resource type="Resource" id="t0"]
 script = ExtResource("2_tier")
-required = 2
+required = 3
 modifiers = Array[ExtResource("3_mod")]([SubResource("m0_0")])
 
 [sub_resource type="Resource" id="m1_0"]
 script = ExtResource("3_mod")
-stat = 5
+stat = 13
 modifier_type = 1
-value = 5
-
-[sub_resource type="Resource" id="m1_1"]
-script = ExtResource("3_mod")
-stat = 9
-modifier_type = 1
-value = 0.05
+value = 2
 
 [sub_resource type="Resource" id="t1"]
 script = ExtResource("2_tier")
-required = 4
-modifiers = Array[ExtResource("3_mod")]([SubResource("m1_0"), SubResource("m1_1")])
-
-[sub_resource type="Resource" id="m2_0"]
-script = ExtResource("3_mod")
-stat = 5
-modifier_type = 1
-value = 8
-
-[sub_resource type="Resource" id="t2"]
-script = ExtResource("2_tier")
 required = 6
-modifiers = Array[ExtResource("3_mod")]([SubResource("m2_0")])
+modifiers = Array[ExtResource("3_mod")]([SubResource("m1_0")])
 
 [resource]
 script = ExtResource("1_class")
-tag = &"blade"
-display_key = "CLASS_BLADE"
-tiers = Array[ExtResource("2_tier")]([SubResource("t0"), SubResource("t1"), SubResource("t2")])
+tag = &"bouncy"
+display_key = "CLASS_BOUNCY"
+tiers = Array[ExtResource("2_tier")]([SubResource("t0"), SubResource("t1")])

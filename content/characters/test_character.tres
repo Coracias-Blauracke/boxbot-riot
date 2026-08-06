@@ -6,7 +6,7 @@
 [ext_resource type="Resource" path="res://content/items/barbed_edge.tres" id="4_barbed"]
 [ext_resource type="Resource" path="res://content/items/serrated_rounds.tres" id="5_serrated"]
 [ext_resource type="Script" path="res://core/data/weapon_data.gd" id="6_weapon"]
-[ext_resource type="Resource" path="res://content/weapons/pistol.tres" id="7_pistol"]
+[ext_resource type="Resource" path="res://content/weapons/bolt_driver_1.tres" id="7_pistol"]
 
 [sub_resource type="Resource" id="Resource_hp"]
 script = ExtResource("2_mod")
