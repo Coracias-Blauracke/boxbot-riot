@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 459 assertions across three suites, no editor, no game window
+# tests — 500 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -108,7 +108,8 @@ stay inside the horde and die before the wave can end. Nothing is then observed.
 ```
 core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencies
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
-  data/      .tres schemas: EntityData, CharacterData, EnemyData, WeaponData, ...
+  data/      .tres schemas: ShopEntryData (the base every purchasable shares),
+             EntityData, CharacterData, EnemyData, WeaponData, ItemData, ...
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
              (statuses carry StatusScaling: which stat feeds which axis)
   events/    EventPayload and its subclasses
@@ -231,6 +232,59 @@ the same run, which is what a fixed seed is FOR: dying on wave 4 and immediately
 trying that exact wave 4 again. A restart that quietly reseeded would take away
 the only tool for retrying one situation, and the way to get a different run is
 already the authored 0.
+
+**A weapon and an item are the SAME transaction.** Both roll by tier, price
+through `CALCULATE_PRICE` per buyer, pay in currency or in a stat, appear in the
+owned strip and sell back. `ShopEntryData` is the base that says so, and the
+only thing subclasses override is what happens at the instant of acquisition -
+an item pushes modifiers into `StatsManager`, a weapon takes a slot. The
+alternative was a `kind` enum and a branch at every one of those sites, which
+costs a branch per KIND per SITE for ever; at a hundred weapons it is the sites
+that get expensive, never the content.
+
+`modifiers()` and `effects()` live there because the two shapes were ALREADY
+identical under different names, and `ShopPanel` was already flattening them by
+hand to put the character in the owned strip. Naming it means the detail block
+derives a weapon's description with no new code at all - a captured shop shows
+`WEAPON_PISTOL` listing `STAT_RANGED_DAMAGE +12` and `STAT_SPREAD_ANGLE +3` in
+red, because spread is a stat where lower is better and that was already known.
+
+`EntityData extends ShopEntryData`, so an enemy carries a `tier` and a
+`base_price` it never uses. That is the same trade as an arena carrying
+MELEE_DAMAGE and is made for the same reason: one shape every consumer can read
+beats a narrower one half of them special-case.
+
+**The shop's KIND MIX is authored, never emergent.** `ShopData` holds two pools
+and a `weapon_offer_chance` rolled per slot, rather than one merged pool. A
+merged pool would let the mix be decided by how much content happens to exist -
+authoring thirty weapons would silently make items rarer and invalidate every
+balance judgement made before it. That is the same argument already written into
+`ShopManager._draw` for weighting TIERS rather than items, and the suite asserts
+it directly: with five weapons against one item, chance 0 offers no weapons and
+chance 1 offers no items.
+
+A slot whose rolled kind has nothing left falls back to the other kind rather
+than coming back empty, so an empty weapon pool or an effect that filtered them
+all out still fills the shop.
+
+**Weapons live on `EntityModel`; `WeaponMount` is a VIEW of that list.** It used
+to own the list, which is exactly why a weapon could not be bought, sold, saved
+or authored on a character: the only caller that could add one was `main.gd`,
+and nothing outside the scene layer could see what was carried. `WeaponMount.sync()`
+diffs rather than rebuilding, because a `Weapon` node holds live state - heat,
+burst progress, a swing halfway through its arc - and dropping it because a
+different weapon was sold is a bug that can only surface mid-combat.
+
+Capacity is answered by the MODEL alone. The shop has to ask "is there room"
+before it takes any money, so both must ask the same place; `add_weapon` refuses
+rather than overflowing, and a refusal there means a caller went around
+`can_be_acquired_by`.
+
+**Hooks are shared between purchase kinds; COUNTERS are not.** `ON_ITEM_BOUGHT`
+fires for a weapon too, because a hook hands the entry over and an effect can
+look at what it was. `WEAPONS_BOUGHT` is a separate counter because a counter is
+a NUMBER effects do arithmetic on, and "for every 5 items bought" cannot un-mix
+a weapon folded into the same tally.
 
 **Shop slot count is a STAT, not a shop setting.** `SHOP_SLOTS` works exactly as
 `WEAPON_SLOTS` does, so "this character sees 8 items", "this item grants a slot"
@@ -526,6 +580,13 @@ A run can be PAUSED and RESTARTED: any device opens one shared menu with resume,
 restart and quit, and the same menu opens itself when the run ends, so a wipe no
 longer means closing the executable.
 
+WEAPONS ARE BOUGHT AND SOLD like items. They roll from their own pool at an
+authored chance, take a WEAPON_SLOTS slot, appear in the hands the moment the
+model changes, sit in the owned strip ahead of the items, and describe
+themselves through the same derived block — a weapon needed no description code
+of its own, because its damage and range were already StatModifiers. A character
+now carries its own `starting_weapons`; `main.tscn` no longer holds a loadout.
+
 The shop UI is playable end to end: per-player panels laid out by player count,
 a cursor per player driven by that player's own device, offers, reroll, buying,
 selling from the owned strip, the character as the last tile, a derived detail
@@ -564,15 +625,9 @@ that makes polishing now a mistake.
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps, worst first:** A WEAPON CANNOT BE ACQUIRED DURING A RUN.
-`ShopData.pool` is `Array[ItemData]` and `ShopOffer` holds an `ItemData`, so the
-shop cannot offer one; `WeaponMount.equip()` is called from exactly one place,
-`main.gd` reading its own `starting_weapons` export; and weapons live only in
-the scene layer, with no inventory on `EntityModel`. `CharacterData.starting_weapons`
-is declared and NEVER READ, so a character cannot even define its own loadout.
-Authoring more weapons therefore produces `.tres` files reachable only by editing
-`main.tscn` — the acquisition path has to come first, and it is the one gap that
-makes weapon content worth writing.
+**Known gaps, worst first:** only FOUR WEAPONS are authored, which is now a
+content gap rather than an engine one — the acquisition path exists and the
+four axes cover most of what a weapon is, so the next ones are `.tres` files.
 Then: no join flow for co-op, no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
@@ -707,6 +762,14 @@ most new weapons are a new combination rather than new code. Naming those four
 per weapon immediately exposes what the engine is missing. One hole is already
 known: **`BEAM` delivery is not implemented**, so anything laser-shaped is
 blocked.
+
+Authoring one is a single `.tres` and two lines of bookkeeping: give it `tier`
+and `base_price` (they come from `ShopEntryData` now), then add it to
+`default_shop.tres`'s `weapon_pool`. Nothing else — its stat lines are already
+`StatModifier`s, so the shop describes it, prices it, sells it and buys it back
+with no code. The validator fails a weapon in the pool priced at 0, warns when
+the pool and `weapon_offer_chance` disagree, and warns about a tier whose weight
+is zero at every wave, which is content that loads fine and is never seen.
 
 ---
 

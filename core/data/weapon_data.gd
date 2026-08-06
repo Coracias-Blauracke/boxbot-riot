@@ -57,3 +57,30 @@ enum DeliveryKind {
 ## Push applied to the wielder on firing. Almost always 0; a shotgun that shoves
 ## you backwards turns recoil into a movement option.
 @export var recoil: float = 0.0
+
+# --- acquisition -----------------------------------------------------------
+#
+# The one purchasable with a CAPACITY. That capacity is the WEAPON_SLOTS stat,
+# so "this character carries eight" and "this item grants a slot" stay ordinary
+# modifiers and neither ShopManager nor this file ever learns they exist - the
+# same arrangement SHOP_SLOTS already has.
+#
+# A weapon's own base_stats belong to the WEAPON, not to the wielder: Weapon
+# builds a WeaponModel from this resource. So acquiring one deliberately pushes
+# nothing into the buyer's StatsManager, which is exactly where it differs from
+# an item.
+
+func can_be_acquired_by(host: Variant) -> bool:
+	return (host as EntityModel).has_free_weapon_slot()
+
+func can_be_sold() -> bool:
+	return true
+
+func owned_quantity(host: Variant) -> int:
+	return (host as EntityModel).weapon_count(self)
+
+func acquire(host: Variant) -> void:
+	(host as EntityModel).add_weapon(self)
+
+func release(host: Variant) -> void:
+	(host as EntityModel).remove_weapon(self)

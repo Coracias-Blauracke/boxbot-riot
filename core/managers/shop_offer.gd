@@ -8,7 +8,9 @@ extends RefCounted
 ## documents: Godot caches .tres globally, so one player buying a thing would
 ## mark it sold in everybody else's shop and in every future run.
 
-var item: ItemData = null
+## An item or a weapon - the slot does not care which, and neither does anything
+## that draws it. See ShopEntryData.
+var entry: ShopEntryData = null
 
 ## What was quoted when the shop was rolled. The price is re-derived at the
 ## moment of purchase, because a stat bought two slots ago can have changed it -

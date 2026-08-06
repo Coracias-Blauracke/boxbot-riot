@@ -34,19 +34,24 @@ enum Zone { OFFERS, OWNED }
 ## static_stats/dynamic_effects - so this flattens both into one thing the
 ## drawing code can read.
 ##
-## `item` is null for the character, which is the only real difference: you
-## cannot sell yourself. That falls out of the data rather than needing a branch
-## in the renderer.
+## Since ShopEntryData arrived this is barely a flattening at all: an item, a
+## weapon and a character all answer modifiers() and effects() themselves. It
+## survives because the strip also carries per-tile presentation - the stack
+## count and the tier badge - that belongs to the row rather than to the data.
+##
+## "You cannot sell yourself" is the entry's own answer via can_be_sold(), not a
+## branch in the renderer, and a weapon answers the same question differently
+## again without anything here changing.
 class OwnedEntry extends RefCounted:
 	var display_key: String = ""
 	var modifiers: Array[StatModifier] = []
 	var effects: Array[DynamicEffect] = []
 	var quantity: int = 1
 	var tier_label: String = ""
-	var item: ItemData = null
+	var entry: ShopEntryData = null
 
 	func can_sell() -> bool:
-		return item != null
+		return entry != null and entry.can_be_sold()
 
 const PAD := 22.0
 
@@ -97,6 +102,12 @@ func bind(
 		_stats = stat_sheet.visible_sorted()
 	if shop != null and not shop.offers_changed.is_connected(_on_offers_changed):
 		shop.offers_changed.connect(_on_offers_changed)
+	# The strip follows the MODEL, not just the till. A weapon can arrive from
+	# somewhere other than a purchase - an effect granting one, a save being
+	# loaded - and a strip that only listens to the shop would show a rack the
+	# player is not carrying.
+	if model != null and not model.weapons_changed.is_connected(_on_offers_changed):
+		model.weapons_changed.connect(_on_offers_changed)
 
 ## Back to the first offer. Called on every entry into the shop: a cursor left
 ## on "reroll" from last time is not where anybody meant to resume, and one left
@@ -126,28 +137,38 @@ func _refresh_owned() -> void:
 	if model == null:
 		return
 
+	# Weapons first: they are the loadout, they are capped, and a player checking
+	# whether there is room for the shotgun on offer should not have to read past
+	# eleven items to count them. Collapsed by kind, so two identical pistols are
+	# one tile reading x2 exactly as two identical items are.
+	var weapon_counts: Dictionary = {}
+	for weapon in model.weapons:
+		weapon_counts[weapon] = int(weapon_counts.get(weapon, 0)) + 1
+	for weapon in weapon_counts:
+		_owned.append(_make_entry(weapon as ShopEntryData, int(weapon_counts[weapon])))
+
 	var quantities := model.items.get_all()
 	for key in quantities:
-		var item := key as ItemData
-		var entry := OwnedEntry.new()
-		entry.display_key = item.display_key
-		entry.modifiers = item.static_stats
-		entry.effects = item.dynamic_effects
-		entry.quantity = quantities[key]
-		entry.tier_label = "T%d" % item.tier
-		entry.item = item
-		_owned.append(entry)
+		_owned.append(_make_entry(key as ShopEntryData, int(quantities[key])))
 
 	# Last, so it sits where the character tile sits in the genre. Not first and
 	# not elsewhere: the strip is read left to right as "what I have picked up",
 	# and what you started as is the oldest thing in it.
 	if character != null:
-		var self_entry := OwnedEntry.new()
-		self_entry.display_key = character.display_key
-		self_entry.modifiers = character.base_stats
-		self_entry.effects = character.innate_effects
+		var self_entry := _make_entry(character, 1)
 		self_entry.tier_label = "YOU"
 		_owned.append(self_entry)
+
+## One row from any purchasable, because they all answer the same questions now.
+func _make_entry(source: ShopEntryData, count: int) -> OwnedEntry:
+	var made := OwnedEntry.new()
+	made.display_key = source.display_key
+	made.modifiers = source.modifiers()
+	made.effects = source.effects()
+	made.quantity = count
+	made.tier_label = "T%d" % source.tier
+	made.entry = source
+	return made
 
 # --- input -----------------------------------------------------------------
 
@@ -218,7 +239,7 @@ func _accept() -> void:
 		# can_sell() is false for the character tile. Nothing else has to know
 		# that the character is in this list at all.
 		if cursor < _owned.size() and _owned[cursor].can_sell():
-			shop.sell(model, _owned[cursor].item)
+			shop.sell(model, _owned[cursor].entry)
 			_on_offers_changed()
 		return
 
@@ -330,11 +351,16 @@ func _draw_shop(font: Font, top: float) -> void:
 	for index in shop.offers.size():
 		var offer := shop.offers[index]
 		var selected := zone == Zone.OFFERS and cursor == index
+		# A weapon with nowhere to go reads as "FULL" rather than as a price the
+		# player cannot act on. The panel asks the ENTRY, so it never learns what
+		# a weapon slot is - and a future purchasable with its own limit gets the
+		# same treatment for free.
+		var blocked := not offer.sold and not offer.entry.can_be_acquired_by(model)
 		_draw_row(
-			font, y, row_height, selected, offer.sold,
-			tr(offer.item.display_key),
-			"T%d" % offer.item.tier,
-			"-" if offer.sold else str(offer.price)
+			font, y, row_height, selected, offer.sold or blocked,
+			tr(offer.entry.display_key),
+			"T%d" % offer.entry.tier,
+			"-" if offer.sold else ("FULL" if blocked else str(offer.price))
 		)
 		y += row_height
 
@@ -380,7 +406,7 @@ func _draw_detail(font: Font, top: float) -> float:
 		if effect == null:
 			continue
 		draw_string(
-			font, Vector2(left + 10.0, y), "* " + effect.describe(EffectInstance.new(effect, entry.item, 1)),
+			font, Vector2(left + 10.0, y), "* " + effect.describe(EffectInstance.new(effect, entry.entry, 1)),
 			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.72, 0.82, 0.95)
 		)
 		y += line
@@ -389,7 +415,7 @@ func _draw_detail(font: Font, top: float) -> float:
 		draw_string(
 			font, Vector2(left + 10.0, y),
 			"%s: sell for %d" % [
-				input.label_for(PlayerInput.Action.ACCEPT), shop.data.sell_price_for(entry.item)
+				input.label_for(PlayerInput.Action.ACCEPT), shop.data.sell_price_for(entry.entry)
 			],
 			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.95, 0.86, 0.62)
 		)
@@ -429,17 +455,8 @@ func _highlighted() -> OwnedEntry:
 	if cursor >= shop.offers.size():
 		return null
 
-	var item := shop.offers[cursor].item
-	if item == null:
-		return null
-
-	var entry := OwnedEntry.new()
-	entry.display_key = item.display_key
-	entry.modifiers = item.static_stats
-	entry.effects = item.dynamic_effects
-	entry.tier_label = "T%d" % item.tier
-	entry.item = item
-	return entry
+	var offered := shop.offers[cursor].entry
+	return _make_entry(offered, 1) if offered != null else null
 
 func _draw_row(
 	font: Font, y: float, height: float, selected: bool, dimmed: bool,

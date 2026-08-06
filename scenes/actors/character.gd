@@ -31,12 +31,18 @@ func _ready() -> void:
 	circle.radius = data.collider_radius if data != null else 8.0
 	($Hurtbox/CollisionShape2D as CollisionShape2D).shape = circle
 
+	# The rack follows the model from here on, so a weapon bought in the shop
+	# appears in the hands with nothing else told about it.
+	if model != null:
+		model.weapons_changed.connect(_on_weapons_changed)
+		_on_weapons_changed()
+
 func _get_move_direction(_delta: float) -> Vector2:
 	var direction := motion.get_direction()
 	return direction.normalized() if direction.length() > 1.0 else direction
 
-func equip(weapon_data: WeaponData) -> Weapon:
-	return ($WeaponMount as WeaponMount).equip(weapon_data, self)
+func _on_weapons_changed() -> void:
+	($WeaponMount as WeaponMount).sync(self)
 
 func get_weapons() -> Array[Weapon]:
 	return ($WeaponMount as WeaponMount).get_weapons()

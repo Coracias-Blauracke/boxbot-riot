@@ -119,6 +119,8 @@ func _validate(path: String) -> void:
 		_validate_spawn_pattern(path, resource)
 	elif resource is WeaponData:
 		_validate_weapon(path, resource)
+	elif resource is CharacterData:
+		_validate_character(path, resource)
 	elif resource is EntityData:
 		_validate_entity(path, resource)
 	else:
@@ -316,12 +318,45 @@ func _validate_shop(path: String, shop: ShopData) -> void:
 		if shop.pool[i] == null:
 			_errors.append("%s : pool[%d] is null (deleted item?)" % [path, i])
 
-	# A tier with items but no weight is content that can never be drawn - it
-	# loads fine, validates fine, and is simply never seen.
+	for i in shop.weapon_pool.size():
+		if shop.weapon_pool[i] == null:
+			_errors.append("%s : weapon_pool[%d] is null (deleted weapon?)" % [path, i])
+
+	# A weapon offered at a price of zero is free, and a shop that gives weapons
+	# away is not a shop. Checked here rather than on the weapon, because a
+	# weapon that is never sold is entitled to leave its price alone.
+	for weapon in shop.weapon_pool:
+		if weapon != null and weapon.base_price <= 0:
+			_errors.append(
+				"%s : '%s' is in the weapon pool with base_price %d"
+				% [path, weapon.display_key, weapon.base_price]
+			)
+
+	# The mix is authored, so the two ends of the knob have to mean something. A
+	# chance above zero with nothing to draw from silently falls back to items
+	# and the setting reads as broken rather than as empty.
+	if shop.weapon_offer_chance > 0.0 and shop.weapon_pool.is_empty():
+		_warnings.append(
+			"%s : weapon_offer_chance is %.2f but the weapon pool is empty"
+			% [path, shop.weapon_offer_chance]
+		)
+	if shop.weapon_offer_chance <= 0.0 and not shop.weapon_pool.is_empty():
+		_warnings.append(
+			"%s : weapon pool has %d entries but weapon_offer_chance is 0, none can appear"
+			% [path, shop.weapon_pool.size()]
+		)
+
+	# A tier with content but no weight can never be drawn - it loads fine,
+	# validates fine, and is simply never seen. Weapons roll on the same curve,
+	# so a tier 3 weapon in a run whose tier 3 weight is always zero is exactly
+	# the same silent hole.
 	var tiers_present := {}
 	for item in shop.pool:
 		if item != null:
 			tiers_present[item.tier] = true
+	for weapon in shop.weapon_pool:
+		if weapon != null:
+			tiers_present[weapon.tier] = true
 
 	var late := shop.tier_weights_for(30)
 	var early := shop.tier_weights_for(1)
@@ -347,6 +382,30 @@ func _validate_item(path: String, item: ItemData) -> void:
 
 	_validate_modifiers(path, item.static_stats)
 	_validate_effects(path, item.dynamic_effects)
+
+## A loadout that does not fit is the worst kind of authoring mistake: the run
+## starts, the character walks around, and the weapons past the cap are simply
+## not there. add_weapon refuses rather than overflowing, so nothing errors.
+func _validate_character(path: String, character: CharacterData) -> void:
+	_validate_entity(path, character)
+
+	if character.weapon_slots <= 0:
+		_errors.append("%s : weapon_slots must be positive, nothing can be carried" % path)
+
+	for i in character.starting_weapons.size():
+		if character.starting_weapons[i] == null:
+			_errors.append("%s : starting_weapons[%d] is null (deleted weapon?)" % [path, i])
+
+	var carried := character.starting_weapons.size()
+	if carried > character.weapon_slots:
+		_errors.append(
+			"%s : starts with %d weapons but has %d slots, the rest are dropped in silence"
+			% [path, carried, character.weapon_slots]
+		)
+
+	for i in character.starting_items.size():
+		if character.starting_items[i] == null:
+			_errors.append("%s : starting_items[%d] is null (deleted item?)" % [path, i])
 
 func _validate_entity(path: String, entity: EntityData) -> void:
 	if entity.display_key.is_empty():

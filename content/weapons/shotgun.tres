@@ -45,6 +45,8 @@ script = ExtResource("5_target")
 [resource]
 script = ExtResource("1_weapon")
 display_key = "WEAPON_SHOTGUN"
+tier = 2
+base_price = 45
 collider_radius = 7.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("Resource_damage"), SubResource("Resource_range"), SubResource("Resource_crit"), SubResource("Resource_spread_stat")])
 firing = SubResource("Resource_firing")

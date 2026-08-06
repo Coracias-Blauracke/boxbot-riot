@@ -118,6 +118,12 @@ func _initialize() -> void:
 	_test_every_authored_item_loads()
 	_test_slow_power_scales_a_debuff_and_a_buff_alike()
 	_test_the_authored_character_bleeds_on_every_hit()
+	_test_weapon_slots_cap_what_is_carried()
+	_test_buying_a_weapon_takes_a_slot_and_selling_frees_it()
+	_test_a_full_rack_refuses_the_purchase_and_keeps_the_money()
+	_test_the_offer_mix_comes_from_the_chance_not_the_pool_sizes()
+	_test_every_purchasable_describes_itself_the_same_way()
+	_test_weapon_and_item_purchases_are_tallied_apart()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -623,7 +629,7 @@ func _make_shop(index: int = 0) -> ShopManager:
 func _tiers_offered(shop: ShopManager) -> Array:
 	var tiers: Array = []
 	for offer in shop.offers:
-		tiers.append(offer.item.tier)
+		tiers.append(offer.entry.tier)
 	return tiers
 
 func _test_shop_rolls_respect_tier_weights() -> void:
@@ -713,7 +719,7 @@ func _test_buying_costs_currency_and_grants_the_item() -> void:
 
 	_check_bool("the purchase goes through", shop.buy(buyer, 0), true)
 	_check_int("currency is spent", buyer.get_currency(), 30 - price)
-	_check_int("the item is owned", buyer.items.get_quantity(offer.item), 1)
+	_check_int("the item is owned", buyer.items.get_quantity(offer.entry as ItemData), 1)
 	_check_int("and counted", buyer.counters.get_value(CounterTypes.Counter.ITEMS_BOUGHT), 1)
 	_check_bool("the slot is marked sold", offer.sold, true)
 	_check_bool("buying the same slot twice fails", shop.buy(buyer, 0), false)
@@ -882,7 +888,7 @@ func _test_buying_an_authored_item_actually_changes_the_stat() -> void:
 	# Placed by hand rather than rolled, so the assertion is about the purchase
 	# rather than about what the dice offered.
 	var offer := ShopOffer.new()
-	offer.item = plating
+	offer.entry = plating
 	offer.price = shop.quote(buyer, plating).price
 	shop.offers = [offer]
 
@@ -893,7 +899,7 @@ func _test_buying_an_authored_item_actually_changes_the_stat() -> void:
 	# The other direction: an item whose whole point is a NEGATIVE modifier on a
 	# stat where less is better.
 	var spread_offer := ShopOffer.new()
-	spread_offer.item = sights
+	spread_offer.entry = sights
 	shop.offers = [spread_offer]
 
 	buyer.stats.add_modifier(StatTypes.Stat.SPREAD_ANGLE, StatTypes.Modifier.BASE, 10.0, &"weapon")
@@ -1625,6 +1631,233 @@ func _check(label: String, actual: float, expected: float) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  %s -> got %s, expected %s" % [label, actual, expected])
+
+# --- weapons as purchasables -----------------------------------------------
+
+func _make_weapon(key: String, tier: int, price: int, damage: float = 10.0) -> WeaponData:
+	var weapon := WeaponData.new()
+	weapon.display_key = key
+	weapon.tier = tier
+	weapon.base_price = price
+
+	var modifier := StatModifier.new()
+	modifier.stat = StatTypes.Stat.RANGED_DAMAGE
+	modifier.modifier_type = StatTypes.Modifier.BASE
+	modifier.value = damage
+	weapon.base_stats = [modifier]
+	return weapon
+
+## A buyer with a real rack size. WEAPON_SLOTS is a stat, so a test that forgets
+## to set one gets zero slots and every purchase refuses - which is correct, and
+## is why the shop asks before it charges.
+func _make_wielder(slots: int, currency: int = 500) -> EntityModel:
+	var wielder := _living(200.0)
+	wielder.stats.add_modifier(
+		StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, float(slots), &"test_body"
+	)
+	wielder.add_currency(currency)
+	return wielder
+
+func _test_weapon_slots_cap_what_is_carried() -> void:
+	print("\n-- weapon slots --")
+	var wielder := _make_wielder(2)
+	var pistol := _make_weapon("W_PISTOL", 1, 25)
+	var blade := _make_weapon("W_BLADE", 1, 30)
+
+	_check_int("an empty rack has the authored size", wielder.weapon_slots(), 2)
+	_check_bool("the first weapon goes on", wielder.add_weapon(pistol), true)
+	_check_bool("a duplicate is allowed", wielder.add_weapon(pistol), true)
+	_check_int("both copies are counted", wielder.weapon_count(pistol), 2)
+	_check_bool("a full rack refuses the third", wielder.add_weapon(blade), false)
+	_check_int("nothing was carried past the cap", wielder.weapons.size(), 2)
+
+	# ONE copy, not the stack. Selling one of two identical pistols must leave
+	# the other one in your hands.
+	_check_bool("removing takes one copy", wielder.remove_weapon(pistol), true)
+	_check_int("the other copy stays", wielder.weapon_count(pistol), 1)
+	_check_bool("the freed slot can be refilled", wielder.add_weapon(blade), true)
+
+	# A slot granted by an item is an ordinary modifier, which is the whole
+	# reason capacity is a stat rather than a number on the mount.
+	wielder.stats.add_modifier(
+		StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.FLAT, 1.0, &"test_item"
+	)
+	_check_bool("an item granting a slot makes room", wielder.add_weapon(blade), true)
+
+func _make_weapon_shop() -> ShopManager:
+	var data := ShopData.new()
+	data.pool = [_make_priced_item("T1_ITEM", 1, 10)]
+	data.weapon_pool = [_make_weapon("T1_GUN", 1, 25)]
+	data.offer_count = 4
+	data.price_per_wave = 0.0
+	data.sell_ratio = 0.5
+	data.allow_duplicate_offers = true
+	data.base_tier_weights = PackedFloat32Array([100.0, 0.0, 0.0, 0.0])
+	data.tier_weight_per_wave = PackedFloat32Array([0.0, 0.0, 0.0, 0.0])
+
+	var shop := ShopManager.new()
+	shop.data = data
+	return shop
+
+func _test_buying_a_weapon_takes_a_slot_and_selling_frees_it() -> void:
+	print("\n-- buying a weapon --")
+	var shop := _make_weapon_shop()
+	shop.data.weapon_offer_chance = 1.0
+	var buyer := _make_wielder(2, 200)
+	shop.open(buyer, 1, RunRandom.new(99))
+
+	var weapon := shop.offers[0].entry as WeaponData
+	_check_bool("every slot rolled a weapon", weapon != null, true)
+	_check_bool("the purchase goes through", shop.buy(buyer, 0), true)
+	_check_int("it is carried", buyer.weapon_count(weapon), 1)
+	_check_int("it cost what it was quoted", buyer.get_currency(), 200 - 25)
+
+	# The same path an item takes: the shop asks the ENTRY what to do, so the
+	# weapon lands in the rack rather than in the item inventory. A weapon's
+	# base_stats belong to the WeaponModel, not to the wielder's StatsManager.
+	_check_int("it did not land in the items", buyer.items.get_all().size(), 0)
+	_check(
+		"and pushed nothing into the wielder's stats",
+		buyer.stats.get_stat(StatTypes.Stat.RANGED_DAMAGE), 0.0
+	)
+
+	_check_bool("it can be sold", shop.sell(buyer, weapon), true)
+	_check_int("the rack is empty again", buyer.weapons.size(), 0)
+	_check_int("half the authored price comes back", buyer.get_currency(), 200 - 25 + 12)
+
+	# A refund is not earnings, exactly as for an item - otherwise buy-and-sell
+	# farms every "for each 500 earned" effect for the price of the spread.
+	_check_int(
+		"selling credited no earnings",
+		buyer.counters.get_value(CounterTypes.Counter.CURRENCY_EARNED), 200
+	)
+
+func _test_a_full_rack_refuses_the_purchase_and_keeps_the_money() -> void:
+	print("\n-- a full rack --")
+	var shop := _make_weapon_shop()
+	shop.data.weapon_offer_chance = 1.0
+	var buyer := _make_wielder(1, 500)
+	shop.open(buyer, 1, RunRandom.new(7))
+
+	_check_bool("the first weapon fits", shop.buy(buyer, 0), true)
+	var before_refusal := buyer.get_currency()
+
+	# THE MONEY MUST NOT MOVE. can_be_acquired_by is checked before the quote,
+	# so a refusal cannot leave the buyer paying for something they never got.
+	_check_bool("the second is refused", shop.buy(buyer, 1), false)
+	_check_int("no money changed hands", buyer.get_currency(), before_refusal)
+	_check_int("the rack is still one weapon", buyer.weapons.size(), 1)
+	_check_bool("the offer was not marked sold", shop.offers[1].sold, false)
+
+## THE SCALABILITY GUARANTEE. The mix comes from an authored chance, never from
+## how much content happens to exist - so authoring ninety more weapons must not
+## quietly make items rarer and invalidate every balance judgement made before.
+func _test_the_offer_mix_comes_from_the_chance_not_the_pool_sizes() -> void:
+	print("\n-- the offer mix --")
+	var shop := _make_weapon_shop()
+	# Lopsided ON PURPOSE: five weapons against one item. A merged pool would
+	# offer weapons five times out of six whatever anybody intended.
+	shop.data.weapon_pool = [
+		_make_weapon("G1", 1, 25), _make_weapon("G2", 1, 25), _make_weapon("G3", 1, 25),
+		_make_weapon("G4", 1, 25), _make_weapon("G5", 1, 25),
+	]
+	var buyer := _make_wielder(6, 5000)
+	var rng := RunRandom.new(4242)
+
+	shop.data.weapon_offer_chance = 0.0
+	var weapons_at_zero := 0
+	for attempt in 20:
+		shop.open(buyer, 1, rng)
+		for offer in shop.offers:
+			if offer.entry is WeaponData:
+				weapons_at_zero += 1
+	_check_int("chance 0 offers no weapons at all", weapons_at_zero, 0)
+
+	shop.data.weapon_offer_chance = 1.0
+	var items_at_one := 0
+	for attempt in 20:
+		shop.open(buyer, 1, rng)
+		for offer in shop.offers:
+			if not (offer.entry is WeaponData):
+				items_at_one += 1
+	_check_int("chance 1 offers no items at all", items_at_one, 0)
+
+	shop.data.weapon_offer_chance = 0.5
+	var mixed_weapons := 0
+	var mixed_items := 0
+	for attempt in 20:
+		shop.open(buyer, 1, rng)
+		for offer in shop.offers:
+			if offer.entry is WeaponData:
+				mixed_weapons += 1
+			else:
+				mixed_items += 1
+	_check_bool("half and half offers both kinds", mixed_weapons > 0 and mixed_items > 0, true)
+	_check_int("every slot is filled regardless", mixed_weapons + mixed_items, 80)
+
+	# A slot must never come back EMPTY because the kind it rolled had nothing
+	# left. Weapons switched off entirely, weapons still asked for.
+	shop.data.weapon_pool = []
+	shop.data.weapon_offer_chance = 1.0
+	shop.open(buyer, 1, rng)
+	_check_int("an empty weapon pool still fills the shop", shop.offers.size(), 4)
+
+func _test_every_purchasable_describes_itself_the_same_way() -> void:
+	print("\n-- one description path --")
+	var item := _make_priced_item("I", 1, 10)
+	var modifier := StatModifier.new()
+	modifier.stat = StatTypes.Stat.MAX_HP
+	modifier.modifier_type = StatTypes.Modifier.FLAT
+	modifier.value = 5.0
+	item.static_stats = [modifier]
+
+	var weapon := _make_weapon("W", 2, 25, 14.0)
+	var character := CharacterData.new()
+	character.display_key = "C"
+	character.base_stats = [modifier]
+
+	# The detail block, the owned strip and the offer row all read these two,
+	# which is what lets one renderer draw all three without a branch.
+	_check_int("an item reports its static stats", item.modifiers().size(), 1)
+	_check_int("a weapon reports its base stats", weapon.modifiers().size(), 1)
+	_check_int("a character reports its base stats", character.modifiers().size(), 1)
+
+	_check_bool("an item can be sold", item.can_be_sold(), true)
+	_check_bool("a weapon can be sold", weapon.can_be_sold(), true)
+	# You cannot sell yourself, and it falls out of the data rather than out of
+	# a branch in the renderer.
+	_check_bool("a character cannot be sold", character.can_be_sold(), false)
+
+	var wielder := _make_wielder(1, 0)
+	_check_bool("an item never refuses", item.can_be_acquired_by(wielder), true)
+	_check_bool("a weapon fits while there is room", weapon.can_be_acquired_by(wielder), true)
+	wielder.add_weapon(weapon)
+	_check_bool("and refuses once there is not", weapon.can_be_acquired_by(wielder), false)
+
+func _test_weapon_and_item_purchases_are_tallied_apart() -> void:
+	print("\n-- two tallies --")
+	var shop := _make_weapon_shop()
+	var buyer := _make_wielder(4, 500)
+
+	shop.data.weapon_offer_chance = 1.0
+	shop.open(buyer, 1, RunRandom.new(11))
+	shop.buy(buyer, 0)
+
+	shop.data.weapon_offer_chance = 0.0
+	shop.open(buyer, 1, RunRandom.new(11))
+	shop.buy(buyer, 0)
+
+	# "For every 5 items bought" must not be fed by a weapon. A counter is a
+	# number effects do arithmetic on, and one tally covering both kinds cannot
+	# be un-mixed afterwards.
+	_check_int(
+		"the weapon landed in its own tally",
+		buyer.counters.get_value(CounterTypes.Counter.WEAPONS_BOUGHT), 1
+	)
+	_check_int(
+		"the item landed in its own",
+		buyer.counters.get_value(CounterTypes.Counter.ITEMS_BOUGHT), 1
+	)
 
 func _check_int(label: String, actual: int, expected: int) -> void:
 	if actual == expected:

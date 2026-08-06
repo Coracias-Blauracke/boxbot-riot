@@ -13,7 +13,6 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 @export var wave_table: WaveTable
 @export var shop_data: ShopData
 @export var stat_sheet: StatSheet
-@export var starting_weapons: Array[WeaponData] = []
 
 ## Local co-op, up to four. Player 0 takes keyboard and the first gamepad;
 ## the rest take a gamepad each.
@@ -264,9 +263,12 @@ func _spawn_player(index: int) -> Character:
 		if item != null:
 			model.add_item(item)
 
-	for weapon_data in starting_weapons:
+	# Same for the loadout, and from the CHARACTER rather than from an export on
+	# this scene. The rack in the hands follows the model, so nothing here has to
+	# tell the view about them.
+	for weapon_data in character_data.starting_weapons:
 		if weapon_data != null:
-			node.equip(weapon_data)
+			model.add_weapon(weapon_data)
 
 	return node
 
@@ -477,12 +479,18 @@ func _describe_state() -> String:
 		# DOWN rather than "hp0". The whole point of the change is that a player
 		# model outlives its own death, so a capture has to be able to tell "at
 		# zero health, still in the run" from "no longer here at all".
-		per_player += " p%d=(%.0f,%.0f)%s$%d" % [
+		# The rack as the MODEL sees it and as the mount actually built it, both.
+		# They are the same number only if the view really is following the
+		# model - which is the whole claim weapons in the shop rest on, and a
+		# single count could not tell a working sync from a stale one.
+		per_player += " p%d=(%.0f,%.0f)%s$%d wp%d/%d" % [
 			index,
 			entry.global_position.x,
 			entry.global_position.y,
 			"hp%.0f" % entry.model.current_hp if entry.model.is_alive else "DOWN",
 			entry.model.get_currency(),
+			entry.model.weapons.size(),
+			entry.get_weapons().size(),
 		]
 
 	return "w%d %s t-%.0fs alive=%d/%d enemies=%d bleed=%d burn=%d shots=%d zoom=%.2f%s" % [

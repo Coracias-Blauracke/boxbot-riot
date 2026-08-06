@@ -14,7 +14,16 @@ extends EntityData
 ## entry in a list.
 
 @export_group("Run start")
-@export var starting_weapons: Array[Resource] = []
+## Weapons this character begins the run holding.
+##
+## Typed, and actually READ, since neither was true before: it was
+## Array[Resource] and nothing ever looked at it, because the loadout was an
+## export on main.tscn instead. A character could therefore not define its own
+## weapons, which is not a property a scene should own.
+##
+## Granted through the same path a purchase takes, so a starting weapon and a
+## bought one are the same thing - and can be sold like one.
+@export var starting_weapons: Array[WeaponData] = []
 
 ## Items this character begins the run holding. Listing one twice grants two
 ## copies, since items stack and every copy applies its own modifiers.

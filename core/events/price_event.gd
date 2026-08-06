@@ -6,7 +6,11 @@ extends EventPayload
 ## with currency while another pays with max HP, with no special case in the shop.
 
 var buyer: EntityModel = null
-var item: Resource = null
+
+## What is being priced. Named `entry` rather than `item` because a weapon goes
+## through this pipeline identically, and a field called `item` holding a weapon
+## is the kind of small lie that later reads as a bug.
+var entry: ShopEntryData = null
 
 var base_price: int = 0
 var price: int = 0

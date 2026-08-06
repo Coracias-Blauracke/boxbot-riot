@@ -132,6 +132,62 @@ func add_item(item: ItemData, quantity: int = 1) -> void:
 func remove_item(item: ItemData, quantity: int = 1) -> void:
 	items.remove_item(self, item, quantity)
 
+# --- weapons ---------------------------------------------------------------
+#
+# WHAT IS CARRIED IS MODEL STATE; the nodes in the hands are a view of it. It
+# used to be the other way round - WeaponMount owned the list and main.gd was
+# the only caller - which is why a weapon could not be bought, sold, saved or
+# even authored on a character: nothing outside the scene could see it.
+#
+# A plain array rather than a WeaponsManager. ItemsManager exists because items
+# have real bookkeeping (per-copy modifier handles, effect instances, stacks);
+# a weapon pushes nothing into the buyer's stats, because its base_stats belong
+# to the WeaponModel the Weapon node builds. There is no state here to manage,
+# and a manager holding one array would be a layer that only forwards.
+#
+# Duplicates are allowed on purpose: two of the same pistol is an ordinary
+# loadout in this genre, and it falls out of a list rather than needing a count.
+
+signal weapons_changed
+
+var weapons: Array[WeaponData] = []
+
+## Capacity, read off the WEAPON_SLOTS stat so a character starting with eight,
+## an item granting one and a curse taking one away are all ordinary modifiers.
+func weapon_slots() -> int:
+	return maxi(0, roundi(stats.get_stat(StatTypes.Stat.WEAPON_SLOTS)))
+
+func has_free_weapon_slot() -> bool:
+	return weapons.size() < weapon_slots()
+
+func weapon_count(weapon: WeaponData) -> int:
+	var total := 0
+	for entry in weapons:
+		if entry == weapon:
+			total += 1
+	return total
+
+## Refuses rather than overflowing. The shop asks first through
+## WeaponData.can_be_acquired_by, so a refusal here means a caller went around
+## it - and silently carrying a ninth weapon in six slots is worse than nothing
+## happening.
+func add_weapon(weapon: WeaponData) -> bool:
+	if weapon == null or not has_free_weapon_slot():
+		return false
+	weapons.append(weapon)
+	weapons_changed.emit()
+	return true
+
+## Removes ONE copy, not every copy. Selling one of two identical pistols must
+## leave the other one in your hands.
+func remove_weapon(weapon: WeaponData) -> bool:
+	var index := weapons.find(weapon)
+	if index < 0:
+		return false
+	weapons.remove_at(index)
+	weapons_changed.emit()
+	return true
+
 # --- currency --------------------------------------------------------------
 #
 # Currency is a counter, not a stat: accumulated state that must be saved and

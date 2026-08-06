@@ -2,6 +2,11 @@
 
 [ext_resource type="Script" path="res://core/data/shop_data.gd" id="1_shop"]
 [ext_resource type="Script" path="res://core/data/item_data.gd" id="2_item"]
+[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="27_weapon"]
+[ext_resource type="Resource" path="res://content/weapons/pistol.tres" id="28_pistol"]
+[ext_resource type="Resource" path="res://content/weapons/shotgun.tres" id="29_shotgun"]
+[ext_resource type="Resource" path="res://content/weapons/sword.tres" id="30_sword"]
+[ext_resource type="Resource" path="res://content/weapons/spear.tres" id="31_spear"]
 [ext_resource type="Resource" path="res://content/items/barbed_edge.tres" id="3_barbed_edge"]
 [ext_resource type="Resource" path="res://content/items/blood_container.tres" id="4_blood_container"]
 [ext_resource type="Resource" path="res://content/items/bloodstone.tres" id="5_bloodstone"]
@@ -30,7 +35,9 @@
 [resource]
 script = ExtResource("1_shop")
 pool = Array[ExtResource("2_item")]([ExtResource("3_barbed_edge"), ExtResource("4_blood_container"), ExtResource("5_bloodstone"), ExtResource("6_cold_fire"), ExtResource("7_diverse_effect"), ExtResource("8_fuel"), ExtResource("9_green_sandwich"), ExtResource("10_incendiary_rounds"), ExtResource("11_internal_furnace"), ExtResource("12_lucky_charm"), ExtResource("13_machined_sights"), ExtResource("14_molten_core"), ExtResource("15_overflowing_toxins"), ExtResource("16_pacemaker"), ExtResource("17_pyrojoy"), ExtResource("18_reactor_core"), ExtResource("19_riot_shield"), ExtResource("20_scrap_plating"), ExtResource("21_serrated_rounds"), ExtResource("22_sharp_blade"), ExtResource("23_tinderbox"), ExtResource("24_turbo_springs"), ExtResource("25_universal_doubler"), ExtResource("26_whetstone")])
+weapon_pool = Array[ExtResource("27_weapon")]([ExtResource("28_pistol"), ExtResource("29_shotgun"), ExtResource("30_sword"), ExtResource("31_spear")])
 offer_count = 4
+weapon_offer_chance = 0.35
 allow_duplicate_offers = false
 price_per_wave = 0.12
 reroll_base_cost = 5

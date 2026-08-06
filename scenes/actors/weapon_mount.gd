@@ -1,11 +1,17 @@
 class_name WeaponMount
 extends Node2D
 
-## Holds the wielder's weapons and spaces them evenly around it.
+## The wielder's weapons as NODES, spaced evenly around them.
 ##
-## Capacity comes from the WEAPON_SLOTS stat rather than a constant, so
-## "you may carry 12 weapons instead of 6" is an ordinary modifier - which is
-## exactly why weapon_slots on CharacterData is applied as a stat.
+## A VIEW OF EntityModel.weapons, never the owner of that list. It used to be
+## the owner, which is exactly why a weapon could not be bought, sold or even
+## authored on a character: the only caller that could add one was main.gd, and
+## nothing outside the scene layer could see what was being carried.
+##
+## Capacity is not enforced here either, and that is not an omission. The shop
+## has to ask "is there room" BEFORE it takes any money, so the answer lives on
+## the model where both can ask it; two places answering separately is how they
+## come to disagree.
 
 @export var radius: float = 18.0
 
@@ -14,24 +20,53 @@ extends Node2D
 
 var _weapons: Array[Weapon] = []
 
-func slot_count(owner_model: EntityModel) -> int:
-	return maxi(1, roundi(owner_model.stats.get_stat(StatTypes.Stat.WEAPON_SLOTS)))
+## Rebuilds to match the model, REUSING the node of a weapon still carried.
+##
+## Deliberately a diff rather than "free everything and build it again". A
+## Weapon node holds live state - heat, burst progress, a swing halfway through
+## its arc - and throwing all of it away because a different weapon was sold is
+## a bug that can only appear mid-combat, which is the worst place to find one.
+func sync(wielder: Actor) -> void:
+	if wielder == null or wielder.model == null:
+		return
 
-func equip(weapon_data: WeaponData, wielder: Actor) -> Weapon:
-	if _weapons.size() >= slot_count(wielder.model):
-		push_warning("WeaponMount: no free slot")
-		return null
+	var spare := _weapons.duplicate()
+	var rebuilt: Array[Weapon] = []
 
+	for weapon_data in wielder.model.weapons:
+		if weapon_data == null:
+			continue
+
+		# Matched by data, so selling one of two identical pistols keeps the
+		# other one's node rather than rebuilding both.
+		var reused: Weapon = null
+		for candidate in spare:
+			if candidate.data == weapon_data:
+				reused = candidate
+				break
+
+		if reused != null:
+			spare.erase(reused)
+			rebuilt.append(reused)
+		else:
+			rebuilt.append(_build(weapon_data, wielder))
+
+	# Whatever the model no longer lists has been sold or otherwise lost.
+	for orphan in spare:
+		orphan.queue_free()
+
+	_weapons = rebuilt
+	_reposition()
+
+func get_weapons() -> Array[Weapon]:
+	return _weapons.duplicate()
+
+func _build(weapon_data: WeaponData, wielder: Actor) -> Weapon:
 	var weapon := Weapon.new()
 	weapon.bind(weapon_data, wielder)
 	weapon.time_scale = weapon_time_scale
 	add_child(weapon)
-	_weapons.append(weapon)
-	_reposition()
 	return weapon
-
-func get_weapons() -> Array[Weapon]:
-	return _weapons.duplicate()
 
 func _reposition() -> void:
 	var total := _weapons.size()

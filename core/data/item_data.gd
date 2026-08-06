@@ -1,25 +1,10 @@
 class_name ItemData
-extends Resource
+extends ShopEntryData
 
 ## A passive item bought in the shop between waves.
-
-@export var display_key: String = ""
-@export var icon: Texture2D
-
-## Tier - drives shop rolls and effects such as
-## "gain +X for every tier 4 item you own".
-@export_range(1, 4) var tier: int = 1
-
-## What the shop asks on wave one, before scaling and before any effect.
 ##
-## Authored rather than derived from the tier: a tier 3 item that only suits one
-## build should be cheap, and a tier 1 item everybody wants should not be. Tier
-## decides how OFTEN it is offered; this decides what it costs.
-##
-## Never the final figure - that comes out of the CALCULATE_PRICE pipeline, per
-## buyer, which is what lets one co-op player pay currency while another pays a
-## stat.
-@export var base_price: int = 10
+## display_key, icon, tier and base_price all come from ShopEntryData now: they
+## were never item-specific, and a weapon needs every one of them to be sold.
 
 @export_group("Effects")
 ## Plain numbers - pushed into StatsManager immediately on acquisition.
@@ -35,3 +20,29 @@ extends Resource
 ## drifts out of sync.
 @export var body_slot: StringName = &""
 @export var sprite_layer: Texture2D
+
+func modifiers() -> Array[StatModifier]:
+	return static_stats
+
+func effects() -> Array[DynamicEffect]:
+	return dynamic_effects
+
+# --- acquisition -----------------------------------------------------------
+
+## Items stack without limit, so there is nothing to refuse. A weapon answers
+## this differently, and that difference is the whole reason the question is
+## asked of the entry rather than decided by the shop.
+func can_be_acquired_by(_host: Variant) -> bool:
+	return true
+
+func can_be_sold() -> bool:
+	return true
+
+func owned_quantity(host: Variant) -> int:
+	return (host as EntityModel).items.get_quantity(self)
+
+func acquire(host: Variant) -> void:
+	(host as EntityModel).add_item(self)
+
+func release(host: Variant) -> void:
+	(host as EntityModel).remove_item(self)
