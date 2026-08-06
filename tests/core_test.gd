@@ -117,6 +117,7 @@ func _initialize() -> void:
 	_test_apply_tally_counts_fresh_targets_only()
 	_test_every_authored_item_loads()
 	_test_slow_power_scales_a_debuff_and_a_buff_alike()
+	_test_the_authored_character_bleeds_on_every_hit()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -443,6 +444,8 @@ func _test_status_damage_over_time() -> void:
 	poison.scaling = [_make_scaling(StatusScaling.Axis.DAMAGE, StatTypes.Stat.POISON_DAMAGE)]
 	poison.base_duration = 3.0
 	poison.tick_interval = 1.0
+	# A ticking status lives by its COUNT now, not by base_duration.
+	poison.tick_count = 3
 
 	target.apply_status(poison, applier)
 
@@ -931,6 +934,7 @@ func _make_bleed(scaling: Array[StatusScaling] = []) -> StatusDamageOverTime:
 	bleed.max_stacks = 10
 	bleed.damage_per_stack = 1.0
 	bleed.damage_type = StatTypes.DamageType.BLEED
+	bleed.tick_count = 5
 	bleed.refresh_mode = StatusEffect.RefreshMode.REFRESH
 	bleed.scaling = scaling
 	return bleed
@@ -1012,6 +1016,15 @@ func _test_status_rate_makes_it_tick_faster() -> void:
 	_check("one tick at the authored rate", plain_before - plain.current_hp, 1.0)
 	_check("two ticks at double rate", hurried_before - hurried.current_hp, 2.0)
 
+	# But the TOTAL is unchanged: a faster status delivers its five ticks sooner,
+	# it does not deliver more of them. Otherwise RATE would be a damage stat
+	# wearing a pacing stat's name.
+	for tick in 20:
+		plain.tick_statuses(0.5)
+		hurried.tick_statuses(0.5)
+	_check("five ticks either way, just sooner", plain_before - plain.current_hp, 5.0)
+	_check("and the fast one deals no more", hurried_before - hurried.current_hp, 5.0)
+
 func _test_status_max_stacks_scales_and_caps() -> void:
 	var bleed := _make_bleed(
 		[_make_scaling(StatusScaling.Axis.MAX_STACKS, StatTypes.Stat.BLEED_MAX_STACKS)]
@@ -1047,8 +1060,9 @@ func _test_status_duration_scales() -> void:
 	_check("duration takes the bonus", status.remaining, 8.0)
 
 func _test_status_tick_count_falls_out_of_duration() -> void:
-	# The requested rule - "five ticks, and a new stack resets the count" - needs
-	# no counter of its own. It is duration divided by interval, plus REFRESH.
+	# "Five ticks, and a new stack resets the count" is a COUNT, deliberately not
+	# a duration. Measuring it in seconds would make a faster tick rate also
+	# deliver more ticks, which turns pacing into damage.
 	var bleed := _make_bleed()
 
 	var attacker := _living()
@@ -1301,8 +1315,8 @@ func _test_authored_statuses_load_and_differ() -> void:
 	_check("slow never ticks", slow.tick_interval, 0.0)
 
 	# Five ticks for everything that ticks, which is the authored rule.
-	_check("bleed lasts five ticks", bleed.base_duration / bleed.tick_interval, 5.0)
-	_check("and so does burn", burn.base_duration / burn.tick_interval, 5.0)
+	_check_int("bleed gives five ticks", bleed.tick_count, 5)
+	_check_int("and so does burn", burn.tick_count, 5)
 
 # --- the effect archetypes the authored items needed ------------------------
 
@@ -1342,11 +1356,13 @@ func _test_hits_can_apply_a_status_but_ticks_cannot() -> void:
 	_check_bool("a melee hit causes bleeding", victim.statuses.has(&"bleed"), true)
 
 	# THE TRAP: bleed deals BLEED damage, which would trigger the same effect and
-	# refresh its own timer every tick - a status that never ends.
-	var before := victim.statuses.get_active(&"bleed").remaining
-	victim.tick_statuses(0.5)
-	var after := victim.statuses.get_active(&"bleed").remaining
-	_check_bool("a bleed tick does not reapply bleed (%.1f -> %.1f)" % [before, after], after < before, true)
+	# reset its own tick count every tick - a status that never ends. Measured on
+	# ticks_left, which is what a ticking status actually spends.
+	var before := victim.statuses.get_active(&"bleed").ticks_left
+	# A full interval, or no tick fires and the assertion proves nothing.
+	victim.tick_statuses(1.0)
+	var after := victim.statuses.get_active(&"bleed").ticks_left
+	_check_bool("a bleed tick does not reapply bleed (%d -> %d)" % [before, after], after < before, true)
 
 	# And a damage type it was not authored for does nothing.
 	var untouched := _living(200.0)
@@ -1554,6 +1570,51 @@ func _test_slow_power_scales_a_debuff_and_a_buff_alike() -> void:
 	var target := _living()
 	var status := target.apply_status(longer, patient)
 	_check("duration takes its own stat", status.remaining, 5.0)
+
+## The authored loadout, asserted rather than inferred from a screenshot. A
+## capture can show four bleeding enemies without proving the chance is 100% -
+## a slow single-target weapon looks the same at 60%.
+func _test_the_authored_character_bleeds_on_every_hit() -> void:
+	var character: CharacterData = load("res://content/characters/test_character.tres")
+	var bleed: StatusEffect = load("res://content/statuses/bleed.tres")
+	if character == null or bleed == null:
+		_failed += 1
+		printerr("  FAIL  authored character or bleed did not load")
+		return
+
+	var player := EntityModel.new(character)
+	for item in character.starting_items:
+		player.add_item(item)
+
+	# Two barbed edges at +0.15 and six serrated rounds at +0.10.
+	_check("the loadout grants +90% bleed chance", player.stats.get_stat(StatTypes.Stat.BLEED_CHANCE), 0.9)
+
+	# Each item rolls with its OWN base chance plus that shared pool, so the
+	# weaker of the two is what has to clear 1.0 for the answer to be "always".
+	var lowest_base := 1.0
+	for item in character.starting_items:
+		for effect in item.dynamic_effects:
+			var on_hit := effect as EffectApplyStatusOnHit
+			if on_hit != null:
+				lowest_base = minf(lowest_base, on_hit.base_chance)
+	_check_bool(
+		"even the weakest source clears 100%% (%.2f + 0.90)" % lowest_base,
+		lowest_base + 0.9 >= 1.0, true
+	)
+
+	# And end to end: twenty ranged hits, twenty targets, all bleeding.
+	var missed := 0
+	for attempt in 20:
+		var victim := _living(200.0)
+		victim.rng = RunRandom.new(attempt + 1)
+		var shot := DamageEvent.new()
+		shot.source = player
+		shot.amount = 1.0
+		shot.damage_type = StatTypes.DamageType.RANGED
+		victim.apply_damage(shot)
+		if not victim.statuses.has(&"bleed"):
+			missed += 1
+	_check_int("every ranged hit causes bleeding", missed, 0)
 
 # --- assertions ------------------------------------------------------------
 

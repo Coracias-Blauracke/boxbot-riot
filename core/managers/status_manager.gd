@@ -108,16 +108,24 @@ func tick(host: EntityModel, delta: float) -> void:
 	for status in get_all():
 		var definition := status.definition()
 
-		# The RESOLVED interval, not the authored one - that is what makes
-		# "bleed ticks 10% faster" a per-player property rather than a global
-		# edit to a shared resource.
+		# A TICKING status lives for a COUNT of ticks, not a span of seconds.
+		# Measuring it in seconds would make "ticks 10% faster" also mean "ticks
+		# more times", turning a pacing stat into a damage one.
+		#
+		# The interval is the RESOLVED one, which is what makes the pacing a
+		# per-player property rather than an edit to a shared resource.
 		if status.tick_interval > 0.0:
 			status.tick_accumulator += delta
-			while status.tick_accumulator >= status.tick_interval:
+			while status.tick_accumulator >= status.tick_interval and status.ticks_left > 0:
 				status.tick_accumulator -= status.tick_interval
+				status.ticks_left -= 1
 				definition.on_tick(host, status)
 				host.notify(Hooks.Hook.ON_STATUS_TICK, _describe(host, status))
+			if status.ticks_left <= 0:
+				_expire(host, status)
+			continue
 
+		# Everything else - slow, a timed buff - is measured in seconds.
 		status.remaining -= delta
 		if status.remaining <= 0.0:
 			_expire(host, status)
@@ -133,11 +141,15 @@ func _land(host: EntityModel, event: StatusEvent) -> ActiveStatus:
 		# should decide how the status behaves from here.
 		event.definition.resolve_onto(existing, event.applier)
 		existing.stacks = mini(existing.stacks + event.stacks, existing.max_stacks)
+		# The three modes mean the same thing in either unit: a ticking status
+		# refreshes its TICK count, a timed one its seconds.
 		match event.definition.refresh_mode:
 			StatusEffect.RefreshMode.REFRESH:
 				existing.remaining = event.duration
+				existing.ticks_left = existing.max_ticks
 			StatusEffect.RefreshMode.EXTEND:
 				existing.remaining += event.duration
+				existing.ticks_left += existing.max_ticks
 			StatusEffect.RefreshMode.KEEP:
 				pass
 		existing.set_applier(event.applier)
@@ -152,6 +164,7 @@ func _land(host: EntityModel, event: StatusEvent) -> ActiveStatus:
 	event.definition.resolve_onto(status, event.applier)
 	status.stacks = mini(event.stacks, status.max_stacks)
 	status.remaining = event.duration
+	status.ticks_left = status.max_ticks
 	status.set_applier(event.applier)
 
 	_active[event.status_id] = status

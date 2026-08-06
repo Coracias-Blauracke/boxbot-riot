@@ -27,6 +27,7 @@ stat = 40
 script = ExtResource("1_status")
 status_id = &"poison"
 base_duration = 2.5
+tick_count = 5
 max_stacks = 99
 tick_interval = 0.5
 refresh_mode = 0

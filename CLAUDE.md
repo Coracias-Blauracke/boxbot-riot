@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 454 assertions across three suites, no editor, no game window
+# tests — 459 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -303,8 +303,15 @@ reasoning as rolling crit once per shot: the applier may die long before the
 poison wears off, and a buff expiring mid-duration must not retroactively weaken
 something already ticking.
 
-"Five ticks, and a new stack resets the count" needs no machinery of its own -
-it is `base_duration / tick_interval` with `RefreshMode.REFRESH`.
+**A ticking status lives for a COUNT of ticks, not a span of seconds.**
+`tick_count` defaults to 5 and a fresh application refreshes it. Seconds would
+have been the same arithmetic right up until somebody modified the rate - at
++10% faster a 2.5-second bleed delivers five and a half ticks, which quietly
+turns `BLEED_RATE` into a damage stat wearing a pacing stat's name. A faster
+status delivers its five ticks SOONER and no more of them, and the suite asserts
+the total is unchanged.
+
+`base_duration` governs only statuses that never tick, such as slow.
 
 **`WorldCensus` is DERIVED, never maintained by signals.** "For each burning
 enemy" needs a live count, and an incremental counter that goes up on apply and

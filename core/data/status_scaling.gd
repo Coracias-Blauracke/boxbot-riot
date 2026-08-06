@@ -27,8 +27,11 @@ enum Axis {
 	RATE,
 	## Extra stacks allowed on one target, added to the authored maximum.
 	MAX_STACKS,
-	## Seconds added to the authored duration.
+	## Seconds added to the authored duration. Only meaningful for a status that
+	## does NOT tick - a ticking one lives by its tick count instead.
 	DURATION,
+	## Extra ticks before a ticking status expires.
+	TICKS,
 	## Fraction added to a spreading status' reach. 0.25 is "+25% radius".
 	SPREAD_RADIUS,
 	## How strong a stat-modifier status is, as a fraction of its authored

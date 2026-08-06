@@ -187,6 +187,12 @@ func _spawn_player(index: int) -> Character:
 	)
 	_actors.add_child(node)
 
+	# Granted through the normal inventory path, so they show in the owned strip,
+	# describe themselves like any purchase and can be sold.
+	for item in character_data.starting_items:
+		if item != null:
+			model.add_item(item)
+
 	for weapon_data in starting_weapons:
 		if weapon_data != null:
 			node.equip(weapon_data)
@@ -396,13 +402,17 @@ func _describe_state() -> String:
 			entry.model.get_currency(),
 		]
 
-	return "w%d %s t-%.0fs alive=%d/%d enemies=%d shots=%d zoom=%.2f%s" % [
+	return "w%d %s t-%.0fs alive=%d/%d enemies=%d bleed=%d burn=%d shots=%d zoom=%.2f%s" % [
 		run.wave_number,
 		_phase_name(),
 		run.wave_time_remaining(),
 		run.living_player_count(),
 		players.size(),
 		_count_enemies(),
+		# Straight off the census, so a status that is not landing is visible in
+		# the numbers rather than only in a screenshot.
+		run.census.count_with_status(&"bleed"),
+		run.census.count_with_status(&"burn"),
 		_count_projectiles(),
 		_camera.zoom.x,
 		per_player,

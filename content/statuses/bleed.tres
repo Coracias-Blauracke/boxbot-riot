@@ -32,6 +32,7 @@ stat = 34
 script = ExtResource("1_status")
 status_id = &"bleed"
 base_duration = 2.5
+tick_count = 5
 max_stacks = 10
 tick_interval = 0.5
 refresh_mode = 0

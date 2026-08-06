@@ -32,6 +32,7 @@ stat = 37
 script = ExtResource("1_status")
 status_id = &"burn"
 base_duration = 2.5
+tick_count = 5
 max_stacks = 1
 tick_interval = 0.5
 refresh_mode = 0

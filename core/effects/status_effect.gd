@@ -23,6 +23,15 @@ enum RefreshMode {
 ## 0 disables ticking entirely (a pure modifier status such as slow).
 @export var tick_interval: float = 0.0
 
+## How many times a TICKING status fires before it expires.
+##
+## A ticking status lives for a COUNT, not for a span of seconds. That is what
+## keeps "ticks 10% faster" from also meaning "ticks more times": the damage
+## arrives sooner, not in greater quantity, so RATE stays a pacing stat instead
+## of a disguised damage one. Ignored when tick_interval is 0, where
+## base_duration governs instead.
+@export var tick_count: int = 5
+
 @export var refresh_mode: RefreshMode = RefreshMode.REFRESH
 
 ## Which of the applier's stats modify which axis of this status.
@@ -69,6 +78,8 @@ func resolve_onto(status: EffectInstance, applier: EntityModel) -> void:
 	active.max_stacks = maxi(
 		1, max_stacks + roundi(bonus_for(StatusScaling.Axis.MAX_STACKS, applier))
 	)
+
+	active.max_ticks = maxi(1, tick_count + roundi(bonus_for(StatusScaling.Axis.TICKS, applier)))
 
 	# RATE is additive "how much faster", so 0.1 divides the interval by 1.1.
 	# Additive because a stat starts at 0 and a multiplier neutral at 1.0 cannot

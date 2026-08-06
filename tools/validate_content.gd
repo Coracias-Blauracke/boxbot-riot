@@ -281,8 +281,10 @@ func _validate_status(path: String, status: StatusEffect) -> void:
 		_errors.append("%s : max_stacks below 1 means it can never apply" % path)
 	if status.tick_interval < 0.0:
 		_errors.append("%s : tick_interval cannot be negative" % path)
-	if status.tick_interval > 0.0 and status.tick_interval > status.base_duration:
-		_errors.append("%s : it expires before its first tick, so it does nothing" % path)
+	# A ticking status lives by its tick COUNT, so that is what has to be
+	# positive; base_duration governs only statuses that never tick.
+	if status.tick_interval > 0.0 and status.tick_count < 1:
+		_errors.append("%s : ticks but has no ticks to give, so it does nothing" % path)
 
 	var valid_stats := StatTypes.Stat.values()
 	for i in status.scaling.size():

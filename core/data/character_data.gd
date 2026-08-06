@@ -16,6 +16,13 @@ extends EntityData
 @export_group("Run start")
 @export var starting_weapons: Array[Resource] = []
 
+## Items this character begins the run holding. Listing one twice grants two
+## copies, since items stack and every copy applies its own modifiers.
+##
+## An ordinary inventory rather than a special case: a starting item and a
+## bought one are the same thing, which is why the shop can sell these back.
+@export var starting_items: Array[ItemData] = []
+
 ## How many weapons this character can carry. Applied as a BASE modifier to
 ## WEAPON_SLOTS, which makes "you may carry 12 weapons instead of 6" an
 ## ordinary modifier rather than a special case.
