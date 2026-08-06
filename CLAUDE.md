@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 549 assertions across three suites, no editor, no game window
+# tests — 554 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -667,7 +667,8 @@ omission.** The detail block will become a floating tooltip near the cursor with
 its own maximum size and a stick-scroll for long descriptions, as the genre
 does. The overflow rule belongs to THAT window; writing one for the current
 inline block would be designing it twice. Nothing overflows today because no
-authored item has more than two stat lines — which is exactly the sample size
+authored item has more than two stat lines - though a weapon scaling off many
+stats now can, which is the first content that will force the issue — which is exactly the sample size
 that makes polishing now a mistake.
 
 **No debug settings are currently active.**
@@ -863,6 +864,15 @@ Only STATS can appear there. "The lower your health, the harder you hit" reads
 `current_hp`, which is state rather than a stat and changes between shots -
 that belongs in a `CALCULATE_DAMAGE` effect, which already exists. The table for
 stats, the hook for state.
+
+**There is no cap on how many stats one weapon reads, and signs may be mixed.**
+Thirty entries with alternating signs are asserted in `weapon_test`, and a shot
+scaled below zero deals NOTHING rather than healing what it hits, because
+`DamageEvent.final_amount()` floors at zero. Two practical limits rather than
+rules: `inheritance_share` scans its list per read, so a very long table is
+linear work on a hot path, and the shop's detail block still has NO OVERFLOW
+handling - a weapon with thirty scaling lines draws thirty of them straight off
+the panel.
 
 `WeaponData.stat_inheritance` is the same shape for the other question: how much
 of the holder's attack speed, crit or range reaches this weapon at all. Unlisted

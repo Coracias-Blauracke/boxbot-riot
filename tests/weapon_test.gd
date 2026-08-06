@@ -41,6 +41,7 @@ func _initialize() -> void:
 	_test_damage_scales_off_whatever_stat_it_names()
 	_test_half_scaling_halves_the_bonus_not_the_weapon()
 	_test_a_weapon_says_what_it_scales_with()
+	_test_a_weapon_may_scale_off_many_stats_in_both_directions()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -627,6 +628,74 @@ func _test_a_weapon_says_what_it_scales_with() -> void:
 	_check_bool("names the stat as the sheet does", notes[0] == "scales 50% with STAT_RANGED_DAMAGE", true)
 	_check_bool("and the foreign one too", notes[1] == "scales 10% with STAT_MAX_HP", true)
 	_check_bool("inheritance reads differently", notes[2] == "inherits 50% of STAT_ATTACK_SPEED", true)
+
+## THIRTY stats at once, half of them pulling the other way.
+##
+## Asserted rather than assumed, because "it is just a list" is exactly the kind
+## of claim that turns out to have a cap, a lookup that only checks the first
+## match, or a sign that gets lost somewhere. The table is walked in full and
+## every entry lands, positive and negative alike.
+func _test_a_weapon_may_scale_off_many_stats_in_both_directions() -> void:
+	var wielder := EntityModel.new()
+	var data := WeaponData.new()
+	var expected := 0.0
+	var used := 0
+
+	for stat in StatTypes.Stat.values():
+		# The weapon's own damage type takes the other path - a share of the
+		# holder's bonuses rather than a stat's value - and is covered above.
+		if stat == StatTypes.Stat.RANGED_DAMAGE or stat == StatTypes.Stat.MELEE_DAMAGE:
+			continue
+		# The crit pair is held out for a reason worth recording: piling +10 onto
+		# the holder's CRIT_CHANCE made every shot in this test a guaranteed
+		# crit, and +10 on CRIT_MULTIPLIER turned the weapon's 2.0 into 22.0, so
+		# the total came out 22x. That was the inheritance working exactly as
+		# intended and the test asking the wrong question.
+		if stat == StatTypes.Stat.CRIT_CHANCE or stat == StatTypes.Stat.CRIT_MULTIPLIER:
+			continue
+		if used >= 30:
+			break
+
+		wielder.stats.add_modifier(stat, StatTypes.Modifier.FLAT, 10.0, &"test")
+		# Alternating, so a sign that was being dropped or taken as absolute
+		# would show up as a wrong total rather than as a plausible one.
+		var coefficient := 0.5 if used % 2 == 0 else -0.25
+		data.damage_scaling.append(_scaling(stat, coefficient))
+		# Read back rather than assumed to be 10: floors and neutrals apply, and
+		# the expectation has to be whatever the stat actually reports.
+		expected += wielder.stats.get_stat(stat) * coefficient
+		used += 1
+
+	var weapon := _weapon_from(data)
+	weapon.set_wielder(wielder)
+	weapon.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"weapon")
+
+	_check_int("thirty stats feed one weapon", used, 30)
+	_check("and every one of them lands", weapon.build_shot(data).amount, 12.0 + expected)
+	_check_int("each gets its own line in the shop", data.detail_notes().size(), 30)
+
+	# Scaled far enough into the negative, a shot comes out below zero. It must
+	# deal NOTHING rather than heal what it hits - DamageEvent.final_amount()
+	# floors at zero, which is what makes deep negative scaling safe to author.
+	var cursed := WeaponData.new()
+	cursed.damage_scaling = [_scaling(StatTypes.Stat.MOVEMENT_SPEED, -1.0)]
+	var runner := EntityModel.new()
+	runner.stats.add_modifier(StatTypes.Stat.MOVEMENT_SPEED, StatTypes.Modifier.BASE, 200.0, &"char")
+
+	var weak := _weapon_from(cursed)
+	weak.set_wielder(runner)
+	weak.stats.add_modifier(StatTypes.Stat.RANGED_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"weapon")
+
+	var shot := weak.build_shot(cursed)
+	_check("a shot can go negative", shot.amount, -188.0)
+
+	var victim := EntityModel.new()
+	victim.stats.add_modifier(StatTypes.Stat.MAX_HP, StatTypes.Modifier.BASE, 50.0, &"body")
+	victim.set_hp(50.0)
+	var event := DamageEvent.new()
+	event.amount = shot.amount
+	victim.apply_damage(event)
+	_check("but it heals nothing", victim.current_hp, 50.0)
 
 func _check(label: String, actual: float, expected: float) -> void:
 	if is_equal_approx(actual, expected):
