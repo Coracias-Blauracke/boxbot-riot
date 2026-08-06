@@ -39,6 +39,15 @@ enum Action {
 	READY,
 	## Switch between the shop and the stat sheet.
 	TAB,
+	## Open or close the pause menu.
+	##
+	## Deliberately the SAME physical button as READY - START on a pad, ESC on
+	## the keyboard - because the phase already says which one is meant. The
+	## shop has no clock and closes only when everybody declares ready, so it is
+	## a stopped state with nothing to pause, and PauseScreen ignores this
+	## action while it is open. Giving pause a button of its own would have
+	## spent the one button every player already knows.
+	PAUSE,
 }
 
 var device_id: int = KEYBOARD
@@ -50,6 +59,19 @@ var also_keyboard: bool = false
 var _held: Dictionary = {}       # Action -> bool
 var _repeat_at: Dictionary = {}  # Action -> float, seconds remaining
 var _fired: Dictionary = {}      # Action -> bool, true on the frame it triggers
+
+## The process frame this device was last polled on.
+##
+## TWO screens hold the same PlayerInput now: the pause menu reads every device
+## in every phase, and a shop panel reads its own. Without this guard the second
+## poll of a frame DESTROYS the edges the first one produced - `triggered()` is
+## true only on the frame a button goes down, so the second caller sees "it was
+## already held" and reports nothing at all. First poller of the frame wins and
+## everybody reads the same answer.
+##
+## The alternative was a rule that exactly one screen may poll at a time, which
+## is the kind of invariant that holds right up until a third screen exists.
+var _polled_frame: int = -1
 
 func _init(p_device_id: int = KEYBOARD, p_also_keyboard: bool = false) -> void:
 	device_id = p_device_id
@@ -71,6 +93,7 @@ func label_for(action: Action) -> String:
 			Action.REROLL: return "X"
 			Action.READY: return "START"
 			Action.TAB: return "RB"
+			Action.PAUSE: return "START"
 			_: return ""
 	match action:
 		Action.ACCEPT: return "SPACE"
@@ -78,6 +101,7 @@ func label_for(action: Action) -> String:
 		Action.REROLL: return "R"
 		Action.READY: return "ENTER"
 		Action.TAB: return "TAB"
+		Action.PAUSE: return "ESC"
 		_: return ""
 
 # --- movement --------------------------------------------------------------
@@ -109,6 +133,11 @@ func movement() -> Vector2:
 ## discrete steps with a repeat, which is what a menu wants and what raw
 ## polling cannot give.
 func poll(delta: float) -> void:
+	var frame := Engine.get_process_frames()
+	if frame == _polled_frame:
+		return
+	_polled_frame = frame
+
 	for action in Action.values():
 		var down := _raw_pressed(action)
 		var was_down: bool = _held.get(action, false)
@@ -183,6 +212,8 @@ func _pad_pressed(action: Action) -> bool:
 			return Input.is_joy_button_pressed(device_id, JOY_BUTTON_START)
 		Action.TAB:
 			return Input.is_joy_button_pressed(device_id, JOY_BUTTON_RIGHT_SHOULDER)
+		Action.PAUSE:
+			return Input.is_joy_button_pressed(device_id, JOY_BUTTON_START)
 
 	return false
 
@@ -210,5 +241,7 @@ func _key_pressed(action: Action) -> bool:
 			return Input.is_key_pressed(KEY_ENTER) or Input.is_key_pressed(KEY_KP_ENTER)
 		Action.TAB:
 			return Input.is_key_pressed(KEY_TAB)
+		Action.PAUSE:
+			return Input.is_key_pressed(KEY_ESCAPE)
 
 	return false

@@ -61,6 +61,8 @@ accident:
 | `--capture-circle` | a tight circle keeps the player inside the swarm, which is what exposes missing separation |
 | `--capture-scatter` | drives players to opposite corners to check the camera holds all of them |
 | `--capture-downed` | player 0 stands and dies while the rest kite in a WIDE circle and live — the only way to photograph one player down while the run continues |
+| `--capture-pause=N` | toggles the pause menu, which no scripted player can press START for; repeat it to resume |
+| `--capture-restart=N` | restarts the run, and photographs the result into `after_restart/` |
 
 `--capture-intermission=N` holds the shop phase open (four seconds is not long
 enough to photograph) and `--capture-shop-owned` parks every shop cursor on the
@@ -68,6 +70,27 @@ owned strip. The second one exists because **a UI state that needs input cannot
 otherwise be photographed at all**, which is a real hole in how this repo
 verifies the scene layer — every selected, hovered or focused state is invisible
 to a capture run until something can put the cursor there.
+
+`--capture-pause=N` asks for the pause menu N seconds in, and `--capture-restart=N`
+restarts the run at N seconds. Both close that same hole for the pause screen.
+Two things about them are load-bearing rather than incidental:
+
+- `--capture-pause` calls `PauseScreen.request_toggle()`, **not `open()`**, so it
+  goes through the same gate the button does. Pointed at the shop phase it
+  photographs a shop, because that is what the button would do there. A
+  verification path that skips the gate verifies nothing.
+- It TOGGLES and may be repeated: `--capture-pause=5 --capture-pause=8.2` pauses
+  and then resumes. One entry alone freezes the run and every later shot reads
+  the same numbers, which proves nothing about getting going again.
+- The restarted pass writes into `<capture-dir>/after_restart/` rather than over
+  the first pass. The two sets of PNGs ARE the evidence, so one overwriting the
+  other destroys the measurement it was taken for. The restart also fires once
+  per process — the reloaded scene reads the same command line, and without a
+  static guard it reloads for ever.
+
+Reaching the shop at all needs players who survive wave one, so a shop capture
+is `--capture-players=2 --capture-downed --capture-intermission=N`. The default
+scripted walk pins the player in a corner and dies at about wave second 16.
 
 `--capture-zoom=N` and `--capture-margin=N` override `ArenaCamera` so framing
 can be A/B'd with one variable changed. Note `group_margin` caps how far
@@ -160,6 +183,54 @@ collide on the same slot and move together. `PlayerInput` carries the binding
 and answers for BOTH walking and menus, because splitting those produces a
 player who can walk but cannot buy. `main.tscn`'s `player_devices` array is the
 placeholder until a join flow assigns them at runtime.
+
+**A device is polled ONCE per frame, guarded inside `PlayerInput`.** Two screens
+hold the same binding now — the pause menu reads every device in every phase, a
+shop panel reads its own — and a second `poll()` in one frame DESTROYS the edges
+the first produced: `triggered()` is true only on the frame a button goes down,
+so the second caller sees "already held" and reports nothing. The guard makes
+the first poller of the frame win and everybody read the same answer. The
+alternative was a rule saying exactly one screen may poll at a time, which is
+the kind of invariant that holds right up until a third screen exists.
+
+**The pause menu is ONE menu for the whole couch, driven by every device.**
+Deliberately the opposite of the shop, and for the same reason the shop is the
+way it is: a shop panel gets its own cursor because each player is deciding
+something different, whereas here there is a single decision that applies to
+everybody. Binding it to whichever device opened it would mean a pad going flat
+can strand the run. Who reaches for the stick is a couch problem.
+
+**Pause shares READY's physical button, and the PHASE says which it is.** START
+on a pad, ESC on the keyboard. The shop has no clock and closes only when every
+player declares ready, so it is already a stopped state with nothing to pause,
+and `PauseScreen` refuses to open during it. Giving pause a button of its own
+would have spent the one button every player already knows. Polling continuously
+in every phase is what keeps this honest: a menu that only started polling once
+the shop closed would see START still held and open itself the instant somebody
+readied up.
+
+**The pause menu is also the run-over screen.** When the run ends it opens
+itself with RESUME dropped, because "the run is over and there is no way to
+start another" was the same dead end as having no pause at all. A second screen
+saying the same three things would be two things to keep in step. The HUD's
+outcome banner still owns the middle of the screen, so the menu moves below it
+and draws no shade of its own — two stacked shades read as 0.92 alpha and
+blacked out the arena entirely.
+
+**Restart is a scene reload, and that is only honest because NOTHING OUTLIVES
+THE SCENE.** No autoloads, and every model hangs off the `RunModel` that
+`main.gd` builds in `_ready`. The day something does outlive it, restart starts
+leaking state into the next run silently. `get_tree().paused` is the one flag
+that does survive, because it lives on the tree rather than the scene, so the
+restart clears it first or the fresh run comes up frozen with nothing on screen
+to say why. `PauseScreen` emits `restart_requested`; `main.gd` owns the tree and
+is the only place that reloads it, which is the seam a main menu will need.
+
+**Restart obeys `run_seed` and does not work around it.** A fixed seed replays
+the same run, which is what a fixed seed is FOR: dying on wave 4 and immediately
+trying that exact wave 4 again. A restart that quietly reseeded would take away
+the only tool for retrying one situation, and the way to get a different run is
+already the authored 0.
 
 **Shop slot count is a STAT, not a shop setting.** `SHOP_SLOTS` works exactly as
 `WEAPON_SLOTS` does, so "this character sees 8 items", "this item grants a slot"
@@ -451,6 +522,10 @@ per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
 rerolling, stat payment and ready-up — and a status system whose four statuses
 differ only by authored numbers. Twenty-four items authored.
 
+A run can be PAUSED and RESTARTED: any device opens one shared menu with resume,
+restart and quit, and the same menu opens itself when the run ends, so a wipe no
+longer means closing the executable.
+
 The shop UI is playable end to end: per-player panels laid out by player count,
 a cursor per player driven by that player's own device, offers, reroll, buying,
 selling from the owned strip, the character as the last tile, a derived detail
@@ -489,10 +564,15 @@ that makes polishing now a mistake.
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps, worst first:** there is NO WAY TO RESTART OR PAUSE a run. Nothing
-calls `reload_current_scene` and nothing touches `get_tree().paused`, so a wipe
-means closing the executable and launching it again. That is the single biggest
-obstacle to a play-testing session and should be fixed before content is judged.
+**Known gaps, worst first:** A WEAPON CANNOT BE ACQUIRED DURING A RUN.
+`ShopData.pool` is `Array[ItemData]` and `ShopOffer` holds an `ItemData`, so the
+shop cannot offer one; `WeaponMount.equip()` is called from exactly one place,
+`main.gd` reading its own `starting_weapons` export; and weapons live only in
+the scene layer, with no inventory on `EntityModel`. `CharacterData.starting_weapons`
+is declared and NEVER READ, so a character cannot even define its own loadout.
+Authoring more weapons therefore produces `.tres` files reachable only by editing
+`main.tscn` — the acquisition path has to come first, and it is the one gap that
+makes weapon content worth writing.
 Then: no join flow for co-op, no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no

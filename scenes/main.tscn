@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://ypmpa6ofxxh2"]
+[gd_scene load_steps=16 format=3 uid="uid://ypmpa6ofxxh2"]
 
 [ext_resource type="Script" uid="uid://vbwt0rxmam2r" path="res://scenes/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scenes/levels/arena.gd" id="2_arena"]
@@ -14,6 +14,7 @@
 [ext_resource type="Resource" path="res://content/shop/default_shop.tres" id="12_shop"]
 [ext_resource type="Resource" path="res://content/stats/stat_sheet.tres" id="13_stats"]
 [ext_resource type="PackedScene" path="res://scenes/ui/shop_screen.tscn" id="14_shopui"]
+[ext_resource type="PackedScene" path="res://scenes/ui/pause_screen.tscn" id="15_pause"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -36,3 +37,5 @@ script = ExtResource("10_camera")
 [node name="Hud" parent="." instance=ExtResource("11_hud")]
 
 [node name="ShopScreen" parent="." instance=ExtResource("14_shopui")]
+
+[node name="PauseScreen" parent="." instance=ExtResource("15_pause")]

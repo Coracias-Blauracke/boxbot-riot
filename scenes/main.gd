@@ -46,6 +46,12 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 ## is what every A/B capture in this repo depends on - the co-op scaling
 ## measurement and the camera framing comparison are both worthless without it.
 ## Keep it set while developing; ship with 0.
+##
+## RESTART OBEYS THIS AND DOES NOT WORK AROUND IT. Reloading the scene reads the
+## export again, so a fixed seed replays the same run - which is what a fixed
+## seed is for: dying on wave 4 and immediately trying that exact wave 4 again.
+## A restart that quietly reseeded would take away the only tool for retrying
+## one situation, and the way to get a different run is already the authored 0.
 @export var run_seed: int = 20260804
 
 var run: RunModel
@@ -66,6 +72,21 @@ var _fallback_pattern: SpawnPattern = SpawnRing.new()
 var _forced_intermission: float = 0.0
 var _capture_shop_owned: bool = false
 
+## Capture only, in seconds from startup.
+##
+## A LIST because each entry TOGGLES: repeating the flag is what makes resuming
+## observable at all. One entry freezes the run and every shot after it reads
+## the same numbers, which proves nothing about getting going again.
+var _capture_pause_at: Array[float] = []
+
+## Capture only, seconds from startup. 0 is off.
+var _capture_restart_at: float = 0.0
+
+## How many times this process has restarted. STATIC because the whole point of
+## a restart is that everything else is thrown away - an instance variable would
+## come back as 0 and --capture-restart would reload for ever.
+static var _restarts: int = 0
+
 var _circling: Array[Character] = []
 var _elapsed: float = 0.0
 
@@ -82,6 +103,7 @@ var _circle_rate: float = 1.6
 @onready var _camera: ArenaCamera = $Camera2D
 @onready var _hud: Hud = $Hud
 @onready var _shop_screen: ShopScreen = $ShopScreen
+@onready var _pause_screen: PauseScreen = $PauseScreen
 
 func _ready() -> void:
 	# Capture runs override the scene's player count, so a co-op state can be
@@ -108,6 +130,13 @@ func _ready() -> void:
 			# reliably photograph. Holding it open is the only way to read the
 			# panel at each player count.
 			_forced_intermission = float(arg.substr("--capture-intermission=".length()))
+		elif arg.begins_with("--capture-pause="):
+			# Same hole as --capture-shop-owned: a screen that only opens when
+			# somebody presses a button cannot be photographed by a run with
+			# nobody at the controls.
+			_capture_pause_at.append(float(arg.substr("--capture-pause=".length())))
+		elif arg.begins_with("--capture-restart="):
+			_capture_restart_at = float(arg.substr("--capture-restart=".length()))
 
 	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
@@ -138,12 +167,54 @@ func _ready() -> void:
 	if _capture_shop_owned:
 		_shop_screen.park_cursor_on_owned()
 
+	# Every device, because the pause menu is one menu for the whole couch - see
+	# PauseScreen for why it is not owned by whoever opened it.
+	var inputs: Array[PlayerInput] = []
+	for entry in players:
+		inputs.append(entry.input)
+	_pause_screen.bind(run, inputs)
+	_pause_screen.restart_requested.connect(_restart)
+	_pause_screen.quit_requested.connect(_quit)
+
 	run.start_wave()
-	print("wave %d started, boss=%s, duration=%.0fs" % [
-		run.wave_number, run.spawn_boss_this_wave, run.director.duration
+	print("wave %d started, boss=%s, duration=%.0fs, restarts=%d" % [
+		run.wave_number, run.spawn_boss_this_wave, run.director.duration, _restarts
 	])
 
+	_schedule_capture_events()
 	_maybe_start_capture()
+
+# --- restart ---------------------------------------------------------------
+
+## A scene reload, which is only honest because nothing outlives the scene:
+## there are no autoloads and every model hangs off the RunModel built in
+## _ready. The day something does outlive it, this starts leaking state into
+## the next run silently, which is why it is worth writing down.
+func _restart() -> void:
+	print("restart requested on wave %d, phase=%s" % [run.wave_number, _phase_name()])
+	_restarts += 1
+	# Unpaused FIRST. The flag lives on the TREE, not on the scene, so it
+	# survives a reload and the fresh run would come up frozen with nothing on
+	# screen to say why.
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+func _quit() -> void:
+	get_tree().paused = false
+	get_tree().quit()
+
+## Capture only. Both of these exist because a screen reached by pressing a
+## button is invisible to a run with nobody pressing anything.
+func _schedule_capture_events() -> void:
+	# request_toggle rather than open: the capture has to go through the same
+	# gate the button does, or it can photograph a state no player could reach.
+	for at in _capture_pause_at:
+		if at > 0.0:
+			get_tree().create_timer(at).timeout.connect(_pause_screen.request_toggle)
+	# Once per process. Without the guard the reloaded scene reads the same
+	# command line and restarts again, for ever.
+	if _capture_restart_at > 0.0 and _restarts == 0:
+		get_tree().create_timer(_capture_restart_at).timeout.connect(_restart)
 
 func _physics_process(delta: float) -> void:
 	if run == null:
@@ -310,6 +381,13 @@ func _maybe_start_capture() -> void:
 		push_error("--capture needs --capture-dir=<path>")
 		return
 
+	# A restarted pass writes beside the first one rather than over it. The two
+	# sets of PNGs ARE the evidence that a restart produced a fresh run, so one
+	# overwriting the other would destroy the measurement it was taken for.
+	if _restarts > 0:
+		output_dir = output_dir.path_join("after_restart")
+		DirAccess.make_dir_recursive_absolute(output_dir)
+
 	# Deterministic input, so a recorded run is reproducible.
 	#   --capture-still  keeps the player put; the only way to observe contact
 	#                    damage, since enemies never catch a running player.
@@ -354,7 +432,12 @@ func _maybe_start_capture() -> void:
 		elif arg.begins_with("--capture-delay="):
 			capture.start_delay = float(arg.substr("--capture-delay=".length()))
 	capture.state_provider = _describe_state
-	capture.finished.connect(func() -> void: get_tree().quit())
+	# The pass BEFORE a scheduled restart must not close the window when it runs
+	# out of shots, or it takes the restart down with it and the second half of
+	# the comparison is never taken. Measured: the run quit at 11s and the
+	# restart was scheduled for 12s.
+	if _capture_restart_at <= 0.0 or _restarts > 0:
+		capture.finished.connect(func() -> void: get_tree().quit())
 	add_child(capture)
 	capture.start()
 
