@@ -691,7 +691,9 @@ that makes polishing now a mistake.
 **Known gaps, worst first:** only FOUR WEAPONS are authored, which is now a
 content gap rather than an engine one — the acquisition path exists and the
 four axes cover most of what a weapon is, so the next ones are `.tres` files.
-Then: no `BEAM` delivery,
+Then: the wielder's combat stats other than damage NEVER REACH THEIR WEAPONS,
+which quietly makes four authored items decorative (see the stats section); no
+`BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
@@ -786,7 +788,7 @@ without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
 
-### Ten of the 45 stats do nothing, ON PURPOSE
+### Ten of the 45 stats do nothing, ON PURPOSE - and eleven more do nothing from a PLAYER
 
 | state | stats |
 |---|---|
@@ -803,6 +805,49 @@ Count the content too, or the number will be off by fifteen.
 The status stats used to be a third row waiting on authored content. That
 content exists now, which is why the row is gone.
 
+### ELEVEN MORE stats work on a WEAPON and do nothing from a PLAYER
+
+Measured, not suspected. `WeaponModel._base_damage()` reads the wielder's
+matching damage stat and adds it on top - and that is the ONLY stat that
+crosses from the holder to the weapon. Every other combat stat is read off the
+weapon's own `StatsManager` and the wielder's copy is never consulted:
+
+```
+firing_pattern.gd:29   weapon.stats.get_stat(ATTACK_SPEED)
+weapon_model.gd:110    stats.get_stat(CRIT_CHANCE)      # not the wielder's
+weapon.gd:120,149,183  model.stats.get_stat(RANGE / SPREAD_ANGLE / PIERCING)
+```
+
+Affected: `ATTACK_SPEED`, `CRIT_CHANCE`, `CRIT_MULTIPLIER`, `RANGE`, `PIERCING`,
+`BOUNCING`, `SPREAD_ANGLE`, `PROJECTILE_SPEED`, `RECOIL`, `HEAT_CAPACITY`,
+`HEAT_DISSIPATION`. A weapon authoring any of them works exactly as intended. An
+ITEM granting one to the player is decorative - it shows in the stat sheet, the
+number moves, and no shot changes.
+
+**Four of the twenty-four authored items are affected**, which is more than the
+two already known to be decorative: `lucky_charm` (CRIT_CHANCE), `pyrojoy` and
+`reactor_core` (ATTACK_SPEED), and `machined_sights` for its SPREAD_ANGLE line
+though its RANGED_DAMAGE line does work.
+
+THIS IS A GAP, NOT A DECISION. `_base_damage` documents the intent in its own
+comment - "the wielder's matching stat adds on top, which is why a melee
+character makes every melee weapon better" - and the four items were authored
+believing it applied generally. It was simply only ever done for one stat.
+
+Fixing it wants ONE method on `WeaponModel` that every read site goes through,
+not eleven call sites each combining in their own way. It also needs a per-stat
+COMBINATION RULE, because they do not compose alike: damage, range and piercing
+add, while `ATTACK_SPEED` is a multiplier neutral at 1.0 and adding the
+wielder's 1.0 to the weapon's 1.0 would double every weapon's rate of fire out
+of nowhere. That rule belongs on `StatMetadata` - it is a property of the stat,
+not of who is holding it.
+
+**Do this BEFORE authoring the weapon list, not after.** Weapons are tuned
+against how much of the holder's stats reach them, so authoring thirty against
+a transfer that only carries damage means tuning all thirty again afterwards.
+It is also the same mechanism as per-weapon damage scaling, which the list wants
+a column for anyway.
+
 **DO NOT wire these one at a time as they come up.** They are not independent:
 ARMOR, DODGE and MAX_HP are one defensive system, and whether dodge is checked
 before armor, whether armor scales with max HP, and whether either has
@@ -817,7 +862,9 @@ is only the bridge from the `ARMOR` STAT into it.
 
 Two of the twenty-four authored items are decorative because of this and are known
 to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
-display correctly and change nothing.
+display correctly and change nothing. Four MORE are decorative for the separate
+reason above - a stat that never crosses from the holder to the weapon - which
+makes six of twenty-four, and that one is a bug rather than a deferral.
 
 **Weapons are cheaper than items.** They decompose onto four axes that already
 exist — `FiringPattern` × delivery × `SpreadPattern` × `TargetSelector` — so
