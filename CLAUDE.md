@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 523 assertions across three suites, no editor, no game window
+# tests — 549 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -125,7 +125,8 @@ stay inside the horde and die before the wave can end. Nothing is then observed.
 core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencies
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
   data/      .tres schemas: ShopEntryData (the base every purchasable shares),
-             EntityData, CharacterData, EnemyData, WeaponData, ItemData, ...
+             EntityData, CharacterData, EnemyData, WeaponData, ItemData,
+             StatScaling (which stat feeds a weapon, and how much), ...
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
              (statuses carry StatusScaling: which stat feeds which axis)
   events/    EventPayload and its subclasses
@@ -691,9 +692,7 @@ that makes polishing now a mistake.
 **Known gaps, worst first:** only FOUR WEAPONS are authored, which is now a
 content gap rather than an engine one — the acquisition path exists and the
 four axes cover most of what a weapon is, so the next ones are `.tres` files.
-Then: the wielder's combat stats other than damage NEVER REACH THEIR WEAPONS,
-which quietly makes four authored items decorative (see the stats section); no
-`BEAM` delivery,
+Then: no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
@@ -805,48 +804,73 @@ Count the content too, or the number will be off by fifteen.
 The status stats used to be a third row waiting on authored content. That
 content exists now, which is why the row is gone.
 
-### ELEVEN MORE stats work on a WEAPON and do nothing from a PLAYER
+### The holder's stats reach their weapons through ONE method
 
-Measured, not suspected. `WeaponModel._base_damage()` reads the wielder's
-matching damage stat and adds it on top - and that is the ONLY stat that
-crosses from the holder to the weapon. Every other combat stat is read off the
-weapon's own `StatsManager` and the wielder's copy is never consulted:
+`WeaponModel.combined_stat()` is how a weapon reads any stat, and every one of
+the eleven sites that used to read `stats.get_stat()` directly now goes through
+it. Before that, only MELEE_DAMAGE and RANGED_DAMAGE ever crossed from a holder
+to their weapon: an ITEM granting attack speed, crit, range or spread moved a
+number in the stat sheet and changed nothing about a shot, which made four
+authored items decorative.
 
-```
-firing_pattern.gd:29   weapon.stats.get_stat(ATTACK_SPEED)
-weapon_model.gd:110    stats.get_stat(CRIT_CHANCE)      # not the wielder's
-weapon.gd:120,149,183  model.stats.get_stat(RANGE / SPREAD_ANGLE / PIERCING)
-```
+Three rules live in that one method, and each was a bug before it existed:
 
-Affected: `ATTACK_SPEED`, `CRIT_CHANCE`, `CRIT_MULTIPLIER`, `RANGE`, `PIERCING`,
-`BOUNCING`, `SPREAD_ANGLE`, `PROJECTILE_SPEED`, `RECOIL`, `HEAT_CAPACITY`,
-`HEAT_DISSIPATION`. A weapon authoring any of them works exactly as intended. An
-ITEM granting one to the player is decorative - it shows in the stat sheet, the
-number moves, and no shot changes.
+**`StatTypes.NEUTRALS` doubles as the COMBINATION RULE.** A stat's neutral is
+the value at which it contributes nothing - 0 for a quantity, 1.0 for a
+multiplier - so an additive identity means the two are added and a
+multiplicative identity means they are multiplied. One table rather than two,
+because the two facts must never disagree: adding a holder's 1.0 attack speed to
+a weapon's 1.0 doubles every weapon's rate of fire out of nowhere.
 
-**Four of the twenty-four authored items are affected**, which is more than the
-two already known to be decorative: `lucky_charm` (CRIT_CHANCE), `pyrojoy` and
-`reactor_core` (ATTACK_SPEED), and `machined_sights` for its SPREAD_ANGLE line
-though its RANGED_DAMAGE line does work.
+*(This file previously predicted the rule would live on `StatMetadata`. It could
+not: `StatMetadata` describes a stat for the UI and is loaded from `content/`,
+which `core/` models cannot reach. `FLOORS` - a genuine gameplay property of a
+stat - was already a const on `StatTypes`, and that is where this belongs too.)*
 
-THIS IS A GAP, NOT A DECISION. `_base_damage` documents the intent in its own
-comment - "the wielder's matching stat adds on top, which is why a melee
-character makes every melee weapon better" - and the four items were authored
-believing it applied generally. It was simply only ever done for one stat.
+**Only the DEVIATION from neutral is shared.** Half of a 1.4 attack speed is
+1.2, not 0.7. Halving the value would hand a well-equipped player a slower
+weapon than an empty-handed one.
 
-Fixing it wants ONE method on `WeaponModel` that every read site goes through,
-not eleven call sites each combining in their own way. It also needs a per-stat
-COMBINATION RULE, because they do not compose alike: damage, range and piercing
-add, while `ATTACK_SPEED` is a multiplier neutral at 1.0 and adding the
-wielder's 1.0 to the weapon's 1.0 would double every weapon's rate of fire out
-of nowhere. That rule belongs on `StatMetadata` - it is a property of the stat,
-not of who is holding it.
+**Every entity is seeded with its multiplicative neutrals** (`EntityModel._seed_neutrals`).
+A player's ATTACK_SPEED used to read its FLOOR of 0.05 because nothing ever set
+a base, and the moment weapons started inheriting it that would have slowed
+every gun to a twentieth. A floor is not a default.
 
-**Do this BEFORE authoring the weapon list, not after.** Weapons are tuned
-against how much of the holder's stats reach them, so authoring thirty against
-a transfer that only carries damage means tuning all thirty again afterwards.
-It is also the same mechanism as per-weapon damage scaling, which the list wants
-a column for anyway.
+**A holder's PERCENT scales the WEAPON, not their own copy of the stat.** This
+was the second bug, found while testing the first: `machined_sights` grants -20%
+SPREAD_ANGLE, the holder's own spread is zero, and a fifth of nothing is
+nothing. What the player means by -20% spread is a fifth off the gun they are
+holding, so `_combine_additive` reads the holder's POOLS apart - flat adds,
+percent scales, and a share applies to both alike.
+
+### A weapon's damage can come from any stat
+
+`WeaponData.damage_scaling` is a list of (stat, coefficient): empty means "all
+of my own damage type", which is what every weapon did implicitly before.
+
+That one table covers two things at once. `(RANGED_DAMAGE, 0.5)` is the balance
+lever for fast weapons - a flat bonus applies PER HIT, so without it the fastest
+weapon in the game converts every damage item into more DPS than a slow one, and
+wins by more the longer a run goes on. `(MAX_HP, 0.1)` and
+`(MOVEMENT_SPEED, -0.03)` are weapons built for a build, and they cost no code.
+
+An entry naming the weapon's OWN damage type is a share of the holder's bonuses;
+one naming a FOREIGN stat contributes that stat's VALUE. Different operations,
+deliberately, because "half my ranged damage" and "a tenth of my max HP" are
+different sentences.
+
+Only STATS can appear there. "The lower your health, the harder you hit" reads
+`current_hp`, which is state rather than a stat and changes between shots -
+that belongs in a `CALCULATE_DAMAGE` effect, which already exists. The table for
+stats, the hook for state.
+
+`WeaponData.stat_inheritance` is the same shape for the other question: how much
+of the holder's attack speed, crit or range reaches this weapon at all. Unlisted
+stats transfer in FULL, so a weapon says only what it withholds.
+
+Both are DERIVED into the shop's detail block by `detail_notes()`, because a
+mechanic the player cannot see reads as a bug - buy +50% ranged damage, watch
+half of it vanish, conclude the item is broken.
 
 **DO NOT wire these one at a time as they come up.** They are not independent:
 ARMOR, DODGE and MAX_HP are one defensive system, and whether dodge is checked
@@ -862,9 +886,9 @@ is only the bridge from the `ARMOR` STAT into it.
 
 Two of the twenty-four authored items are decorative because of this and are known
 to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
-display correctly and change nothing. Four MORE are decorative for the separate
-reason above - a stat that never crosses from the holder to the weapon - which
-makes six of twenty-four, and that one is a bug rather than a deferral.
+display correctly and change nothing. Two is the count again: the four that were
+decorative because their stat never crossed from holder to weapon now work,
+which was a bug rather than a deferral and is fixed above.
 
 **Weapons are cheaper than items.** They decompose onto four axes that already
 exist — `FiringPattern` × delivery × `SpreadPattern` × `TargetSelector` — so
@@ -872,6 +896,12 @@ most new weapons are a new combination rather than new code. Naming those four
 per weapon immediately exposes what the engine is missing. One hole is already
 known: **`BEAM` delivery is not implemented**, so anything laser-shaped is
 blocked.
+
+**The list wants a SCALING COLUMN** beside the four axes: which stats feed each
+weapon's damage and at what share, and how much attack speed or crit it
+withholds. Both are authored tables now, so that column costs nothing but a
+decision - and a fast weapon without one is the balance hole the whole mechanism
+exists to close.
 
 Authoring one is a single `.tres` and two lines of bookkeeping: give it `tier`
 and `base_price` (they come from `ShopEntryData` now), then add it to

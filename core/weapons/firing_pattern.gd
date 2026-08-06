@@ -26,7 +26,7 @@ const MIN_INTERVAL := 0.04
 @abstract func advance(weapon: WeaponModel, delta: float, wants_to_fire: bool) -> int
 
 func interval_for(weapon: WeaponModel) -> float:
-	var scaled := base_interval / maxf(0.05, weapon.stats.get_stat(StatTypes.Stat.ATTACK_SPEED))
+	var scaled := base_interval / maxf(0.05, weapon.combined_stat(StatTypes.Stat.ATTACK_SPEED))
 	return maxf(MIN_INTERVAL, scaled)
 
 ## Ticks the cooldown down, but never below zero.

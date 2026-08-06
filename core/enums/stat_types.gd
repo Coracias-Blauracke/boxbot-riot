@@ -107,6 +107,35 @@ enum DamageType {
 ## yields negative movement speed or zero max HP, which then divides by zero
 ## further down the chain. Stats absent from this map are left unclamped
 ## (zero damage is a legitimate value).
+## The value at which a stat contributes NOTHING.
+##
+## 0.0 for a quantity - no damage, no range, no piercing - and 1.0 for a
+## multiplier, where "no effect" means leaving the number alone.
+##
+## This doubles as the COMBINATION RULE for a weapon inheriting its wielder's
+## stat, which is why it is one table rather than two. An additive identity of 0
+## means the two are ADDED; a multiplicative identity of 1 means they are
+## MULTIPLIED. Storing those as separate facts would let them disagree, and the
+## disagreement would be silent: adding a wielder's 1.0 attack speed to a
+## weapon's 1.0 doubles every weapon's rate of fire out of nowhere.
+##
+## Distinct from FLOORS below. A floor is how low a stat may be pushed;
+## a neutral is where it stops mattering. MAX_HP floors at 1.0 and is neutral
+## at 0.0.
+const NEUTRALS: Dictionary = {
+	Stat.ATTACK_SPEED: 1.0,
+	Stat.PROJECTILE_SPEED: 1.0,
+	Stat.CRIT_MULTIPLIER: 1.0,
+}
+
+static func neutral_of(stat: Stat) -> float:
+	return NEUTRALS.get(stat, 0.0)
+
+## True when the stat composes by multiplication rather than addition. Read off
+## the neutral rather than answered separately, so the two can never disagree.
+static func is_multiplicative(stat: Stat) -> bool:
+	return not is_zero_approx(neutral_of(stat))
+
 const FLOORS: Dictionary = {
 	Stat.MAX_HP: 1.0,
 	Stat.MOVEMENT_SPEED: 0.0,

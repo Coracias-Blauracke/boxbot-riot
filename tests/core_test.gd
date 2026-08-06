@@ -124,6 +124,7 @@ func _initialize() -> void:
 	_test_the_offer_mix_comes_from_the_chance_not_the_pool_sizes()
 	_test_every_purchasable_describes_itself_the_same_way()
 	_test_weapon_and_item_purchases_are_tallied_apart()
+	_test_the_authored_items_that_were_decorative_now_work()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
 	_test_leaving_closes_the_gap_rather_than_leaving_a_hole()
 
@@ -1235,7 +1236,9 @@ func _test_stat_per_world_count_tracks_a_live_number() -> void:
 	# A PERCENT modifier scales the base+flat pool, so without a base there is
 	# nothing to scale and the stat sits on its floor. Easy to forget, and the
 	# reason this assertion is written against 1.0 rather than 0.
-	player.stats.add_modifier(StatTypes.Stat.ATTACK_SPEED, StatTypes.Modifier.BASE, 1.0, &"body")
+	# No base of its own any more: EntityModel seeds every multiplicative stat
+	# with its neutral, so adding another 1.0 here would read 2.0 and every
+	# assertion below would be off by exactly double.
 	player.effects.register(EffectInstance.new(effect, &"pyrojoy"))
 
 	var burning: Array[EntityModel] = []
@@ -1633,6 +1636,73 @@ func _check(label: String, actual: float, expected: float) -> void:
 	else:
 		_failed += 1
 		printerr("  FAIL  %s -> got %s, expected %s" % [label, actual, expected])
+
+# --- the four items that used to be decorative ------------------------------
+
+## REGRESSION, against the AUTHORED files rather than against fixtures.
+##
+## Four items moved a number in the stat sheet and changed nothing about a shot,
+## because only MELEE_DAMAGE and RANGED_DAMAGE ever crossed from a holder to
+## their weapon. Written against content/ on purpose: a fixture proving the
+## mechanism works would have passed the whole time this bug was live.
+func _test_the_authored_items_that_were_decorative_now_work() -> void:
+	print("\n-- the decorative four --")
+	var wielder := _living(100.0)
+	var weapon := WeaponModel.new()
+	weapon.rng = RunRandom.new(7)
+	weapon.set_wielder(wielder)
+	# A spread of its own to be reduced. An item granting -20% of a stat needs
+	# something to take a fifth OF.
+	weapon.stats.add_modifier(StatTypes.Stat.SPREAD_ANGLE, StatTypes.Modifier.BASE, 3.0, &"weapon")
+
+	var before_crit := weapon.combined_stat(StatTypes.Stat.CRIT_CHANCE)
+	var before_speed := weapon.combined_stat(StatTypes.Stat.ATTACK_SPEED)
+	var before_spread := weapon.combined_stat(StatTypes.Stat.SPREAD_ANGLE)
+
+	var lucky_charm := load("res://content/items/lucky_charm.tres") as ItemData
+	var sights := load("res://content/items/machined_sights.tres") as ItemData
+	_check_bool("both items load", lucky_charm != null and sights != null, true)
+
+	wielder.add_item(lucky_charm)
+	_check_bool(
+		"lucky_charm reaches the weapon's crit",
+		weapon.combined_stat(StatTypes.Stat.CRIT_CHANCE) > before_crit, true
+	)
+
+	# pyrojoy is NOT tested through add_item: its attack speed comes from
+	# EffectStatPerWorldCount, which only contributes on a tick with burning
+	# enemies in the census. What the fix owes it is that a PERCENT modifier on
+	# the holder reaches the weapon at all, so that is what is asserted.
+	wielder.stats.add_modifier(
+		StatTypes.Stat.ATTACK_SPEED, StatTypes.Modifier.PERCENT, 0.1, &"burning"
+	)
+	_check(
+		"a percentage on the holder multiplies the weapon's rate",
+		weapon.combined_stat(StatTypes.Stat.ATTACK_SPEED), before_speed * 1.1
+	)
+
+	wielder.add_item(sights)
+	# Spread is a stat where LOWER is better, so the item lowers it. Asserting
+	# "it moved" rather than "it grew" is the whole reason higher_is_better
+	# exists elsewhere.
+	#
+	# It also only works because a holder's PERCENT is applied to the WEAPON's
+	# value. The item is -20% SPREAD_ANGLE and the holder's own spread is zero,
+	# so reading their total would give a fifth of nothing.
+	_check("the weapon's own spread was 3.0", before_spread, 3.0)
+	_check(
+		"machined_sights takes a fifth off the weapon's spread",
+		weapon.combined_stat(StatTypes.Stat.SPREAD_ANGLE), 2.4
+	)
+
+	# The other half of the same bug: a holder carrying nothing must leave a
+	# weapon exactly as it was. ATTACK_SPEED floors at 0.05, so before every
+	# entity was seeded with its neutral this would have read a twentieth.
+	var empty_handed := _living(100.0)
+	var untouched := WeaponModel.new()
+	untouched.set_wielder(empty_handed)
+	_check("an empty-handed holder slows nothing", untouched.combined_stat(StatTypes.Stat.ATTACK_SPEED), 1.0)
+	_check("and a fresh entity reads its neutral", empty_handed.stats.get_stat(StatTypes.Stat.ATTACK_SPEED), 1.0)
 
 # --- who is playing ---------------------------------------------------------
 

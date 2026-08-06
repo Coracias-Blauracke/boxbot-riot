@@ -131,6 +131,34 @@ func _validate(path: String) -> void:
 func _validate_weapon(path: String, weapon: WeaponData) -> void:
 	_validate_entity(path, weapon)
 
+	# A null entry in either table is silently skipped at runtime, so a deleted
+	# resource turns into a weapon that quietly stops caring about a stat.
+	var valid_stats := StatTypes.Stat.values()
+	for i in weapon.damage_scaling.size():
+		var scaling: StatScaling = weapon.damage_scaling[i]
+		if scaling == null:
+			_errors.append("%s : damage_scaling[%d] is null (deleted resource?)" % [path, i])
+		elif not valid_stats.has(scaling.stat):
+			_errors.append("%s : damage_scaling[%d] names a stat outside the enum" % [path, i])
+
+	for i in weapon.stat_inheritance.size():
+		var scaling: StatScaling = weapon.stat_inheritance[i]
+		if scaling == null:
+			_errors.append("%s : stat_inheritance[%d] is null (deleted resource?)" % [path, i])
+		elif not valid_stats.has(scaling.stat):
+			_errors.append("%s : stat_inheritance[%d] names a stat outside the enum" % [path, i])
+
+	# Withholding a MULTIPLICATIVE stat is expressed as a share of the holder's
+	# deviation from neutral, so a share is a proportion. Above 1 it amplifies,
+	# which is legal; below 0 on a multiplier inverts the holder's bonus into a
+	# penalty, which is almost certainly a typo rather than a design.
+	for scaling in weapon.stat_inheritance:
+		if scaling != null and scaling.coefficient < 0.0 and StatTypes.is_multiplicative(scaling.stat):
+			_warnings.append(
+				"%s : inherits a NEGATIVE share of %s, so its holder's bonus becomes a penalty"
+				% [path, StatTypes.Stat.keys()[scaling.stat]]
+			)
+
 	if weapon.firing == null:
 		_errors.append("%s : weapon has no firing pattern, it will never attack" % path)
 	if weapon.targeting == null:

@@ -49,6 +49,17 @@ func effects() -> Array[DynamicEffect]:
 	var none: Array[DynamicEffect] = []
 	return none
 
+## Derived lines the detail block shows that are neither a modifier nor an
+## effect. A weapon's scaling is the first: it is not a stat line, it changes
+## how every stat line the buyer already owns is worth, and a mechanic the
+## player cannot see reads as a bug - buy +50% ranged, watch nothing happen.
+##
+## Strings rather than structured data, and they carry translation KEYS, because
+## `tr()` returns the key unchanged until a translation is loaded, which is
+## exactly what the stat sheet already shows on screen today.
+func detail_notes() -> PackedStringArray:
+	return PackedStringArray()
+
 # --- acquisition -----------------------------------------------------------
 #
 # `host` is untyped for the same reason DynamicEffect.execute takes a Variant:

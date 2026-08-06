@@ -411,6 +411,17 @@ func _draw_detail(font: Font, top: float) -> float:
 		)
 		y += line
 
+	# Derived notes - today, a weapon saying which of your stats it actually
+	# uses. Drawn after the stat lines because it qualifies them.
+	if entry.entry != null:
+		for note in entry.entry.detail_notes():
+			draw_string(
+				font, Vector2(left + 10.0, y), "* " + tr(note),
+				HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size,
+				Color(0.86, 0.82, 0.62)
+			)
+			y += line
+
 	if zone == Zone.OWNED and entry.can_sell():
 		draw_string(
 			font, Vector2(left + 10.0, y),

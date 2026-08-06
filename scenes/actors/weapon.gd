@@ -117,7 +117,7 @@ const MELEE_TARGET_TOLERANCE := 1.12
 func _targeting_range() -> float:
 	if data.delivery == WeaponData.DeliveryKind.MELEE_SWEEP:
 		return melee_reach() * MELEE_TARGET_TOLERANCE
-	return model.stats.get_stat(StatTypes.Stat.RANGE)
+	return model.combined_stat(StatTypes.Stat.RANGE)
 
 ## Furthest any swing in the combo can actually connect, hitbox included.
 func melee_reach() -> float:
@@ -130,7 +130,7 @@ func melee_reach() -> float:
 
 ## For melee, RANGE acts as a multiplier on the authored reach, neutral at 100.
 func _reach_scale() -> float:
-	return maxf(0.1, model.stats.get_stat(StatTypes.Stat.RANGE) / 100.0)
+	return maxf(0.1, model.combined_stat(StatTypes.Stat.RANGE) / 100.0)
 
 # --- firing ----------------------------------------------------------------
 
@@ -146,7 +146,7 @@ func _fire() -> void:
 	var shot := model.build_shot(data)
 
 	var aim := Vector2.RIGHT.rotated(rotation)
-	var spread := model.stats.get_stat(StatTypes.Stat.SPREAD_ANGLE)
+	var spread := model.combined_stat(StatTypes.Stat.SPREAD_ANGLE)
 	var pattern := data.spread if data.spread != null else null
 	var directions := (
 		pattern.directions(aim, spread, model.rng)
@@ -170,7 +170,7 @@ func _fire() -> void:
 		holder.counters.add(CounterTypes.Counter.BULLETS_FIRED, directions.size())
 		holder.notify(Hooks.Hook.ON_WEAPON_FIRED, shot)
 
-	var recoil := data.recoil + model.stats.get_stat(StatTypes.Stat.RECOIL)
+	var recoil := data.recoil + model.combined_stat(StatTypes.Stat.RECOIL)
 	if recoil > 0.0:
 		wielder.impulse -= aim * recoil
 
@@ -180,9 +180,9 @@ func _fire_projectiles(shot: ShotSnapshot, directions: PackedVector2Array) -> vo
 		return
 
 	var scene: PackedScene = data.projectile_scene if data.projectile_scene != null else PROJECTILE_SCENE
-	var pierce := roundi(model.stats.get_stat(StatTypes.Stat.PIERCING))
-	var bounce := roundi(model.stats.get_stat(StatTypes.Stat.BOUNCING))
-	var speed_multiplier := model.stats.get_stat(StatTypes.Stat.PROJECTILE_SPEED)
+	var pierce := roundi(model.combined_stat(StatTypes.Stat.PIERCING))
+	var bounce := roundi(model.combined_stat(StatTypes.Stat.BOUNCING))
+	var speed_multiplier := model.combined_stat(StatTypes.Stat.PROJECTILE_SPEED)
 
 	for direction in directions:
 		var projectile := scene.instantiate() as Projectile
@@ -214,7 +214,7 @@ func _start_swing(shot: ShotSnapshot) -> void:
 	_swing_mirrored = data.alternate_swing_sides and (attack_index % 2 == 1)
 	_swing_snapshot = shot
 	_swing_time = 0.0
-	_swing_duration = _swing.duration / maxf(0.05, model.stats.get_stat(StatTypes.Stat.ATTACK_SPEED))
+	_swing_duration = _swing.duration / maxf(0.05, model.combined_stat(StatTypes.Stat.ATTACK_SPEED))
 	_swing_hits.clear()
 
 	model.counters.add(CounterTypes.Counter.MELEE_SWINGS)

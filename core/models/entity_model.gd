@@ -81,9 +81,26 @@ func _init(data: EntityData = null) -> void:
 	effects = EffectDispatcher.new()
 	statuses = StatusManager.new()
 	stats.stat_changed.connect(_on_stat_changed)
+	_seed_neutrals()
 
 	if data != null:
 		setup_from_data(data)
+
+## Every multiplicative stat starts at the value that means "no effect".
+##
+## Without this a player's ATTACK_SPEED reads its FLOOR of 0.05, because nothing
+## ever set a base for it - and the moment a weapon starts inheriting its
+## wielder's attack speed, that 0.05 would slow every weapon in the game to a
+## twentieth of its rate. A floor is not a default; this is the default.
+##
+## Seeded for EVERY entity rather than for players, because "everything carries
+## the full stat set" is the decision the whole stat system rests on, and an
+## enemy whose attack speed reads 0.05 is wrong in exactly the same way.
+func _seed_neutrals() -> void:
+	for stat in StatTypes.NEUTRALS:
+		stats.add_modifier(
+			stat, StatTypes.Modifier.BASE, StatTypes.NEUTRALS[stat], &"stat_neutral"
+		)
 
 func setup_from_data(data: EntityData) -> void:
 	if data == null:
