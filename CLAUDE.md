@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 384 assertions across three suites, no editor, no game window
+# tests — 459 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -87,10 +87,11 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
   data/      .tres schemas: EntityData, CharacterData, EnemyData, WeaponData, ...
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
+             (statuses carry StatusScaling: which stat feeds which axis)
   events/    EventPayload and its subclasses
   managers/  StatsManager, CounterManager, EffectDispatcher, StatusManager,
              ItemsManager, WaveDirector, RunRandom, WorldOverrides,
-             ShopManager (+ ShopOffer)
+             ShopManager (+ ShopOffer), WorldCensus
   models/    EntityModel, WorldModel, WeaponModel, RunModel
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
@@ -100,7 +101,8 @@ scenes/      the view — nodes, physics, rendering
   input/     PlayerInput (device binding, movement + menus)
 content/     authored .tres: characters, enemies, weapons, items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
-             stats/ (StatMetadata + the StatSheet reading order)
+             stats/ (StatMetadata + the StatSheet reading order),
+             statuses/ (bleed, poison, burn, slow)
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
 ```
@@ -122,8 +124,8 @@ spin, burst progress).
 **Hooks split into NOTIFICATION and PIPELINE.** Notifications say "this
 happened" (read-only payload, order irrelevant). Pipelines say "this is about to
 happen, change it" (mutable payload, ordered by `priority`). Armor, resistances
-and stat-based shop pricing are *not expressible* without pipelines. **28 of the
-29 hooks fire**; only `ON_STEP` waits on step detection.
+and stat-based shop pricing are *not expressible* without pipelines. **30 of the
+31 hooks fire**; only `ON_STEP` waits on step detection.
 
 (This line previously read "23 of 31", which was wrong in both numbers. Count
 the entries in `Hooks.KINDS` — it has to cover every hook — rather than trusting
@@ -281,6 +283,71 @@ each one twice the size, which reads as long quiet stretches punctuated by a
 wall. Scaling is linear, not compounding: four players face four times the wave,
 not eight — the budget curve already compounds across waves on its own.
 
+**The chance to apply a status belongs to the HIT, not to the status.**
+`StatusEvent.chance` starts at 1.0, so an application site that does not set its
+own base makes the status certain and turns "+10% chance to cause bleeding" into
+"always, minus ten". `EffectApplyStatusOnHit.base_chance` therefore defaults to
+0.0: an item grants nothing on its own and every point comes from stats. Fire
+spreading off a corpse passes nothing and stays deliberate.
+
+Note the corollary: a chance stat only reaches a status the status LISTS on its
+CHANCE axis. `BLEED_CHANCE` does nothing for a bleed that never names it.
+
+**A status snapshots its parameters from the APPLIER when it lands.** Damage,
+tick rate, max stacks and duration are resolved onto the `ActiveStatus` and
+never read live off the `.tres`, which is globally cached and therefore cannot
+hold a per-player value. `StatusScaling` names which stat feeds which axis, and
+generic composes with specific - bleed can read both `STATUS_CHANCE` and
+`BLEED_CHANCE`, and an item raising either works with no branch anywhere. Same
+reasoning as rolling crit once per shot: the applier may die long before the
+poison wears off, and a buff expiring mid-duration must not retroactively weaken
+something already ticking.
+
+**A ticking status lives for a COUNT of ticks, not a span of seconds.**
+`tick_count` defaults to 5 and a fresh application refreshes it. Seconds would
+have been the same arithmetic right up until somebody modified the rate - at
++10% faster a 2.5-second bleed delivers five and a half ticks, which quietly
+turns `BLEED_RATE` into a damage stat wearing a pacing stat's name. A faster
+status delivers its five ticks SOONER and no more of them, and the suite asserts
+the total is unchanged.
+
+`base_duration` governs only statuses that never tick, such as slow.
+
+**`WorldCensus` is DERIVED, never maintained by signals.** "For each burning
+enemy" needs a live count, and an incremental counter that goes up on apply and
+down on expiry breaks permanently and silently the first time an event is missed
+- a target cleared by `clear_all()`, an enemy freed mid-burn - and afterwards
+reports three burning enemies to an empty screen. Nothing detects that.
+Recomputing cannot drift. The cost is one walk, cached per generation, so twenty
+items asking the same question in a frame pay once.
+
+It holds `WeakRef`s, so a freed enemy prunes itself and there is no
+`unregister()` to forget. And it deliberately does NOT answer what `RunModel`
+already answers - duplicating `living_player_count()` would create two counts
+that eventually disagree, which is the same silent-drift bug through another
+door.
+
+**`ON_OUTGOING_DAMAGE` is the attacker's say WITH the target known.**
+`CALCULATE_DAMAGE` cannot serve: it fires once per SHOT, before any target
+exists, which is exactly what lets one `ShotSnapshot` feed eight pellets.
+"+10% damage to burning enemies" has to see who is being hit. Offence runs
+first, then `TAKE_DAMAGE` for defence - the same two-phase shape statuses use.
+
+**`ON_TICK` is the only hook that fires on a SCHEDULE.** Everything else hangs
+on an event. "+1% attack speed for each burning enemy" and health regeneration
+both have answers that change with nothing to hang on, so they need a heartbeat;
+`RunModel.advance_wave` fires it on every player once per frame with the census
+in the payload.
+
+An effect driven by it must be IDEMPOTENT - strip its whole contribution and
+reapply - because a live count goes DOWN as well as up. `EffectStatPerCounter`
+can be additive since a tally only grows; `EffectStatPerWorldCount` cannot.
+
+**`EntityModel.world_position` is written by the view, read by core.** A bare
+`Vector2` handed down once per frame from `Actor`, which is what lets `core/`
+answer "what is within 90 units of this corpse" without ever seeing a Node -
+the same trick `SpawnContext` uses. `core/` never writes it.
+
 **Crit is rolled ONCE per shot** into a shared `ShotSnapshot`, so all shotgun
 pellets crit together and a piercing shot keeps critting through every enemy.
 
@@ -381,7 +448,8 @@ players, per-player HUD, downed players with a configurable death rule, a run
 that ends in victory or defeat, a spawn system with swappable placement
 patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
 per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
-rerolling, stat payment and ready-up — with eight authored items.
+rerolling, stat payment and ready-up — and a status system whose four statuses
+differ only by authored numbers. Twenty-four items authored.
 
 The shop UI is playable end to end: per-player panels laid out by player count,
 a cursor per player driven by that player's own device, offers, reroll, buying,
@@ -413,15 +481,30 @@ that makes polishing now a mistake.
   says otherwise.
 - `player_count` in `main.tscn` defaults to 1; raise it to test co-op, or pass
   `--capture-players=N` for a capture run.
+- The test character carries eight `starting_items` purely to exercise bleed:
+  two barbed edges and six serrated rounds, which is +90% bleed chance on top of
+  each item's own base and therefore certain on every ranged hit. Strip them
+  before judging anything about balance.
 - `death_rule` is an export on `main.tscn`. When challenge modes arrive it wants
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps:** no menus or pause, no join flow for co-op, no `BEAM` delivery,
+**Known gaps, worst first:** there is NO WAY TO RESTART OR PAUSE a run. Nothing
+calls `reload_current_scene` and nothing touches `get_tree().paused`, so a wipe
+means closing the executable and launching it again. That is the single biggest
+obstacle to a play-testing session and should be fixed before content is judged.
+Then: no join flow for co-op, no `BEAM` delivery,
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
-art (everything is drawn as placeholder circles, ellipses and lines), and an
-effect library of four classes — which is the ceiling on how many items can be
-authored before new ones need code.
+art (everything is drawn as placeholder circles, ellipses and lines), and no
+buffs authored — the status machinery is valence-neutral and ready for them,
+but nothing positive exists yet.
+
+The effect library is **twelve classes**. It was four when the item list was
+written, and the eight added since each cover a FAMILY rather than an item:
+apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
+double-status-stacks, stat-per-world-count, and the three status kinds. That
+ratio is the point - sixteen of the twenty-four authored items needed no new
+code at all.
 
 **Localisation is DEFERRED ON PURPOSE, and is not a gap.** `tr()` is already
 wrapped around every `display_key` and `description_key`, so the door is open
@@ -504,6 +587,39 @@ In this genre most items are the first kind, so the majority of a list lands
 without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
+
+### Ten of the 45 stats do nothing, ON PURPOSE
+
+| state | stats |
+|---|---|
+| **read by something** | 35 of 45 |
+| **cheap to wire** | ARMOR, LIFESTEAL, DODGE, HP_REGEN, CURRENCY_GAIN — one small effect class each, the mechanism already exists |
+| **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
+
+**Do not measure this with `grep "Stat.<NAME>"` alone.** That was the method
+here and it is now wrong: the eleven per-status axes plus `STATUS_CHANCE` and
+the three status damage stats are reached by a `.tres` naming them through
+`StatusScaling`, so no code ever mentions them and the grep reports them dead.
+Count the content too, or the number will be off by fifteen.
+
+The status stats used to be a third row waiting on authored content. That
+content exists now, which is why the row is gone.
+
+**DO NOT wire these one at a time as they come up.** They are not independent:
+ARMOR, DODGE and MAX_HP are one defensive system, and whether dodge is checked
+before armor, whether armor scales with max HP, and whether either has
+diminishing returns is a SINGLE decision. Wiring them piecemeal produces five
+ad-hoc formulas that do not compose. LIFESTEAL and HP_REGEN have the same
+problem through `CALCULATE_HEAL`. The plan is to settle them together once the
+item list shows what the stats are actually for.
+
+Armor is the instructive case: `EffectArmorFromMaxHp` already reduces damage
+through `DamageEvent.absorbed`, so the pipeline plumbing works. What is missing
+is only the bridge from the `ARMOR` STAT into it.
+
+Two of the twenty-four authored items are decorative because of this and are known
+to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
+display correctly and change nothing.
 
 **Weapons are cheaper than items.** They decompose onto four axes that already
 exist — `FiringPattern` × delivery × `SpreadPattern` × `TargetSelector` — so

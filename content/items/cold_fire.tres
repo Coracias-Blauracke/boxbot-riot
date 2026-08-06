@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="m1"]
+script = ExtResource("2_mod")
+stat = 24
+modifier_type = 1
+value = -3.0
+
+[sub_resource type="Resource" id="m2"]
+script = ExtResource("2_mod")
+stat = 36
+modifier_type = 1
+value = 0.2
+
+[sub_resource type="Resource" id="m3"]
+script = ExtResource("2_mod")
+stat = 43
+modifier_type = 1
+value = 0.2
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_COLD_FIRE"
+tier = 2
+base_price = 80
+static_stats = Array[ExtResource("2_mod")]([SubResource("m1"), SubResource("m2"), SubResource("m3")])

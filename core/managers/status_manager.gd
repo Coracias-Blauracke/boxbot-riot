@@ -18,7 +18,8 @@ func apply(
 	definition: StatusEffect,
 	applier: EntityModel = null,
 	stacks: int = 1,
-	duration: float = -1.0
+	duration: float = -1.0,
+	chance: float = -1.0
 ) -> ActiveStatus:
 	if definition == null or definition.status_id.is_empty():
 		push_warning("StatusManager.apply: status has no status_id")
@@ -31,6 +32,18 @@ func apply(
 	event.status_id = definition.status_id
 	event.stacks = stacks
 	event.duration = definition.base_duration if duration < 0.0 else duration
+
+	# The BASE chance belongs to the application site, not to the status. A
+	# weapon hit that may cause bleeding rolls for it; fire spreading off a
+	# corpse is deliberate and always lands. Defaulting to 1.0 here and letting
+	# items only subtract made "+10% chance to bleed" mean "always, minus 10".
+	if chance >= 0.0:
+		event.chance = chance
+
+	# The applier's stats decide how likely this is to land and how long it
+	# lasts, BEFORE any pipeline effect gets to argue about it.
+	event.chance += definition.bonus_for(StatusScaling.Axis.CHANCE, applier)
+	event.duration += definition.bonus_for(StatusScaling.Axis.DURATION, applier)
 
 	# Offence first, then defence - the same two-phase shape as damage.
 	if applier != null:
@@ -45,6 +58,9 @@ func apply(
 	if not host.rng.chance(RunRandom.Stream.COMBAT, event.chance):
 		return null
 
+	# Typed explicitly: a Dictionary lookup is Variant and `:=` off one is a
+	# parse error that takes the whole file with it.
+	var existing_before: ActiveStatus = _active.get(event.status_id)
 	var status := _land(host, event)
 
 	event.applied = true
@@ -52,6 +68,10 @@ func apply(
 	if applier != null:
 		applier.notify(Hooks.Hook.ON_STATUS_APPLIED, event)
 	host.counters.add(CounterTypes.Counter.STATUS_APPLIED)
+	# Tallied on the APPLIER and only for a FRESH target: refreshing a status
+	# already running must not count as poisoning somebody new.
+	if applier != null and existing_before == null:
+		applier.counters.add(definition.apply_counter)
 
 	status_applied.emit(event.status_id, status.stacks)
 	return status
@@ -88,13 +108,24 @@ func tick(host: EntityModel, delta: float) -> void:
 	for status in get_all():
 		var definition := status.definition()
 
-		if definition.tick_interval > 0.0:
+		# A TICKING status lives for a COUNT of ticks, not a span of seconds.
+		# Measuring it in seconds would make "ticks 10% faster" also mean "ticks
+		# more times", turning a pacing stat into a damage one.
+		#
+		# The interval is the RESOLVED one, which is what makes the pacing a
+		# per-player property rather than an edit to a shared resource.
+		if status.tick_interval > 0.0:
 			status.tick_accumulator += delta
-			while status.tick_accumulator >= definition.tick_interval:
-				status.tick_accumulator -= definition.tick_interval
+			while status.tick_accumulator >= status.tick_interval and status.ticks_left > 0:
+				status.tick_accumulator -= status.tick_interval
+				status.ticks_left -= 1
 				definition.on_tick(host, status)
 				host.notify(Hooks.Hook.ON_STATUS_TICK, _describe(host, status))
+			if status.ticks_left <= 0:
+				_expire(host, status)
+			continue
 
+		# Everything else - slow, a timed buff - is measured in seconds.
 		status.remaining -= delta
 		if status.remaining <= 0.0:
 			_expire(host, status)
@@ -105,12 +136,20 @@ func _land(host: EntityModel, event: StatusEvent) -> ActiveStatus:
 	var existing: ActiveStatus = _active.get(event.status_id)
 
 	if existing != null:
-		existing.stacks = mini(existing.stacks + event.stacks, event.definition.max_stacks)
+		# Re-resolved on every application, not only the first. The applier's
+		# stats may have moved since, and the newest application is the one that
+		# should decide how the status behaves from here.
+		event.definition.resolve_onto(existing, event.applier)
+		existing.stacks = mini(existing.stacks + event.stacks, existing.max_stacks)
+		# The three modes mean the same thing in either unit: a ticking status
+		# refreshes its TICK count, a timed one its seconds.
 		match event.definition.refresh_mode:
 			StatusEffect.RefreshMode.REFRESH:
 				existing.remaining = event.duration
+				existing.ticks_left = existing.max_ticks
 			StatusEffect.RefreshMode.EXTEND:
 				existing.remaining += event.duration
+				existing.ticks_left += existing.max_ticks
 			StatusEffect.RefreshMode.KEEP:
 				pass
 		existing.set_applier(event.applier)
@@ -119,10 +158,13 @@ func _land(host: EntityModel, event: StatusEvent) -> ActiveStatus:
 		event.definition.on_applied(host, existing)
 		return existing
 
-	var status := ActiveStatus.new(
-		event.definition, event.definition, mini(event.stacks, event.definition.max_stacks)
-	)
+	var status := ActiveStatus.new(event.definition, event.definition, 1)
+	# Resolve first: the cap the stacks are clamped to is the RESOLVED one, so
+	# "+1 additional bleed stack" works on the very application that grants it.
+	event.definition.resolve_onto(status, event.applier)
+	status.stacks = mini(event.stacks, status.max_stacks)
 	status.remaining = event.duration
+	status.ticks_left = status.max_ticks
 	status.set_applier(event.applier)
 
 	_active[event.status_id] = status

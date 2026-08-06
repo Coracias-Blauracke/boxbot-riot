@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="3_base"]
+[ext_resource type="Script" path="res://core/effects/library/effect_double_status_stacks.gd" id="4_double"]
+
+[sub_resource type="Resource" id="e_double"]
+script = ExtResource("4_double")
+chance = 0.05
+multiplier = 2
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_UNIVERSAL_DOUBLER"
+tier = 4
+base_price = 300
+dynamic_effects = Array[ExtResource("3_base")]([SubResource("e_double")])

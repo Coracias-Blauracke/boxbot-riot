@@ -24,6 +24,27 @@ var statuses: StatusManager
 var current_hp: float = 0.0
 var is_alive: bool = true
 
+## Where this entity is, written once per frame by its Actor.
+##
+## A Vector2 rather than a node reference, which is what keeps core/ Node-free
+## while still letting it answer "what is within 120 units of here" - the same
+## trick SpawnContext uses. core/ never writes this; it is a read-only fact
+## handed down from the view.
+var world_position: Vector2 = Vector2.ZERO
+
+## Weak, set by WorldCensus.register. Lets an effect reaching outwards - fire
+## spreading off a corpse - ask what is nearby at the moment it fires, when
+## there is no payload to thread the answer through. Weak in both directions:
+## the census holds weakrefs to entities and this holds one back, so neither can
+## keep the other alive.
+var _census_ref: WeakRef = null
+
+func set_census(census: WorldCensus) -> void:
+	_census_ref = weakref(census)
+
+func get_census() -> WorldCensus:
+	return _census_ref.get_ref() as WorldCensus if _census_ref != null else null
+
 var _items: ItemsManager = null
 var _rng: RunRandom = null
 var _last_max_hp: float = 0.0
@@ -131,8 +152,11 @@ func can_afford(amount: int) -> bool:
 
 # --- statuses --------------------------------------------------------------
 
-func apply_status(definition: StatusEffect, applier: EntityModel = null, stacks: int = 1, duration: float = -1.0) -> ActiveStatus:
-	return statuses.apply(self, definition, applier, stacks, duration)
+func apply_status(
+	definition: StatusEffect, applier: EntityModel = null, stacks: int = 1,
+	duration: float = -1.0, chance: float = -1.0
+) -> ActiveStatus:
+	return statuses.apply(self, definition, applier, stacks, duration, chance)
 
 func tick_statuses(delta: float) -> void:
 	statuses.tick(self, delta)
@@ -155,6 +179,12 @@ func apply_damage(event: DamageEvent) -> float:
 		return 0.0
 
 	event.target = self
+
+	# Offence first with the target now known, then defence - the same two-phase
+	# shape statuses use. The attacker gets to say "more damage to burning
+	# things" before the victim gets to say "I resist fire".
+	if event.source != null:
+		event.source.pipeline(Hooks.Hook.ON_OUTGOING_DAMAGE, event)
 	pipeline(Hooks.Hook.TAKE_DAMAGE, event)
 	if event.cancelled:
 		return 0.0

@@ -18,6 +18,10 @@ var world: WorldModel
 var overrides: WorldOverrides
 var director: WaveDirector
 
+## Live counts of what is in the world, for "for each burning enemy" effects.
+## Derived from truth rather than maintained by signals - see WorldCensus.
+var census: WorldCensus
+
 var players: Array[EntityModel] = []
 
 ## ONE SHOP PER PLAYER, index-aligned with `players`. Not one shop shared four
@@ -72,6 +76,7 @@ func _init(run_seed: int = 0, world_data: WorldData = null, wave_table: WaveTabl
 
 	director = WaveDirector.new()
 	director.table = wave_table
+	census = WorldCensus.new()
 
 	# Authored on the table, not hardcoded here. Still assignable afterwards so
 	# tests and challenge modes can shorten a run without a second .tres.
@@ -89,6 +94,7 @@ func add_player(player: EntityModel) -> int:
 	# cycle collector, so run_test.gd asserts it with a weakref rather than
 	# taking it on trust.
 	player.died.connect(_on_player_died)
+	census.register(player)
 
 	# Created here rather than when the shop opens, so the pairing with `players`
 	# can never drift and player_index always matches the RNG sub-stream.
@@ -284,6 +290,19 @@ func set_player_ready(index: int, value: bool) -> void:
 ## Note it does NOT tick statuses: in the running game each actor ticks its own,
 ## and doing it here as well would advance every player's statuses twice.
 func advance_wave(delta: float) -> Array[SpawnGroup]:
+	# One invalidation per tick, so twenty effects asking the same question this
+	# frame pay for one walk rather than twenty.
+	census.invalidate()
+
+	# ON_TICK is the only hook that fires on a schedule. Effects whose answer
+	# changes with no event to hang on - "for each burning enemy", regeneration -
+	# have nowhere else to live.
+	var tick := TickEvent.new()
+	tick.delta = delta
+	tick.census = census
+	for player in players:
+		player.notify(Hooks.Hook.ON_TICK, tick)
+
 	if phase == WorldTypes.Phase.SHOP and auto_intermission > 0.0:
 		_intermission_left -= delta
 		if _intermission_left <= 0.0:

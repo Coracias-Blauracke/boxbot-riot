@@ -2,19 +2,36 @@
 
 [ext_resource type="Script" path="res://core/data/shop_data.gd" id="1_shop"]
 [ext_resource type="Script" path="res://core/data/item_data.gd" id="2_item"]
-[ext_resource type="Resource" path="res://content/items/scrap_plating.tres" id="3_plating"]
-[ext_resource type="Resource" path="res://content/items/whetstone.tres" id="4_whetstone"]
-[ext_resource type="Resource" path="res://content/items/machined_sights.tres" id="5_sights"]
-[ext_resource type="Resource" path="res://content/items/turbo_springs.tres" id="6_springs"]
-[ext_resource type="Resource" path="res://content/items/riot_shield.tres" id="7_shield"]
-[ext_resource type="Resource" path="res://content/items/lucky_charm.tres" id="8_charm"]
-[ext_resource type="Resource" path="res://content/items/bloodstone.tres" id="9_bloodstone"]
-[ext_resource type="Resource" path="res://content/items/reactor_core.tres" id="10_reactor"]
+[ext_resource type="Resource" path="res://content/items/barbed_edge.tres" id="3_barbed_edge"]
+[ext_resource type="Resource" path="res://content/items/blood_container.tres" id="4_blood_container"]
+[ext_resource type="Resource" path="res://content/items/bloodstone.tres" id="5_bloodstone"]
+[ext_resource type="Resource" path="res://content/items/cold_fire.tres" id="6_cold_fire"]
+[ext_resource type="Resource" path="res://content/items/diverse_effect.tres" id="7_diverse_effect"]
+[ext_resource type="Resource" path="res://content/items/fuel.tres" id="8_fuel"]
+[ext_resource type="Resource" path="res://content/items/green_sandwich.tres" id="9_green_sandwich"]
+[ext_resource type="Resource" path="res://content/items/incendiary_rounds.tres" id="10_incendiary_rounds"]
+[ext_resource type="Resource" path="res://content/items/internal_furnace.tres" id="11_internal_furnace"]
+[ext_resource type="Resource" path="res://content/items/lucky_charm.tres" id="12_lucky_charm"]
+[ext_resource type="Resource" path="res://content/items/machined_sights.tres" id="13_machined_sights"]
+[ext_resource type="Resource" path="res://content/items/molten_core.tres" id="14_molten_core"]
+[ext_resource type="Resource" path="res://content/items/overflowing_toxins.tres" id="15_overflowing_toxins"]
+[ext_resource type="Resource" path="res://content/items/pacemaker.tres" id="16_pacemaker"]
+[ext_resource type="Resource" path="res://content/items/pyrojoy.tres" id="17_pyrojoy"]
+[ext_resource type="Resource" path="res://content/items/reactor_core.tres" id="18_reactor_core"]
+[ext_resource type="Resource" path="res://content/items/riot_shield.tres" id="19_riot_shield"]
+[ext_resource type="Resource" path="res://content/items/scrap_plating.tres" id="20_scrap_plating"]
+[ext_resource type="Resource" path="res://content/items/serrated_rounds.tres" id="21_serrated_rounds"]
+[ext_resource type="Resource" path="res://content/items/sharp_blade.tres" id="22_sharp_blade"]
+[ext_resource type="Resource" path="res://content/items/tinderbox.tres" id="23_tinderbox"]
+[ext_resource type="Resource" path="res://content/items/turbo_springs.tres" id="24_turbo_springs"]
+[ext_resource type="Resource" path="res://content/items/universal_doubler.tres" id="25_universal_doubler"]
+[ext_resource type="Resource" path="res://content/items/whetstone.tres" id="26_whetstone"]
 
 [resource]
 script = ExtResource("1_shop")
-pool = Array[ExtResource("2_item")]([ExtResource("3_plating"), ExtResource("4_whetstone"), ExtResource("5_sights"), ExtResource("6_springs"), ExtResource("7_shield"), ExtResource("8_charm"), ExtResource("9_bloodstone"), ExtResource("10_reactor")])
+pool = Array[ExtResource("2_item")]([ExtResource("3_barbed_edge"), ExtResource("4_blood_container"), ExtResource("5_bloodstone"), ExtResource("6_cold_fire"), ExtResource("7_diverse_effect"), ExtResource("8_fuel"), ExtResource("9_green_sandwich"), ExtResource("10_incendiary_rounds"), ExtResource("11_internal_furnace"), ExtResource("12_lucky_charm"), ExtResource("13_machined_sights"), ExtResource("14_molten_core"), ExtResource("15_overflowing_toxins"), ExtResource("16_pacemaker"), ExtResource("17_pyrojoy"), ExtResource("18_reactor_core"), ExtResource("19_riot_shield"), ExtResource("20_scrap_plating"), ExtResource("21_serrated_rounds"), ExtResource("22_sharp_blade"), ExtResource("23_tinderbox"), ExtResource("24_turbo_springs"), ExtResource("25_universal_doubler"), ExtResource("26_whetstone")])
 offer_count = 4
+allow_duplicate_offers = false
 price_per_wave = 0.12
 reroll_base_cost = 5
 reroll_cost_growth = 1.6

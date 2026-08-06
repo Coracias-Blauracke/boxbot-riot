@@ -109,6 +109,8 @@ func _validate(path: String) -> void:
 		_validate_stat_sheet(path, resource)
 	elif resource is StatMetadata:
 		_validate_stat_metadata(path, resource)
+	elif resource is StatusEffect:
+		_validate_status(path, resource)
 	elif resource is ShopData:
 		_validate_shop(path, resource)
 	elif resource is WaveModifier:
@@ -266,6 +268,35 @@ func _validate_stat_sheet(path: String, sheet: StatSheet) -> void:
 				"%s : StatTypes.Stat value %d has no metadata, it can never be displayed"
 				% [path, stat]
 			)
+
+## A status with no id is refused at runtime with a push_warning nobody reads,
+## and one whose duration cannot cover a single tick simply never damages
+## anything - both silent.
+func _validate_status(path: String, status: StatusEffect) -> void:
+	if status.status_id.is_empty():
+		_errors.append("%s : status_id is empty, StatusManager will refuse it" % path)
+	if status.base_duration <= 0.0:
+		_errors.append("%s : base_duration must be positive" % path)
+	if status.max_stacks < 1:
+		_errors.append("%s : max_stacks below 1 means it can never apply" % path)
+	if status.tick_interval < 0.0:
+		_errors.append("%s : tick_interval cannot be negative" % path)
+	# A ticking status lives by its tick COUNT, so that is what has to be
+	# positive; base_duration governs only statuses that never tick.
+	if status.tick_interval > 0.0 and status.tick_count < 1:
+		_errors.append("%s : ticks but has no ticks to give, so it does nothing" % path)
+
+	var valid_stats := StatTypes.Stat.values()
+	for i in status.scaling.size():
+		var entry: StatusScaling = status.scaling[i]
+		if entry == null:
+			_errors.append("%s : scaling[%d] is null (deleted resource?)" % [path, i])
+			continue
+		if not valid_stats.has(entry.stat):
+			_errors.append("%s : scaling[%d] names a stat outside the enum" % [path, i])
+
+	if status is StatusSpreadOnDeath and (status as StatusSpreadOnDeath).spread_radius <= 0.0:
+		_errors.append("%s : spread_radius must be positive or it spreads nowhere" % path)
 
 func _validate_shop(path: String, shop: ShopData) -> void:
 	if shop.pool.is_empty():

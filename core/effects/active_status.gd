@@ -14,6 +14,19 @@ extends EffectInstance
 var remaining: float = 0.0
 var tick_accumulator: float = 0.0
 
+## RESOLVED FROM THE APPLIER when the status landed, never read live from the
+## definition. The .tres is globally cached and shared by every holder, so a
+## per-player value cannot live there - and the applier may die long before the
+## poison wears off. Same reasoning as rolling crit once per shot.
+var max_stacks: int = 99
+var tick_interval: float = 0.0
+var tick_damage: float = 0.0
+
+## A ticking status counts down TICKS rather than seconds - see
+## StatusEffect.tick_count. `remaining` governs only statuses that never tick.
+var max_ticks: int = 5
+var ticks_left: int = 5
+
 ## Weak on purpose. Two enemies poisoning each other would otherwise form a
 ## reference cycle, and RefCounted has no cycle collector. The applier may also
 ## legitimately die before the status expires.
