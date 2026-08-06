@@ -4,13 +4,7 @@
 [ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
 [ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="3_base"]
 [ext_resource type="Script" path="res://core/effects/library/effect_apply_status_on_hit.gd" id="4_onhit"]
-[ext_resource type="Resource" path="res://content/statuses/bleed.tres" id="5_bleed"]
-
-[sub_resource type="Resource" id="m_melee"]
-script = ExtResource("2_mod")
-stat = 5
-modifier_type = 1
-value = 2.0
+[ext_resource type="Resource" path="res://content/statuses/bleed.tres" id="5_status"]
 
 [sub_resource type="Resource" id="m_chance"]
 script = ExtResource("2_mod")
@@ -18,17 +12,17 @@ stat = 32
 modifier_type = 1
 value = 0.1
 
-[sub_resource type="Resource" id="e_bleed"]
+[sub_resource type="Resource" id="e_hit"]
 script = ExtResource("4_onhit")
-status = ExtResource("5_bleed")
-damage_types = Array[int]([0])
-base_chance = 0.0
+status = ExtResource("5_status")
+damage_types = Array[int]([1])
 stacks = 1
+base_chance = 0.15
 
 [resource]
 script = ExtResource("1_item")
-display_key = "ITEM_SHARP_BLADE"
+display_key = "ITEM_SERRATED_ROUNDS"
 tier = 1
-base_price = 25
-static_stats = Array[ExtResource("2_mod")]([SubResource("m_melee"), SubResource("m_chance")])
-dynamic_effects = Array[ExtResource("3_base")]([SubResource("e_bleed")])
+base_price = 28
+static_stats = Array[ExtResource("2_mod")]([SubResource("m_chance")])
+dynamic_effects = Array[ExtResource("3_base")]([SubResource("e_hit")])

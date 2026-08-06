@@ -152,8 +152,11 @@ func can_afford(amount: int) -> bool:
 
 # --- statuses --------------------------------------------------------------
 
-func apply_status(definition: StatusEffect, applier: EntityModel = null, stacks: int = 1, duration: float = -1.0) -> ActiveStatus:
-	return statuses.apply(self, definition, applier, stacks, duration)
+func apply_status(
+	definition: StatusEffect, applier: EntityModel = null, stacks: int = 1,
+	duration: float = -1.0, chance: float = -1.0
+) -> ActiveStatus:
+	return statuses.apply(self, definition, applier, stacks, duration, chance)
 
 func tick_statuses(delta: float) -> void:
 	statuses.tick(self, delta)

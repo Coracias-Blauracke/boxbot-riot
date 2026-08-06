@@ -17,6 +17,12 @@ extends DynamicEffect
 ## Never applied to a status' own tick, or bleed would reapply itself forever.
 @export var stacks: int = 1
 
+## Chance BEFORE the status' own CHANCE axis is added. 0.0 means the item grants
+## nothing on its own and every point comes from stats, which is what "+10%
+## chance to cause bleeding" means. Leaving it at 1.0 would make the item apply
+## the status on every single hit and turn the stat into a penalty.
+@export var base_chance: float = 0.0
+
 func get_hooks() -> Array:
 	return [Hooks.Hook.ON_DAMAGE_DEALT]
 
@@ -41,7 +47,9 @@ func execute(host: Variant, inst: EffectInstance, event: EventPayload) -> void:
 
 	# The roll lives in StatusManager, off the status' CHANCE axis, so this only
 	# has to ask. Stacks scale with copies held.
-	damage.target.apply_status(status, host as EntityModel, stacks * inst.stacks)
+	damage.target.apply_status(
+		status, host as EntityModel, stacks * inst.stacks, -1.0, base_chance
+	)
 
 func describe(inst: EffectInstance) -> String:
 	var name := status.status_id if status != null else &"nothing"

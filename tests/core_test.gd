@@ -1324,11 +1324,15 @@ func _test_outgoing_damage_sees_the_target() -> void:
 	_check_int("it is registered as a pipeline", Hooks.kind_of(Hooks.Hook.ON_OUTGOING_DAMAGE), Hooks.Kind.PIPELINE)
 
 func _test_hits_can_apply_a_status_but_ticks_cannot() -> void:
-	var bleed := _make_bleed()
+	# Named on the CHANCE axis, because a stat only reaches a status the status
+	# actually lists - which is the point of StatusScaling and easy to forget.
+	var bleed := _make_bleed([_make_scaling(StatusScaling.Axis.CHANCE, StatTypes.Stat.BLEED_CHANCE)])
 
 	var on_hit := EffectApplyStatusOnHit.new()
 	on_hit.status = bleed
 	on_hit.damage_types = [StatTypes.DamageType.MELEE]
+	# Certain, so the mechanism is what is under test rather than the dice.
+	on_hit.base_chance = 1.0
 
 	var attacker := _living()
 	attacker.effects.register(EffectInstance.new(on_hit, &"sharp_blade"))
@@ -1352,6 +1356,24 @@ func _test_hits_can_apply_a_status_but_ticks_cannot() -> void:
 	ranged.damage_type = StatTypes.DamageType.RANGED
 	untouched.apply_damage(ranged)
 	_check_bool("a ranged hit does not, on a melee-only item", untouched.statuses.has(&"bleed"), false)
+
+	# The default is 0.0, so an item grants NOTHING on its own and every point of
+	# chance comes from stats. Defaulting to certain made "+10% chance to cause
+	# bleeding" mean "always, minus ten", which is the opposite of the item.
+	var stingy := EffectApplyStatusOnHit.new()
+	stingy.status = bleed
+	var miser := _living()
+	miser.effects.register(EffectInstance.new(stingy, &"no_chance"))
+
+	var lucky := _living(200.0)
+	for attempt in 20:
+		_hit(lucky, 1.0, miser)
+	_check_bool("with no chance granted, nothing lands", lucky.statuses.has(&"bleed"), false)
+
+	# ...and a stat alone is enough to make it happen.
+	miser.stats.add_modifier(StatTypes.Stat.BLEED_CHANCE, StatTypes.Modifier.FLAT, 1.0, &"item")
+	_hit(lucky, 1.0, miser)
+	_check_bool("a chance stat alone makes it land", lucky.statuses.has(&"bleed"), true)
 
 func _test_damage_bonus_against_a_status() -> void:
 	var burn := _make_bleed()

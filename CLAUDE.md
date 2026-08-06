@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 452 assertions across three suites, no editor, no game window
+# tests — 454 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -283,6 +283,16 @@ each one twice the size, which reads as long quiet stretches punctuated by a
 wall. Scaling is linear, not compounding: four players face four times the wave,
 not eight — the budget curve already compounds across waves on its own.
 
+**The chance to apply a status belongs to the HIT, not to the status.**
+`StatusEvent.chance` starts at 1.0, so an application site that does not set its
+own base makes the status certain and turns "+10% chance to cause bleeding" into
+"always, minus ten". `EffectApplyStatusOnHit.base_chance` therefore defaults to
+0.0: an item grants nothing on its own and every point comes from stats. Fire
+spreading off a corpse passes nothing and stays deliberate.
+
+Note the corollary: a chance stat only reaches a status the status LISTS on its
+CHANCE axis. `BLEED_CHANCE` does nothing for a bleed that never names it.
+
 **A status snapshots its parameters from the APPLIER when it lands.** Damage,
 tick rate, max stacks and duration are resolved onto the `ActiveStatus` and
 never read live off the `.tres`, which is globally cached and therefore cannot
@@ -432,7 +442,7 @@ that ends in victory or defeat, a spawn system with swappable placement
 patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
 per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
 rerolling, stat payment and ready-up — and a status system whose four statuses
-differ only by authored numbers. Twenty items authored.
+differ only by authored numbers. Twenty-four items authored.
 
 The shop UI is playable end to end: per-player panels laid out by player count,
 a cursor per player driven by that player's own device, offers, reroll, buying,
@@ -478,8 +488,8 @@ The effect library is **twelve classes**. It was four when the item list was
 written, and the eight added since each cover a FAMILY rather than an item:
 apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
 double-status-stacks, stat-per-world-count, and the three status kinds. That
-ratio is the point - twelve of the twenty authored items needed no new code at
-all.
+ratio is the point - sixteen of the twenty-four authored items needed no new
+code at all.
 
 **Localisation is DEFERRED ON PURPOSE, and is not a gap.** `tr()` is already
 wrapped around every `display_key` and `description_key`, so the door is open
@@ -587,7 +597,7 @@ Armor is the instructive case: `EffectArmorFromMaxHp` already reduces damage
 through `DamageEvent.absorbed`, so the pipeline plumbing works. What is missing
 is only the bridge from the `ARMOR` STAT into it.
 
-Two of the twenty authored items are decorative because of this and are known
+Two of the twenty-four authored items are decorative because of this and are known
 to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
 display correctly and change nothing.
 

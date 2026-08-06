@@ -18,7 +18,8 @@ func apply(
 	definition: StatusEffect,
 	applier: EntityModel = null,
 	stacks: int = 1,
-	duration: float = -1.0
+	duration: float = -1.0,
+	chance: float = -1.0
 ) -> ActiveStatus:
 	if definition == null or definition.status_id.is_empty():
 		push_warning("StatusManager.apply: status has no status_id")
@@ -31,6 +32,13 @@ func apply(
 	event.status_id = definition.status_id
 	event.stacks = stacks
 	event.duration = definition.base_duration if duration < 0.0 else duration
+
+	# The BASE chance belongs to the application site, not to the status. A
+	# weapon hit that may cause bleeding rolls for it; fire spreading off a
+	# corpse is deliberate and always lands. Defaulting to 1.0 here and letting
+	# items only subtract made "+10% chance to bleed" mean "always, minus 10".
+	if chance >= 0.0:
+		event.chance = chance
 
 	# The applier's stats decide how likely this is to land and how long it
 	# lasts, BEFORE any pipeline effect gets to argue about it.
