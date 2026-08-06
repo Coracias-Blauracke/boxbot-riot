@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 570 assertions across three suites, no editor, no game window
+# tests — 574 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -323,6 +323,18 @@ same reason `ShopData` holds its pools rather than the shop scanning a folder.
 Set bonuses are the main build engine in this genre: they are why a player keeps
 a matching weapon over a stronger one, which is the most interesting decision
 the shop offers.
+
+**A threshold may grant a BEHAVIOUR, not only stats.** `WeaponClassTier` carries
+`effects` beside `modifiers`, because the design asked for a class that gives
+nothing from one to five and something powerful at six - which a stat line
+cannot say. The recompute registers and unregisters them with the same
+strip-and-reapply that handles the numbers, and strips what those effects
+themselves added first, through the INSTANCE rather than the class, exactly as
+`ItemsManager` does when an item leaves.
+
+Thresholds are authored individually and NEED NOT BE CONTIGUOUS. Every count
+from one to six, or nothing until six - both are just which tiers exist in the
+array, and neither costs anything the other does not.
 
 **Tiers are CUMULATIVE, not highest-only.** Holding four of a class whose tiers
 are 2 and 4 grants both. Cumulative is strictly the more expressible rule - one

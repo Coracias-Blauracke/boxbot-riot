@@ -37,6 +37,20 @@ func modifiers_for(count: int) -> Array[StatModifier]:
 					granted.append(modifier)
 	return granted
 
+## Same rule for behaviours: every tier whose requirement is met contributes.
+##
+## Thresholds are AUTHORED INDIVIDUALLY and need not be contiguous. A class may
+## grant something at every count from one to six, or nothing until six and then
+## one large thing - both are just which tiers exist in this array.
+func effects_for(count: int) -> Array[DynamicEffect]:
+	var granted: Array[DynamicEffect] = []
+	for tier in tiers:
+		if tier != null and count >= tier.required:
+			for effect in tier.effects:
+				if effect != null:
+					granted.append(effect)
+	return granted
+
 ## The smallest requirement still ahead, or 0 when everything is unlocked. The
 ## shop shows it, because "2 of 4 BLADE" is what makes somebody buy the fourth.
 func next_threshold(count: int) -> int:

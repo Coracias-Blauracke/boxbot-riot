@@ -214,6 +214,10 @@ func remove_weapon(weapon: WeaponData) -> bool:
 	weapons_changed.emit()
 	return true
 
+## WeaponClassData -> Array[EffectInstance] currently granted by it. Held only
+## so the recompute can strip what an effect of its own added.
+var _class_effects: Dictionary = {}
+
 ## How many carried weapons name this tag. Two copies of one blade is two.
 func weapon_tag_count(tag: StringName) -> int:
 	var total := 0
@@ -240,9 +244,26 @@ func _refresh_class_bonuses() -> void:
 	for entry in weapon_classes.classes:
 		if entry == null:
 			continue
+
+		# Modifiers an EFFECT of this class added carry the INSTANCE as their
+		# source, not the class, so they have to be stripped through the
+		# instances before the instances themselves are dropped. Same order
+		# ItemsManager uses when an item leaves.
+		for instance in _class_effects.get(entry, []):
+			stats.remove_all_from_source(instance)
+		effects.unregister_source(entry)
 		stats.remove_all_from_source(entry)
-		for modifier in entry.modifiers_for(weapon_tag_count(entry.tag)):
+
+		var count := weapon_tag_count(entry.tag)
+		for modifier in entry.modifiers_for(count):
 			stats.add_modifier(modifier.stat, modifier.modifier_type, modifier.value, entry)
+
+		var created: Array[EffectInstance] = []
+		for effect in entry.effects_for(count):
+			var instance := EffectInstance.new(effect, entry)
+			effects.register(instance)
+			created.append(instance)
+		_class_effects[entry] = created
 
 # --- currency --------------------------------------------------------------
 #

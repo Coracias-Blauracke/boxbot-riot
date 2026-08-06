@@ -39,7 +39,7 @@ tags, same scaling - and moves two numbers:
 | II -> III | x1.55 | x2.2 |
 | III -> IV | x1.55 | x2.2 |
 
-So Bolt Driver runs 12 / 19 / 29 / 45 damage at 25 / 55 / 120 / 265 currency.
+So Bolt Driver runs 12 / 19 / 29 / 45 damage at 12 / 26 / 58 / 128 currency.
 Anything that deviates from this is a deliberate note on the weapon below.
 
 **Author tier I of everything first.** Twelve files makes the game playable with
@@ -81,9 +81,9 @@ Damage and price shown for tier I. Firing intervals are seconds.
 
 | # | family | firing | delivery | spread | target | tags | scaling | dmg / price |
 |---|---|---|---|---|---|---|---|---|
-| 1 | **Bolt Driver** | INSTANT 0.45 | projectile | single | nearest | gun | default | 12 / 25 |
-| 2 | **Scatter Vent** | INSTANT 0.90 | projectile | cone 6 | nearest | gun | default | 5 / 45 |
-| 3 | **Rail Spike** | WINDUP 1.6 | projectile | single | by_health HIGHEST | gun | 150% RANGED | 40 / 90 |
+| 1 | **Bolt Driver** | INSTANT 0.45 | projectile | single | nearest | gun | default | 12 / 12 |
+| 2 | **Scatter Vent** | INSTANT 0.90 | projectile | cone 6 | nearest | gun | default | 5 / 20 |
+| 3 | **Rail Spike** | WINDUP 1.6 | projectile | single | by_health HIGHEST | gun | 150% RANGED | 40 / 40 |
 
 - **Bolt Driver** is the existing pistol renamed, and the starting weapon.
 - **Scatter Vent** is the existing shotgun: six pellets, falloff 110 -> 280 at
@@ -96,9 +96,9 @@ Damage and price shown for tier I. Firing intervals are seconds.
 
 | # | family | firing | delivery | spread | target | tags | scaling | dmg / price |
 |---|---|---|---|---|---|---|---|---|
-| 4 | **Rivet Repeater** | INSTANT 0.18 | projectile | single | nearest | gun, rapid | 50% RANGED | 5 / 30 |
-| 5 | **Needle Array** | INSTANT 0.10 | projectile | single | by_health LOWEST | gun, rapid | 35% RANGED | 3 / 55 |
-| 6 | **Servo Fists** | INSTANT 0.30 | melee ARC 70 | - | nearest | rapid, blade | 60% MELEE | 8 / 20 |
+| 4 | **Rivet Repeater** | INSTANT 0.18 | projectile | single | nearest | gun, rapid | 50% RANGED | 5 / 14 |
+| 5 | **Needle Array** | INSTANT 0.10 | projectile | single | by_health LOWEST | gun, rapid | 35% RANGED | 3 / 26 |
+| 6 | **Servo Fists** | INSTANT 0.30 | melee ARC 70 | - | nearest | rapid, blade | 60% MELEE | 8 / 10 |
 
 - **Rivet Repeater** fires five times a second. Its 50% scaling is the entire
   reason `damage_scaling` exists.
@@ -113,22 +113,23 @@ Damage and price shown for tier I. Firing intervals are seconds.
 
 | # | family | firing | delivery | spread | target | tags | scaling | dmg / price |
 |---|---|---|---|---|---|---|---|---|
-| 7 | **Circular Saw** | INSTANT 0.60 | melee ARC 150 | - | nearest | blade | default | 14 / 30 |
-| 8 | **Hydraulic Shears** | INSTANT 0.80 | melee THRUST | - | nearest | blade | default | 20 / 55 |
-| 9 | **Guillotine Arm** | WINDUP 2.0 | melee ARC 180 | - | by_health HIGHEST | blade | 150% MELEE | 55 / 140 |
+| 7 | **Circular Saw** | INSTANT 0.60 | melee ARC 150 | - | nearest | blade | default | 14 / 12 |
+| 8 | **Hydraulic Shears** | INSTANT 0.80 | melee THRUST | - | nearest | blade | default | 20 / 24 |
 
 - **Circular Saw** replaces the sword. Wide sweep, no frills, tier I is cheap.
 - **Hydraulic Shears** carry +15% CRIT_CHANCE of their own and a long thrust:
   single target, picks its moment.
-- **Guillotine Arm** is the melee heavy - two seconds of windup, huge reach,
-  aimed at the toughest thing on screen. The melee mirror of Rail Spike.
+- **Guillotine Arm was cut** to reach twelve. It came out of `blade` because
+  that was the best-covered class at five families, while `bouncy` sits at two -
+  cutting from the thickest keeps the roster even. Rail Spike still covers the
+  slow-heavy role on the ranged side, so nothing was lost that has no echo.
 
 ### bouncy
 
 | # | family | firing | delivery | spread | target | tags | scaling | dmg / price |
 |---|---|---|---|---|---|---|---|---|
-| 10 | **Carom Pistol** | INSTANT 0.50 | projectile | single | nearest | bouncy | default | 10 / 35 |
-| 11 | **Pinball Launcher** | INSTANT 1.10 | projectile | fan 4 | nearest | bouncy | default | 9 / 95 |
+| 9 | **Carom Pistol** | INSTANT 0.50 | projectile | single | nearest | bouncy | default | 10 / 16 |
+| 10 | **Pinball Launcher** | INSTANT 1.10 | projectile | fan 4 | nearest | bouncy | default | 9 / 44 |
 
 BOUNCING is carried by the weapon: +2 on Carom, +4 on Pinball, and both rise a
 step per tier. Neither is tagged `gun` - otherwise `gun` would sit on two thirds
@@ -139,8 +140,8 @@ failure mode of a tag that means "ranged".
 
 | # | family | firing | delivery | spread | target | tags | scaling | dmg / price |
 |---|---|---|---|---|---|---|---|---|
-| 12 | **Serrated Drill** | INSTANT 0.40 | melee THRUST | - | nearest | blade, bloody | default | 9 / 30 |
-| 13 | **Sanguine Sprayer** | INSTANT 0.70 | projectile | cone 5 | nearest | bloody | default | 4 / 100 |
+| 11 | **Serrated Drill** | INSTANT 0.40 | melee THRUST | - | nearest | blade, bloody | default | 9 / 14 |
+| 12 | **Sanguine Sprayer** | INSTANT 0.70 | projectile | cone 5 | nearest | bloody | default | 4 / 46 |
 
 - Both apply bleed through `EffectApplyStatusOnHit`, with their own
   `base_chance` rather than relying on the holder's stats - an item raising
@@ -148,8 +149,10 @@ failure mode of a tag that means "ranged".
 - **Sanguine Sprayer** also carries `EffectHealWhenHittingStatus`, so it heals
   its wielder for hitting something already bleeding. Both effect classes exist.
 
-That is thirteen families, not twelve. Cut one before authoring - Pinball
-Launcher and Guillotine Arm are the two least load-bearing.
+Twelve families. Tier I prices are set so the FIRST shop visit can buy a
+weapon: wave one pays about 12, and Servo Fists at 10, Bolt Driver at 12 and
+Circular Saw at 12 are all reachable. Enemy counts and currency per kill will be
+tuned against play, not the other way round.
 
 ---
 
@@ -161,7 +164,7 @@ what makes a set reachable at all.
 | tag | families | reachable set |
 |---|---|---|
 | gun | 5 | easily, and with variety |
-| blade | 5 | easily |
+| blade | 4 | easily |
 | rapid | 3 | yes, duplicates fill the rest |
 | bouncy | 2 | needs duplicates past 2 |
 | bloody | 2 | needs duplicates past 2 |
@@ -201,7 +204,18 @@ cheapest authored item is 8. So the first visit buys an item and cannot buy a
 weapon. That may be right - it makes the second weapon a goal - but it is
 currently an accident of two numbers nobody chose together.
 
-**3. Do the six class thresholds all carry a bonus, or only some counts?**
-Six steps per class over five classes is thirty increments to tune. Bonuses at
-1/2/3/4/5/6 make a class felt from the first weapon; bonuses at 2/4/6 make each
-one an event. Both are authorable today with no code difference.
+All three are answered. Recorded here because the reasons matter more than the
+answers:
+
+**1. Guillotine Arm was cut**, from `blade` rather than from a thin class.
+
+**2. A weapon IS affordable on the first visit.** Tier I prices come down to
+10-46, with three weapons at or under 12. Enemy counts and currency per kill get
+tuned against play afterwards.
+
+**3. Thresholds are authored INDIVIDUALLY and need not be contiguous.** A class
+may grant something at every count from one to six, or nothing at all until six
+and then one large thing. `WeaponClassTier` carries `effects` as well as
+`modifiers` for exactly that second case - a payoff that a stat line cannot
+express. Both shapes cost the same: they are just which tiers exist in the
+array.

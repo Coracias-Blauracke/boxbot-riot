@@ -128,6 +128,7 @@ func _initialize() -> void:
 	_test_weapon_classes_grant_bonuses_by_count()
 	_test_a_weapon_counts_toward_every_tag_it_names()
 	_test_selling_takes_the_class_bonus_back()
+	_test_a_threshold_can_grant_a_behaviour_and_take_it_back()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
 	_test_leaving_closes_the_gap_rather_than_leaving_a_hole()
 
@@ -1753,6 +1754,49 @@ func _test_selling_takes_the_class_bonus_back() -> void:
 	_check("back to two blades", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
 	holder.weapon_classes = _class_set([blade])
 	_check("recomputing changes nothing", holder.stats.get_stat(StatTypes.Stat.MELEE_DAMAGE), 4.0)
+
+## Thresholds are authored individually and need not be contiguous: a class may
+## give NOTHING from one to five and something large at six. That is the shape
+## a stat line cannot express, which is why tiers carry effects at all.
+func _test_a_threshold_can_grant_a_behaviour_and_take_it_back() -> void:
+	print("\n-- a behaviour at the top of a class --")
+	var spy := SpyEffect.new()
+	spy.watched = Hooks.Hook.ON_KILL
+
+	var payoff := WeaponClassTier.new()
+	payoff.required = 6
+	payoff.effects = [spy]
+
+	var loyal := WeaponClassData.new()
+	loyal.tag = &"loyal"
+	loyal.display_key = "CLASS_LOYAL"
+	# ONE tier, at six. Nothing at all for the first five weapons.
+	loyal.tiers = [payoff]
+
+	var holder := _living(100.0)
+	holder.stats.add_modifier(StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, 6.0, &"body")
+	holder.weapon_classes = _class_set([loyal])
+
+	var weapon := _make_tagged_weapon([&"loyal"] as Array[StringName])
+	for i in 5:
+		holder.add_weapon(weapon)
+
+	holder.notify(Hooks.Hook.ON_KILL, EventPayload.new())
+	_check_int("five weapons grant nothing", spy.calls, 0)
+
+	holder.add_weapon(weapon)
+	holder.notify(Hooks.Hook.ON_KILL, EventPayload.new())
+	_check_int("the sixth turns the behaviour on", spy.calls, 1)
+
+	# And it must come back off. An effect that outlives the count that granted
+	# it is the same silent-drift bug as a stat bonus that is never stripped.
+	holder.remove_weapon(weapon)
+	holder.notify(Hooks.Hook.ON_KILL, EventPayload.new())
+	_check_int("dropping to five turns it off again", spy.calls, 1)
+
+	holder.add_weapon(weapon)
+	holder.notify(Hooks.Hook.ON_KILL, EventPayload.new())
+	_check_int("and back on without stacking a second copy", spy.calls, 2)
 
 # --- the four items that used to be decorative ------------------------------
 
