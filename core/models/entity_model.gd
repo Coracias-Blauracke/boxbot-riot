@@ -203,6 +203,65 @@ func add_weapon(weapon: WeaponData) -> bool:
 	weapons_changed.emit()
 	return true
 
+# --- merging ---------------------------------------------------------------
+#
+# Duplicates are CARRIED, not folded together on sight. That is what makes the
+# shop pose a question rather than run an algorithm: four copies of one weapon
+# complete a class set, one merged copy is stronger, and six slots mean you
+# cannot have both. A model that merged automatically on every duplicate would
+# take the decision away and quietly make the class thresholds unreachable.
+
+## Two copies of something that has a next tier.
+func can_merge_weapon(weapon: WeaponData) -> bool:
+	return weapon != null and weapon.upgrades_into != null and weapon_count(weapon) >= 2
+
+## Two in, one out. Never blocked by capacity, because it frees a slot.
+func merge_weapon(weapon: WeaponData) -> bool:
+	if not can_merge_weapon(weapon):
+		return false
+
+	# Mutated directly rather than through remove_weapon twice: that would
+	# recompute the class bonuses three times and emit three signals for one
+	# player action, and the view would rebuild the rack mid-merge.
+	weapons.erase(weapon)
+	weapons.erase(weapon)
+	weapons.append(weapon.upgrades_into)
+
+	_refresh_class_bonuses()
+	weapons_changed.emit()
+	return true
+
+## Whether a purchase can land at all.
+##
+## A full rack normally refuses. It accepts one case: the weapon duplicates
+## something already carried that HAS a next tier, so the purchase merges
+## instead of overflowing and the count comes out unchanged. Without that
+## exception merging becomes impossible exactly when it is most wanted - late,
+## with six weak weapons and nowhere to put the seventh.
+func can_take_weapon(weapon: WeaponData) -> bool:
+	if weapon == null:
+		return false
+	if has_free_weapon_slot():
+		return true
+	return weapon.upgrades_into != null and weapon_count(weapon) >= 1
+
+## Adds, or merges when there is no room. The auto-merge is deliberately the
+## ONLY automatic one - everywhere else merging is something the player asks
+## for.
+func take_weapon(weapon: WeaponData) -> bool:
+	if not can_take_weapon(weapon):
+		return false
+	if has_free_weapon_slot():
+		return add_weapon(weapon)
+
+	# One carried copy is consumed and replaced by the next tier: the same
+	# arithmetic as adding then merging, without ever holding seven weapons.
+	weapons.erase(weapon)
+	weapons.append(weapon.upgrades_into)
+	_refresh_class_bonuses()
+	weapons_changed.emit()
+	return true
+
 ## Removes ONE copy, not every copy. Selling one of two identical pistols must
 ## leave the other one in your hands.
 func remove_weapon(weapon: WeaponData) -> bool:

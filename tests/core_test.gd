@@ -129,6 +129,8 @@ func _initialize() -> void:
 	_test_a_weapon_counts_toward_every_tag_it_names()
 	_test_selling_takes_the_class_bonus_back()
 	_test_a_threshold_can_grant_a_behaviour_and_take_it_back()
+	_test_merging_two_copies_frees_a_slot()
+	_test_a_full_rack_takes_a_purchase_only_when_it_merges()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
 	_test_leaving_closes_the_gap_rather_than_leaving_a_hole()
 
@@ -1797,6 +1799,80 @@ func _test_a_threshold_can_grant_a_behaviour_and_take_it_back() -> void:
 	holder.add_weapon(weapon)
 	holder.notify(Hooks.Hook.ON_KILL, EventPayload.new())
 	_check_int("and back on without stacking a second copy", spy.calls, 2)
+
+# --- merging ----------------------------------------------------------------
+
+## A family as a chain: I -> II -> III, top tier upgrades into nothing.
+func _make_family(tags: Array[StringName], links: int = 3) -> Array[WeaponData]:
+	var chain: Array[WeaponData] = []
+	for i in links:
+		var link := _make_tagged_weapon(tags)
+		link.display_key = "W_%d" % (i + 1)
+		link.tier = mini(4, i + 1)
+		chain.append(link)
+	for i in links - 1:
+		chain[i].upgrades_into = chain[i + 1]
+	return chain
+
+func _test_merging_two_copies_frees_a_slot() -> void:
+	print("\n-- merging --")
+	var chain := _make_family([&"gun"] as Array[StringName])
+	var holder := _living(100.0)
+	holder.stats.add_modifier(StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, 6.0, &"body")
+
+	holder.add_weapon(chain[0])
+	_check_bool("one copy cannot merge", holder.can_merge_weapon(chain[0]), false)
+
+	holder.add_weapon(chain[0])
+	_check_bool("two can", holder.can_merge_weapon(chain[0]), true)
+	_check_bool("and it goes through", holder.merge_weapon(chain[0]), true)
+
+	_check_int("two became one", holder.weapons.size(), 1)
+	_check_int("no copies of tier I are left", holder.weapon_count(chain[0]), 0)
+	_check_int("and it is tier II", holder.weapon_count(chain[1]), 1)
+
+	# The top of the chain is a perfectly good weapon that simply stops here.
+	holder.add_weapon(chain[2])
+	holder.add_weapon(chain[2])
+	_check_bool("the top tier cannot merge further", holder.can_merge_weapon(chain[2]), false)
+	_check_bool("and refuses when asked", holder.merge_weapon(chain[2]), false)
+	_check_int("so both copies stay", holder.weapon_count(chain[2]), 2)
+
+	# DUPLICATES ARE CARRIED, which is the whole reason a class set is
+	# reachable: four copies of one weapon is four toward its tag.
+	var loaded := _living(100.0)
+	loaded.stats.add_modifier(StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, 6.0, &"body")
+	for i in 4:
+		loaded.add_weapon(chain[0])
+	_check_int("four copies are four weapons", loaded.weapons.size(), 4)
+	_check_int("and four toward the tag", loaded.weapon_tag_count(&"gun"), 4)
+
+func _test_a_full_rack_takes_a_purchase_only_when_it_merges() -> void:
+	print("\n-- a full rack --")
+	var chain := _make_family([&"gun"] as Array[StringName])
+	var other := _make_tagged_weapon([&"gun"] as Array[StringName])
+
+	var holder := _living(100.0)
+	holder.stats.add_modifier(StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, 2.0, &"body")
+	holder.add_weapon(chain[0])
+	holder.add_weapon(other)
+	_check_bool("the rack is full", holder.has_free_weapon_slot(), false)
+
+	# Something new has nowhere to go.
+	_check_bool("a stranger is refused", holder.can_take_weapon(_make_tagged_weapon([] as Array[StringName])), false)
+
+	# A duplicate of something upgradeable merges instead of overflowing.
+	_check_bool("a duplicate is accepted", holder.can_take_weapon(chain[0]), true)
+	_check_bool("and lands", holder.take_weapon(chain[0]), true)
+	_check_int("the rack is still two weapons", holder.weapons.size(), 2)
+	_check_int("no tier I left", holder.weapon_count(chain[0]), 0)
+	_check_int("one tier II gained", holder.weapon_count(chain[1]), 1)
+
+	# A duplicate of a TOP-tier weapon has nothing to merge into, so a full rack
+	# refuses it like anything else. `other` has no upgrade at all.
+	_check_bool("a duplicate with no next tier is refused", holder.can_take_weapon(other), false)
+	_check_bool("and does not land", holder.take_weapon(other), false)
+	_check_int("nothing was added", holder.weapons.size(), 2)
 
 # --- the four items that used to be decorative ------------------------------
 

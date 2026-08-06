@@ -46,6 +46,20 @@ enum DeliveryKind {
 ## Capacity and dissipation are stats, so items can widen or vent them.
 @export var heat_per_shot: float = 0.0
 
+@export_group("Family")
+## The next tier up, or null on the top tier.
+##
+## A CHAIN rather than a shared family id plus a tier number: the chain cannot
+## disagree with itself. An id-and-tier scheme has to answer what happens when
+## two weapons claim the same family at the same tier, or when a tier is missing
+## from the middle, and both are states a validator has to invent rules for.
+## Following a pointer has neither problem.
+##
+## Two carried copies of a weapon with an upgrade can be merged into one of the
+## next tier, which frees a slot. Null here means "top of the chain": the weapon
+## is still perfectly good, it simply cannot be merged any further.
+@export var upgrades_into: WeaponData
+
 @export_group("Classes")
 ## Which weapon classes this counts toward. PLURAL on purpose: a bayonet is a
 ## blade and a gun, and it should raise both counts rather than forcing a choice
@@ -143,8 +157,10 @@ func detail_notes() -> PackedStringArray:
 static func _stat_key(stat: StatTypes.Stat) -> String:
 	return "STAT_%s" % StatTypes.Stat.keys()[stat]
 
+## A free slot, or a full rack this purchase would merge into. See
+## EntityModel.can_take_weapon for why the second case has to exist.
 func can_be_acquired_by(host: Variant) -> bool:
-	return (host as EntityModel).has_free_weapon_slot()
+	return (host as EntityModel).can_take_weapon(self)
 
 func can_be_sold() -> bool:
 	return true
@@ -153,7 +169,7 @@ func owned_quantity(host: Variant) -> int:
 	return (host as EntityModel).weapon_count(self)
 
 func acquire(host: Variant) -> void:
-	(host as EntityModel).add_weapon(self)
+	(host as EntityModel).take_weapon(self)
 
 func release(host: Variant) -> void:
 	(host as EntityModel).remove_weapon(self)

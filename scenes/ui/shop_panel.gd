@@ -18,6 +18,23 @@ signal ready_requested(index: int, value: bool)
 
 enum Tab { SHOP, STATS }
 
+## What ACCEPT offers on a tile in the owned strip.
+##
+## A MENU rather than a direct action, and that is a fix as much as a feature:
+## ACCEPT used to sell whatever the cursor was on, so the strip punished landing
+## on it by accident - a hazard the cursor-reset comment below already worries
+## about. Now the destructive option has to be chosen from a list.
+##
+## MERGE never asks WHICH copy to combine with. Every duplicate is identical, so
+## there is nothing to choose and a picker would be a question with one answer.
+enum MenuAction { MERGE, SELL, CLOSE }
+
+const MENU_LABELS: Dictionary = {
+	MenuAction.MERGE: "MERGE",
+	MenuAction.SELL: "SELL",
+	MenuAction.CLOSE: "CLOSE",
+}
+
 ## Which row group the cursor is in. Two zones rather than one flat list,
 ## because the offers read as a column and the things you own read as a strip,
 ## and a cursor that walks from one into the other in a straight line is how you
@@ -86,6 +103,11 @@ var _compact: bool = false
 var _owned: Array[OwnedEntry] = []
 var _stats: Array[StatMetadata] = []
 
+## The tile menu. Empty means closed - one piece of state rather than a flag
+## plus a list that can disagree with it.
+var _menu: Array[MenuAction] = []
+var _menu_cursor: int = 0
+
 func bind(
 	p_index: int, p_model: EntityModel, p_shop: ShopManager,
 	p_input: PlayerInput, p_sheet: StatSheet, p_character: CharacterData = null
@@ -117,6 +139,7 @@ func reset_cursor() -> void:
 	zone = Zone.OFFERS
 	cursor = 0
 	tab = Tab.SHOP
+	close_menu()
 	queue_redraw()
 
 func place(rect: Rect2) -> void:
@@ -190,10 +213,81 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 
+	# The menu takes every key while it is up, so nothing behind it moves.
+	if not _menu.is_empty():
+		_handle_menu()
+		return
+
 	if tab == Tab.STATS:
 		_handle_stats()
 	else:
 		_handle_shop()
+
+# --- the tile menu ---------------------------------------------------------
+
+## Which actions this tile actually offers. CLOSE is always last so the cursor
+## has somewhere harmless to sit.
+func _menu_for(entry: OwnedEntry) -> Array[MenuAction]:
+	var actions: Array[MenuAction] = []
+	if entry == null:
+		return actions
+
+	var weapon := entry.entry as WeaponData
+	if weapon != null and model.can_merge_weapon(weapon):
+		actions.append(MenuAction.MERGE)
+	if entry.can_sell():
+		actions.append(MenuAction.SELL)
+	if not actions.is_empty():
+		actions.append(MenuAction.CLOSE)
+	return actions
+
+## Capture only: the same menu ACCEPT opens, through the same code, so a capture
+## cannot photograph a menu the button would not have produced.
+func open_tile_menu() -> void:
+	_open_menu()
+
+func _open_menu() -> void:
+	if zone != Zone.OWNED or cursor >= _owned.size():
+		return
+	# A tile with nothing to offer - the character - opens nothing rather than a
+	# menu whose only entry is CLOSE.
+	_menu = _menu_for(_owned[cursor])
+	_menu_cursor = 0
+	queue_redraw()
+
+func close_menu() -> void:
+	if _menu.is_empty():
+		return
+	_menu.clear()
+	_menu_cursor = 0
+	queue_redraw()
+
+func _handle_menu() -> void:
+	if input.triggered(PlayerInput.Action.DOWN):
+		_menu_cursor = wrapi(_menu_cursor + 1, 0, _menu.size())
+		queue_redraw()
+	elif input.triggered(PlayerInput.Action.UP):
+		_menu_cursor = wrapi(_menu_cursor - 1, 0, _menu.size())
+		queue_redraw()
+	elif input.triggered(PlayerInput.Action.CANCEL):
+		close_menu()
+	elif input.triggered(PlayerInput.Action.ACCEPT):
+		_choose(_menu[_menu_cursor])
+
+func _choose(action: MenuAction) -> void:
+	var entry := _owned[cursor] if cursor < _owned.size() else null
+	close_menu()
+	if entry == null:
+		return
+
+	match action:
+		MenuAction.MERGE:
+			# The model emits weapons_changed, which this panel is connected to,
+			# so the strip rebuilds itself rather than being told to.
+			model.merge_weapon(entry.entry as WeaponData)
+		MenuAction.SELL:
+			shop.sell(model, entry.entry)
+			_on_offers_changed()
 
 func _handle_stats() -> void:
 	if _stats.is_empty():
@@ -236,11 +330,9 @@ func _handle_shop() -> void:
 
 func _accept() -> void:
 	if zone == Zone.OWNED:
-		# can_sell() is false for the character tile. Nothing else has to know
-		# that the character is in this list at all.
-		if cursor < _owned.size() and _owned[cursor].can_sell():
-			shop.sell(model, _owned[cursor].entry)
-			_on_offers_changed()
+		# Opens the menu rather than selling outright. The character tile offers
+		# nothing and therefore opens nothing, with no branch for it here.
+		_open_menu()
 		return
 
 	if cursor < shop.offers.size():
@@ -292,7 +384,7 @@ func _draw() -> void:
 func _draw_controls(font: Font) -> void:
 	if input == null:
 		return
-	var hint := "%s buy/sell   %s reroll   %s shop/stats   %s ready" % [
+	var hint := "%s buy/options   %s reroll   %s shop/stats   %s ready" % [
 		input.label_for(PlayerInput.Action.ACCEPT),
 		input.label_for(PlayerInput.Action.REROLL),
 		input.label_for(PlayerInput.Action.TAB),
@@ -370,6 +462,39 @@ func _draw_shop(font: Font, top: float) -> void:
 
 	y = _draw_detail(font, y)
 	_draw_owned(font, y)
+	# Last, so it sits over the strip it belongs to rather than under it.
+	_draw_menu(font, y)
+
+## Drawn beside the strip rather than centred: it belongs to ONE tile, and a
+## menu that appears in the middle of the panel loses the thing it acts on.
+func _draw_menu(font: Font, strip_top: float) -> void:
+	if _menu.is_empty():
+		return
+
+	var row := 26.0
+	var width := 132.0
+	var left := minf(_column_x() + float(cursor) * OWNED_TILE, _column_x() + _column_width() - width)
+	var top := strip_top + OWNED_TILE + 4.0
+
+	draw_rect(Rect2(Vector2(left, top), Vector2(width, row * float(_menu.size()) + 8.0)), Color(0.06, 0.07, 0.10))
+	draw_rect(
+		Rect2(Vector2(left, top), Vector2(width, row * float(_menu.size()) + 8.0)),
+		accent, false, 2.0
+	)
+
+	for index in _menu.size():
+		var selected := index == _menu_cursor
+		var baseline := top + 4.0 + row * float(index) + 18.0
+		if selected:
+			draw_rect(
+				Rect2(Vector2(left + 3.0, top + 4.0 + row * float(index)), Vector2(width - 6.0, row)),
+				accent.darkened(0.5)
+			)
+		draw_string(
+			font, Vector2(left + 12.0, baseline), str(MENU_LABELS[_menu[index]]),
+			HORIZONTAL_ALIGNMENT_LEFT, width - 20.0, 15,
+			Color(0.96, 0.97, 1.0) if selected else Color(0.66, 0.70, 0.78)
+		)
 
 ## What the highlighted thing actually DOES, for an offer and for something
 ## already owned alike.
@@ -423,9 +548,12 @@ func _draw_detail(font: Font, top: float) -> float:
 			y += line
 
 	if zone == Zone.OWNED and entry.can_sell():
+		# Names the MENU, not the sale, because that is what the button does
+		# now. A hint promising an action the button no longer performs is
+		# worse than no hint.
 		draw_string(
 			font, Vector2(left + 10.0, y),
-			"%s: sell for %d" % [
+			"%s: options (sell for %d)" % [
 				input.label_for(PlayerInput.Action.ACCEPT), shop.data.sell_price_for(entry.entry)
 			],
 			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.95, 0.86, 0.62)

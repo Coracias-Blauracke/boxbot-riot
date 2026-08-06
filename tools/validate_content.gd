@@ -136,6 +136,8 @@ func _validate(path: String) -> void:
 func _validate_weapon(path: String, weapon: WeaponData) -> void:
 	_validate_entity(path, weapon)
 
+	_validate_upgrade_chain(path, weapon)
+
 	for tag in weapon.tags:
 		if tag == &"":
 			_errors.append("%s : has an empty tag" % path)
@@ -423,6 +425,45 @@ func _validate_item(path: String, item: ItemData) -> void:
 
 	_validate_modifiers(path, item.static_stats)
 	_validate_effects(path, item.dynamic_effects)
+
+## Merging walks `upgrades_into` until it runs out, so a chain that loops back
+## on itself is an infinite one. Nothing at runtime would catch it: the game
+## only ever takes ONE step along the chain, so the loop is invisible until a
+## player merges their way around it for ever.
+func _validate_upgrade_chain(path: String, weapon: WeaponData) -> void:
+	var seen: Dictionary = {weapon: true}
+	var link := weapon
+
+	while link.upgrades_into != null:
+		var next := link.upgrades_into
+		if seen.has(next):
+			_errors.append("%s : upgrade chain loops back on itself" % path)
+			return
+		seen[next] = true
+
+		# A merge is meant to be a step UP. None of these can be checked at
+		# runtime, because a weapon has no idea what it was merged from.
+		if next.tier < link.tier:
+			_warnings.append(
+				"%s : '%s' upgrades into a LOWER tier (%d -> %d)"
+				% [path, link.display_key, link.tier, next.tier]
+			)
+		if next.base_price <= link.base_price:
+			_warnings.append(
+				"%s : '%s' upgrades into something no more expensive (%d -> %d)"
+				% [path, link.display_key, link.base_price, next.base_price]
+			)
+		# A tier that quietly drops a tag breaks set-building in the least
+		# visible way possible: the player merges two blades and their blade
+		# count goes DOWN by two.
+		for tag in link.tags:
+			if not next.tags.has(tag):
+				_warnings.append(
+					"%s : '%s' upgrades into something that is no longer '%s'"
+					% [path, link.display_key, tag]
+				)
+
+		link = next
 
 # --- weapon classes ---------------------------------------------------------
 #

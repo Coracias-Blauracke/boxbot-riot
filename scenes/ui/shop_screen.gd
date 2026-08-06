@@ -47,9 +47,11 @@ func _on_ready_requested(index: int, value: bool) -> void:
 ## silently, because offers do not exist until the first wave ends - which is
 ## exactly the sort of thing a capture is supposed to catch.
 var _park_on_owned: bool = false
+var _park_open_menu: bool = false
 
-func park_cursor_on_owned() -> void:
+func park_cursor_on_owned(open_menu: bool = false) -> void:
 	_park_on_owned = true
+	_park_open_menu = open_menu
 
 func _park_now() -> void:
 	for index in _panels.size():
@@ -60,6 +62,10 @@ func _park_now() -> void:
 		_panels[index]._on_offers_changed()
 		_panels[index].zone = ShopPanel.Zone.OWNED
 		_panels[index].cursor = 0
+		# The tile menu opens on a button, so a capture run cannot reach it at
+		# all - the same hole parking the cursor exists to close.
+		if _park_open_menu:
+			_panels[index].open_tile_menu()
 
 func _place_panels() -> void:
 	var viewport := Vector2(get_viewport().get_visible_rect().size)

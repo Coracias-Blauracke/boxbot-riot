@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 574 assertions across three suites, no editor, no game window
+# tests — 595 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -79,6 +79,7 @@ accident:
 | `--capture-pause=N` | toggles the pause menu, which no scripted player can press START for; repeat it to resume |
 | `--capture-restart=N` | restarts the run, and photographs the result into `after_restart/` |
 | `--capture-lobby` | holds the lobby open with the roster filled, instead of starting the run |
+| `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
 
 `--capture-intermission=N` holds the shop phase open (four seconds is not long
 enough to photograph) and `--capture-shop-owned` parks every shop cursor on the
@@ -312,6 +313,38 @@ red, because spread is a stat where lower is better and that was already known.
 `base_price` it never uses. That is the same trade as an arena carrying
 MELEE_DAMAGE and is made for the same reason: one shape every consumer can read
 beats a narrower one half of them special-case.
+
+**Weapons are FAMILIES; duplicates are carried, not folded together.**
+`WeaponData.upgrades_into` is a CHAIN rather than a family id plus a tier
+number, because a chain cannot disagree with itself - an id scheme has to answer
+what happens when two weapons claim the same family at one tier, or when a tier
+is missing from the middle, and both are states a validator would need invented
+rules for.
+
+Two carried copies merge into one of the next tier, and that is a PLAYER ACTION
+in the shop, not something the model does on sight. The whole decision depends
+on it: four copies of one weapon complete a class set, one merged copy is
+stronger, and six slots mean you cannot have both. A model that merged
+automatically would take the decision away AND make the class thresholds
+unreachable, because a count of four could never exist.
+
+**Auto-merge fires in exactly one case**: the rack is full and the weapon bought
+duplicates one already carried that has a next tier. Without that,
+`can_take_weapon` would refuse and merging would become impossible exactly when
+it is most wanted - late, with six weak weapons and nowhere to put a seventh. A
+top-tier weapon has nothing to merge into, so a full rack still refuses it.
+
+**The owned strip opens a MENU, and that is a fix as much as a feature.**
+ACCEPT used to sell whatever the cursor was on, which the cursor-reset comment
+in `ShopPanel` already called a hazard. Now it opens MERGE / SELL / CLOSE and
+the destructive option has to be chosen. Merging never asks which copy to
+combine with: every duplicate is identical, so a picker would be a question with
+one answer.
+
+The validator walks the chain for loops, for a tier or price that goes the wrong
+way, and for a tag QUIETLY DROPPED by an upgrade - that last one breaks
+set-building invisibly, because merging two blades would take the blade count
+down by two.
 
 **Weapon CLASSES are tags plus authored thresholds.** A weapon carries
 `tags`, PLURAL, and counts toward every class it names - a bayonet is a blade

@@ -82,6 +82,7 @@ var _fallback_pattern: SpawnPattern = SpawnRing.new()
 ## Capture only. 0 leaves RunModel's own value alone.
 var _forced_intermission: float = 0.0
 var _capture_shop_owned: bool = false
+var _capture_shop_menu: bool = false
 
 ## Capture only, in seconds from startup.
 ##
@@ -131,6 +132,10 @@ func _ready() -> void:
 			_camera.default_zoom = float(arg.substr("--capture-zoom=".length()))
 		elif arg.begins_with("--capture-margin="):
 			_camera.group_margin = float(arg.substr("--capture-margin=".length()))
+		elif arg == "--capture-shop-menu":
+			# Parks the cursor AND opens the tile menu on it.
+			_capture_shop_owned = true
+			_capture_shop_menu = true
 		elif arg == "--capture-shop-owned":
 			# A UI state that needs input cannot otherwise be photographed at
 			# all, which is a real hole in how this repo verifies the scene
@@ -176,7 +181,7 @@ func _ready() -> void:
 	_hud.bind(run, models)
 	_shop_screen.bind(run, players, stat_sheet)
 	if _capture_shop_owned:
-		_shop_screen.park_cursor_on_owned()
+		_shop_screen.park_cursor_on_owned(_capture_shop_menu)
 
 	# Every device, because the pause menu is one menu for the whole couch - see
 	# PauseScreen for why it is not owned by whoever opened it.
