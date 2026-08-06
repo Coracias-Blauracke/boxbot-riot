@@ -779,7 +779,10 @@ that makes polishing now a mistake.
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps, worst first:** no `BEAM` delivery,
+**Known gaps, worst first:** no `BEAM` or `SUMMON` delivery - both are enum
+values with no implementation, GUARDED now rather than merely absent: the
+validator refuses a weapon using one and `Weapon` reports it once by name, so
+the failure is loud instead of a weapon that loads, sells and never fires -
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,

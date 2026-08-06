@@ -26,6 +26,20 @@ const WINDUP_TRACKING_RATE := 720.0
 
 var _target: Actor
 
+## Set once an unimplemented delivery kind has been reported. BEAM and SUMMON
+## exist in the enum and have no code behind them, so a weapon authored with one
+## loads, prices, sells and sits in the hands doing NOTHING.
+##
+## It used to push a warning, which is true but nearly useless: a warning with
+## no weapon name, repeated on every attempted shot, buries itself at five shots
+## a second. An error, named, once, is the difference between "something is odd
+## in the log" and "laser_rifle_2 cannot fire".
+##
+## The real guard is in validate_content.gd, which refuses such a weapon before
+## a run ever starts. This one only catches content built at runtime, which the
+## validator never sees.
+var _reported_bad_delivery: bool = false
+
 # --- melee swing state -----------------------------------------------------
 var _swing: SwingPattern
 var _swing_snapshot: ShotSnapshot
@@ -82,6 +96,15 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 
 # --- targeting -------------------------------------------------------------
+
+func _report_unimplemented_delivery() -> void:
+	if _reported_bad_delivery:
+		return
+	_reported_bad_delivery = true
+	push_error(
+		"Weapon '%s' has delivery kind %d, which has no implementation - it will never attack."
+		% [data.display_key, data.delivery]
+	)
 
 func _acquire_target() -> Actor:
 	var enemies := get_tree().get_nodes_in_group(&"enemies")
@@ -160,9 +183,10 @@ func _fire() -> void:
 		WeaponData.DeliveryKind.MELEE_SWEEP:
 			_start_swing(shot)
 		_:
-			push_warning("Weapon: delivery kind %d not implemented yet" % data.delivery)
+			_report_unimplemented_delivery()
 
 	model.add_heat(data.heat_per_shot)
+
 	model.counters.add(CounterTypes.Counter.BULLETS_FIRED, directions.size())
 
 	var holder := wielder.model
