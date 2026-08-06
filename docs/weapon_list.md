@@ -167,11 +167,22 @@ What could not be written, and why:
 
 ## Open questions before authoring
 
-- Do the existing four weapons get renamed in place (pistol -> Bolt Driver,
-  shotgun -> Scatter Vent, sword -> Circular Saw) or replaced? Renaming keeps
-  every capture baseline in CLAUDE.md valid; replacing does not.
-- Prices are first guesses against a shop that charges 5 for a reroll and a
-  wave-one budget of about 12 currency. They want a pass once a run can be
-  played end to end.
-- Tier spread is 7 / 8 / 6 / 2. Tier 4 is thin on purpose - two weapons that a
-  run should rarely see - but that is a balance opinion, not a fact.
+**1. Renamed in place, or replaced?** Pistol -> Bolt Driver, shotgun -> Scatter
+Vent, sword -> Circular Saw. Renaming keeps every capture baseline recorded in
+CLAUDE.md valid, because the numbers behind them do not move. Replacing
+invalidates them and every A/B in this repo starts from a new baseline.
+
+**2. Is a weapon meant to be unaffordable on the first shop visit?** This is a
+question about the shop, not about the list, and the numbers already answer it
+one way: wave one pays about 12 currency (measured), the cheapest weapon here is
+20 and the cheapest authored ITEM is 8. So today the first visit buys an item
+and cannot buy a weapon at all. That may be exactly right - it makes the second
+weapon a goal rather than a formality - but it is currently an accident of two
+numbers nobody chose together. Either weapon prices come down to 12-15, or this
+is confirmed as the intent and written down.
+
+**3. How many tier 4 weapons should a run be able to reach?** `tier_weight_per_wave`
+for tier 4 is 0.9 from a base of 0, so tier 4 only becomes a common sight around
+wave 10 of 20. Two tier-4 weapons in the list means a late run sees roughly the
+same pair every time. Two is right if tier 4 is meant to be a rare prize; four
+or five is right if it is meant to be the shape of a late build.
