@@ -136,6 +136,35 @@ static func neutral_of(stat: Stat) -> float:
 static func is_multiplicative(stat: Stat) -> bool:
 	return not is_zero_approx(neutral_of(stat))
 
+## How high a stat may go. The twin of FLOORS below, applied in the same place,
+## so a capped stat reads its capped value EVERYWHERE - including the player's
+## stat sheet, which is what stops somebody buying dodge they cannot use.
+##
+## DODGE is capped because it is a chance to take NOTHING. At 1.0 the entity is
+## untouchable and every "when you take damage" effect in the game stops firing
+## silently. 0.6 leaves four hits in ten landing, which is about x2.5 effective
+## health - strong, and still a game.
+const CAPS: Dictionary = {
+	Stat.DODGE: 0.6,
+}
+
+## Armor at which incoming damage is halved, and the whole armor curve:
+##
+##   reduction = armor / (armor + ARMOR_HALF_POINT)
+##
+## Diminishing in REDUCTION and linear in survival, which is the point and the
+## reason nearly every game uses this shape. Each point of armor always adds
+## 1/15 of the holder's health as effective health, so armor never stops being
+## worth buying, while the reduction itself approaches 1.0 without reaching it -
+## something always gets through, and effects that hang on taking damage cannot
+## be switched off by stacking.
+const ARMOR_HALF_POINT := 15.0
+
+static func armor_reduction(armor: float) -> float:
+	if armor <= 0.0:
+		return 0.0
+	return armor / (armor + ARMOR_HALF_POINT)
+
 const FLOORS: Dictionary = {
 	Stat.MAX_HP: 1.0,
 	Stat.MOVEMENT_SPEED: 0.0,

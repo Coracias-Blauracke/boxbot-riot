@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 595 assertions across three suites, no editor, no game window
+# tests — 624 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -152,6 +152,8 @@ content/     authored .tres: characters, enemies, weapons/ (12 families x 4
              statuses/ (bleed, poison, burn, slow)
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
+docs/        weapon_list.md - the prose list the .tres files were built from,
+             including what it exposed as missing in the engine
 ```
 
 **`core/` must never import a Node or touch an autoload.** That constraint is
@@ -233,6 +235,20 @@ between runs: a solo/co-op toggle, character select, run rules.
 Solo is deliberately NOT a second code path. It is one entry in the roster, and
 the run cannot tell the difference — which is why the toggle, when it arrives,
 is a branch in the lobby and nowhere else.
+
+**CHARACTER SELECT COMES BEFORE AUTHORING CHARACTERS**, for exactly the reason
+the shop came before weapon content. `main.tscn` holds a single `character_data`
+export, so a second authored character is reachable only by editing the scene -
+which is the same trap weapons were in when `WeaponMount` owned the list and
+only `main.gd` could add one. Authoring a roster against that means every one of
+them is invisible until the select screen exists.
+
+Worth knowing before that work starts: `CharacterData.innate_effects` - the
+ability list, the same type as item effects - is **declared and used by no
+authored character**. `test_character` carries base stats, starting items and a
+starting weapon, and no abilities at all. So the whole "this character does
+something" path is built and unexercised, which in this repo has three times
+now turned out to mean something in it is quietly wrong.
 
 **A device is polled ONCE per frame, guarded inside `PlayerInput`.** Two screens
 hold the same binding now — the pause menu reads every device in every phase, a
@@ -722,8 +738,7 @@ solo/co-op toggle, character select and run rules it will grow are decisions
 taken before a run exists, and this is the place that has them.
 
 Weapons carry CLASS TAGS, and holding several of a class grants authored stat
-bonuses at authored thresholds - two classes exist so far, blade and gun, which
-is what the four authored weapons divide into naturally.
+bonuses at authored thresholds, cumulative and authored per count.
 
 TWELVE WEAPON FAMILIES are authored, four tiers each, 48 files in all, drawn
 from `docs/weapon_list.md` and generated against its tier convention (damage
@@ -731,6 +746,18 @@ x1.55, price x2.2 per step, every axis identical). Five classes exist - gun,
 blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
 `rapid` grants something at every count from one to six, `bouncy` nothing until
 three. Not one of the twelve needed a new effect class.
+
+WEAPONS MERGE. Two carried copies of the same tier combine into one of the next
+through a MERGE / SELL / CLOSE menu on the owned tile, which is also where
+selling now lives. Duplicates are carried rather than folded together on sight,
+so four copies of one weapon complete a class set while one merged copy is
+stronger - and six slots mean you cannot have both. The only automatic merge is
+a purchase onto a full rack that duplicates something upgradeable.
+
+DEFENCE AND HEALING ARE WIRED. Dodge is rolled first and capped at 0.6, armor
+then takes `armor / (armor + 15)` of what is left, lifesteal takes its share of
+what actually landed, and HP_REGEN pays out once a second in every phase. No
+authored item is decorative any more.
 
 WEAPONS ARE BOUGHT AND SOLD like items. They roll from their own pool at an
 authored chance, take a WEAPON_SLOTS slot, appear in the hands the moment the
@@ -779,7 +806,10 @@ that makes polishing now a mistake.
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
 
-**Known gaps, worst first:** no `BEAM` delivery,
+**Known gaps, worst first:** no `BEAM` or `SUMMON` delivery - both are enum
+values with no implementation, GUARDED now rather than merely absent: the
+validator refuses a weapon using one and `Weapon` reports it once by name, so
+the failure is loud instead of a weapon that loads, sells and never fires -
 no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
 art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
@@ -878,8 +908,8 @@ that same pattern with different numbers.
 
 | state | stats |
 |---|---|
-| **read by something** | 35 of 45 |
-| **cheap to wire** | ARMOR, LIFESTEAL, DODGE, HP_REGEN, CURRENCY_GAIN — one small effect class each, the mechanism already exists |
+| **read by something** | 39 of 45 |
+| **cheap to wire** | CURRENCY_GAIN — the last one left, and it is a single read in add_currency |
 | **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
 
 **Do not measure this with `grep "Stat.<NAME>"` alone.** That was the method
@@ -976,13 +1006,51 @@ ad-hoc formulas that do not compose. LIFESTEAL and HP_REGEN have the same
 problem through `CALCULATE_HEAL`. The plan is to settle them together once the
 item list shows what the stats are actually for.
 
-Armor is the instructive case: `EffectArmorFromMaxHp` already reduces damage
-through `DamageEvent.absorbed`, so the pipeline plumbing works. What is missing
-is only the bridge from the `ARMOR` STAT into it.
+**ARMOR and DODGE are done, and were settled together as that rule demands.**
+Dodge is rolled first, armor takes a share of what is left:
 
-Two of the twenty-four authored items are decorative because of this and are known
-to be: `riot_shield` grants ARMOR and `bloodstone` grants LIFESTEAL. They
-display correctly and change nothing. Two is the count again: the four that were
+- `reduction = armor / (armor + StatTypes.ARMOR_HALF_POINT)`, the half point
+  being 15. Diminishing in REDUCTION and linear in SURVIVAL - every point adds
+  1/15 of the holder's health as effective health, so armor never stops paying,
+  while reduction approaches 1.0 without reaching it. Something always gets
+  through, which is what keeps "when you take damage" effects alive at any
+  armor value.
+- `StatTypes.CAPS` is the twin of `FLOORS` and holds DODGE at 0.6. Applied in
+  `get_stat`, so the capped value is what the STAT SHEET shows too and a player
+  can see they have stopped gaining.
+- Dodge answers HITS only, via `DamageEvent.is_hit()`. Dodging a tick of
+  bleeding reads as nonsense and would make every status scale with dodge.
+- Armor takes its share of what REMAINS after flat absorption, never of the
+  original amount, or a hit an effect already soaked would be charged twice.
+
+Both are seeded onto `DamageEvent` before `TAKE_DAMAGE` and resolved after it -
+the shape `StatusEvent.chance` uses - so "you cannot dodge fire" or "+8 armor
+against melee" is an effect adjusting a number, with the model doing the rolling.
+
+**LIFESTEAL and HP_REGEN are done too, through `CALCULATE_HEAL`**, which the
+heal path already ran - nothing had to be built, only called:
+
+- Lifesteal takes its share of what LANDED, not of what was intended, so a
+  heavily armoured target heals its attacker less. Applied after
+  `ON_DAMAGE_DEALT`, so an effect that adds damage on hit has had its say.
+- Both lifesteal and dodge answer HITS only (`DamageEvent.is_hit()`). A bleed
+  applied once would otherwise heal its applier for the whole duration, and
+  every status would quietly become a healing item.
+- HP_REGEN is HP PER SECOND, paid out once a second on the run's heartbeat.
+  Sixty heals a second would fire CALCULATE_HEAL and ON_HEAL sixty times for
+  fractions of a point, so every "when you are healed" effect would go off
+  constantly for nothing. It ticks in EVERY phase, because healing up between
+  waves is most of what the stat is for.
+- Regeneration goes through `heal()` rather than writing `current_hp`, so
+  "healing is 50% less effective on you" reaches it like anything else. A
+  corpse does not regenerate; standing up goes through `revive()` alone.
+
+`riot_shield` and `bloodstone` therefore both work now, each asserted against
+its authored file. **No authored item is decorative any more.**
+
+NONE of the twenty-four authored items is decorative any more. `riot_shield`
+(ARMOR) and `bloodstone` (LIFESTEAL) were the last two and both work, asserted
+against their authored files. Two is the count again: the four that were
 decorative because their stat never crossed from holder to weapon now work,
 which was a bug rather than a deferral and is fixed above.
 

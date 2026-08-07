@@ -196,6 +196,16 @@ func _validate_weapon(path: String, weapon: WeaponData) -> void:
 					_errors.append("%s : melee_combo[%d] has non-positive duration" % [path, i])
 				elif swing.reach <= 0.0:
 					_errors.append("%s : melee_combo[%d] has no reach, it can never connect" % [path, i])
+		_:
+			# BEAM and SUMMON are enum values with no code behind them. Caught
+			# HERE rather than left to the runtime guard, because the runtime
+			# symptom is a weapon that loads, prices, sells, sits in the hands
+			# and never fires - which reads as a mistake in the author's own
+			# file. The enum value existing is what makes it look supported.
+			_errors.append(
+				"%s : delivery kind %d has no implementation, this weapon can never attack"
+				% [path, weapon.delivery]
+			)
 
 func _validate_wave_table(path: String, table: WaveTable) -> void:
 	if table.entries.is_empty():

@@ -183,10 +183,14 @@ everything else is stat lines over axes that already exist.
 
 What could not be written, and why:
 
-1. **BEAM and SUMMON deliveries do not exist.** `weapon.gd` matches only
-   PROJECTILE and MELEE_SWEEP; the other two enum values fall through in
-   silence, which makes them look supported. Blocks anything laser-shaped and
-   the whole turret and drone family.
+1. **BEAM and SUMMON deliveries do not exist.** `weapon.gd` implements only
+   PROJECTILE and MELEE_SWEEP, which blocks anything laser-shaped and the whole
+   turret and drone family. They are now GUARDED rather than merely missing:
+   the validator refuses such a weapon outright and the runtime reports it once
+   by name. An earlier draft of this list said they "fall through in silence",
+   which was wrong - there was a push_warning, unnamed and repeated on every
+   attempted shot, which is close enough to silence to mislead but not close
+   enough to write down as fact.
 2. **No projectile-count stat.** The number lives inside `SpreadPattern`, so a
    `multishot` class bonus would have nothing to raise.
 3. **No knockback stat**, which is the real reason `crush` is not a class.

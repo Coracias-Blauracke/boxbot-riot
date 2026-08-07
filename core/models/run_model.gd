@@ -302,6 +302,10 @@ func advance_wave(delta: float) -> Array[SpawnGroup]:
 	tick.census = census
 	for player in players:
 		player.notify(Hooks.Hook.ON_TICK, tick)
+		# Regeneration rides the same heartbeat, and every phase of it: healing
+		# up between waves is most of what the stat is FOR, so stopping it in
+		# the shop would make it worth least exactly when it is wanted most.
+		player.tick_regen(delta)
 
 	if phase == WorldTypes.Phase.SHOP and auto_intermission > 0.0:
 		_intermission_left -= delta
