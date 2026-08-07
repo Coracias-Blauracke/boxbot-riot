@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 613 assertions across three suites, no editor, no game window
+# tests — 624 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -881,8 +881,8 @@ that same pattern with different numbers.
 
 | state | stats |
 |---|---|
-| **read by something** | 37 of 45 |
-| **cheap to wire** | LIFESTEAL, HP_REGEN, CURRENCY_GAIN — the first two are one decision through CALCULATE_HEAL, as ARMOR and DODGE were one decision through TAKE_DAMAGE |
+| **read by something** | 39 of 45 |
+| **cheap to wire** | CURRENCY_GAIN — the last one left, and it is a single read in add_currency |
 | **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
 
 **Do not measure this with `grep "Stat.<NAME>"` alone.** That was the method
@@ -1000,12 +1000,30 @@ Both are seeded onto `DamageEvent` before `TAKE_DAMAGE` and resolved after it -
 the shape `StatusEvent.chance` uses - so "you cannot dodge fire" or "+8 armor
 against melee" is an effect adjusting a number, with the model doing the rolling.
 
-`riot_shield` therefore works now, asserted against the authored file. LIFESTEAL
-and HP_REGEN remain, and remain ONE decision through `CALCULATE_HEAL`.
+**LIFESTEAL and HP_REGEN are done too, through `CALCULATE_HEAL`**, which the
+heal path already ran - nothing had to be built, only called:
 
-ONE of the twenty-four authored items is still decorative because of this:
-`bloodstone` grants LIFESTEAL, displays correctly and changes nothing.
-`riot_shield` was the other and works now. Two is the count again: the four that were
+- Lifesteal takes its share of what LANDED, not of what was intended, so a
+  heavily armoured target heals its attacker less. Applied after
+  `ON_DAMAGE_DEALT`, so an effect that adds damage on hit has had its say.
+- Both lifesteal and dodge answer HITS only (`DamageEvent.is_hit()`). A bleed
+  applied once would otherwise heal its applier for the whole duration, and
+  every status would quietly become a healing item.
+- HP_REGEN is HP PER SECOND, paid out once a second on the run's heartbeat.
+  Sixty heals a second would fire CALCULATE_HEAL and ON_HEAL sixty times for
+  fractions of a point, so every "when you are healed" effect would go off
+  constantly for nothing. It ticks in EVERY phase, because healing up between
+  waves is most of what the stat is for.
+- Regeneration goes through `heal()` rather than writing `current_hp`, so
+  "healing is 50% less effective on you" reaches it like anything else. A
+  corpse does not regenerate; standing up goes through `revive()` alone.
+
+`riot_shield` and `bloodstone` therefore both work now, each asserted against
+its authored file. **No authored item is decorative any more.**
+
+NONE of the twenty-four authored items is decorative any more. `riot_shield`
+(ARMOR) and `bloodstone` (LIFESTEAL) were the last two and both work, asserted
+against their authored files. Two is the count again: the four that were
 decorative because their stat never crossed from holder to weapon now work,
 which was a bug rather than a deferral and is fixed above.
 

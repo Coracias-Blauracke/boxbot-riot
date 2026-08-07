@@ -133,6 +133,9 @@ func _initialize() -> void:
 	_test_dodge_is_capped_and_only_answers_hits()
 	_test_armor_takes_a_share_of_what_is_left()
 	_test_the_riot_shield_finally_does_something()
+	_test_lifesteal_takes_a_share_of_what_landed()
+	_test_regeneration_pays_out_once_a_second()
+	_test_the_bloodstone_finally_does_something()
 	_test_merging_two_copies_frees_a_slot()
 	_test_a_full_rack_takes_a_purchase_only_when_it_merges()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
@@ -1904,6 +1907,81 @@ func _test_the_riot_shield_finally_does_something() -> void:
 	# retuning either shows up here rather than in a play-test six weeks later.
 	var armor := guarded.stats.get_stat(StatTypes.Stat.ARMOR)
 	_check("by exactly what the curve says", with, 100.0 * (1.0 - StatTypes.armor_reduction(armor)))
+
+func _test_lifesteal_takes_a_share_of_what_landed() -> void:
+	print("\n-- lifesteal --")
+	var thief := _living(200.0)
+	thief.stats.add_modifier(StatTypes.Stat.LIFESTEAL, StatTypes.Modifier.BASE, 0.5, &"item")
+	thief.set_hp(100.0)
+
+	_hit(_living(1000.0), 40.0, thief)
+	_check("half of what landed comes back", thief.current_hp, 120.0)
+
+	# From what LANDED, not what was intended: a heavily armoured target heals
+	# its attacker less, which is the honest reading of stealing from damage
+	# dealt and stops the victim's armor from inflating the thief's healing.
+	thief.set_hp(100.0)
+	_hit(_armoured(15.0, 1000.0), 40.0, thief)
+	_check("armor on the target halves the steal too", thief.current_hp, 110.0)
+
+	# HITS only. A bleed applied once would otherwise heal its applier for the
+	# whole duration, and every status would quietly become a healing item.
+	thief.set_hp(100.0)
+	var tick := DamageEvent.new()
+	tick.source = thief
+	tick.amount = 40.0
+	tick.damage_type = StatTypes.DamageType.BLEED
+	_living(1000.0).apply_damage(tick)
+	_check("a bleed tick steals nothing", thief.current_hp, 100.0)
+
+func _test_regeneration_pays_out_once_a_second() -> void:
+	print("\n-- regeneration --")
+	var mender := _living(200.0)
+	mender.stats.add_modifier(StatTypes.Stat.HP_REGEN, StatTypes.Modifier.BASE, 3.0, &"item")
+	mender.set_hp(100.0)
+
+	# Paid once a SECOND, not every frame. Sixty heals a second would fire
+	# CALCULATE_HEAL and ON_HEAL sixty times for fractions of a point.
+	for i in 30:
+		mender.tick_regen(1.0 / 60.0)
+	_check("half a second heals nothing yet", mender.current_hp, 100.0)
+
+	for i in 30:
+		mender.tick_regen(1.0 / 60.0)
+	_check("a full second pays the whole stat", mender.current_hp, 103.0)
+
+	# Losing the item must not pay out a second that was never earned.
+	mender.stats.remove_all_from_source(&"item")
+	for i in 30:
+		mender.tick_regen(1.0 / 60.0)
+	mender.stats.add_modifier(StatTypes.Stat.HP_REGEN, StatTypes.Modifier.BASE, 3.0, &"item")
+	mender.tick_regen(0.5)
+	_check("the debt was cleared while the stat was zero", mender.current_hp, 103.0)
+
+	# A corpse does not regenerate. Standing up goes through revive() alone.
+	var corpse := _living(50.0)
+	corpse.stats.add_modifier(StatTypes.Stat.HP_REGEN, StatTypes.Modifier.BASE, 5.0, &"item")
+	_hit(corpse, 100.0)
+	_check_bool("it is down", corpse.is_alive, false)
+	corpse.tick_regen(2.0)
+	_check("and stays down", corpse.current_hp, 0.0)
+
+## The last of the items documented as decorative. bloodstone granted LIFESTEAL,
+## LIFESTEAL did nothing, and the item read perfectly while changing no number.
+func _test_the_bloodstone_finally_does_something() -> void:
+	print("\n-- bloodstone --")
+	var stone := load("res://content/items/bloodstone.tres") as ItemData
+	_check_bool("it loads", stone != null, true)
+
+	var wearer := _living(200.0)
+	wearer.add_item(stone)
+	wearer.set_hp(50.0)
+
+	var share := wearer.stats.get_stat(StatTypes.Stat.LIFESTEAL)
+	_check_bool("it grants some lifesteal", share > 0.0, true)
+
+	_hit(_living(1000.0), 100.0, wearer)
+	_check("and the wearer heals by that share", wearer.current_hp, 50.0 + 100.0 * share)
 
 # --- merging ----------------------------------------------------------------
 

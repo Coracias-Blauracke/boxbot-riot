@@ -418,11 +418,57 @@ func apply_damage(event: DamageEvent) -> float:
 	if event.source != null:
 		event.source.counters.add(CounterTypes.Counter.DAMAGE_DEALT, roundi(final))
 		event.source.notify(Hooks.Hook.ON_DAMAGE_DEALT, event)
+		# After the notification, so an effect that adds damage on hit has
+		# already had its say and the steal is taken from the real total.
+		_apply_lifesteal(event, final)
 		if not is_alive:
 			event.source.counters.add(CounterTypes.Counter.ENEMIES_KILLED)
 			event.source.notify(Hooks.Hook.ON_KILL, event)
 
 	return final
+
+## Seconds of regeneration owed. HP_REGEN is read as HP PER SECOND and paid out
+## once a second rather than every frame: sixty heals a second would fire
+## CALCULATE_HEAL and ON_HEAL sixty times for fractions of a point, so every
+## "when you are healed" effect would go off constantly for nothing.
+var _regen_owed: float = 0.0
+
+## Called on the run's heartbeat. Healing goes through heal(), so regeneration
+## is subject to CALCULATE_HEAL like every other heal - "healing is 50% less
+## effective on you" has to reach it, and would not if this wrote current_hp.
+func tick_regen(delta: float) -> void:
+	if not is_alive:
+		return
+
+	var per_second := stats.get_stat(StatTypes.Stat.HP_REGEN)
+	if per_second <= 0.0:
+		# Not accumulated while the stat is zero, or losing a regen item would
+		# pay out a second of healing it never earned.
+		_regen_owed = 0.0
+		return
+
+	_regen_owed += delta
+	if _regen_owed < 1.0:
+		return
+	_regen_owed -= 1.0
+	heal(per_second, self)
+
+## The attacker's share of what they just dealt.
+##
+## Read from the damage that ACTUALLY LANDED rather than what was intended, so a
+## heavily armoured target heals the attacker less - which is the honest reading
+## of "steal life from the damage you deal" and stops armor on the victim from
+## inflating the attacker's healing.
+##
+## HITS only, like dodge and for the same reason: a bleed applied once would
+## otherwise keep healing its applier for the rest of its duration, and every
+## status would quietly become a healing item.
+func _apply_lifesteal(event: DamageEvent, landed: float) -> void:
+	if landed <= 0.0 or event.source == null or not event.is_hit():
+		return
+	var share := event.source.stats.get_stat(StatTypes.Stat.LIFESTEAL)
+	if share > 0.0:
+		event.source.heal(landed * share, event.source)
 
 ## DODGE is a chance to take NOTHING, so it belongs to hits alone - see
 ## DamageEvent.is_hit(). Rolled BEFORE armor is applied because avoiding a blow
