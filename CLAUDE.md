@@ -152,6 +152,8 @@ content/     authored .tres: characters, enemies, weapons/ (12 families x 4
              statuses/ (bleed, poison, burn, slow)
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
+docs/        weapon_list.md - the prose list the .tres files were built from,
+             including what it exposed as missing in the engine
 ```
 
 **`core/` must never import a Node or touch an autoload.** That constraint is
@@ -233,6 +235,20 @@ between runs: a solo/co-op toggle, character select, run rules.
 Solo is deliberately NOT a second code path. It is one entry in the roster, and
 the run cannot tell the difference — which is why the toggle, when it arrives,
 is a branch in the lobby and nowhere else.
+
+**CHARACTER SELECT COMES BEFORE AUTHORING CHARACTERS**, for exactly the reason
+the shop came before weapon content. `main.tscn` holds a single `character_data`
+export, so a second authored character is reachable only by editing the scene -
+which is the same trap weapons were in when `WeaponMount` owned the list and
+only `main.gd` could add one. Authoring a roster against that means every one of
+them is invisible until the select screen exists.
+
+Worth knowing before that work starts: `CharacterData.innate_effects` - the
+ability list, the same type as item effects - is **declared and used by no
+authored character**. `test_character` carries base stats, starting items and a
+starting weapon, and no abilities at all. So the whole "this character does
+something" path is built and unexercised, which in this repo has three times
+now turned out to mean something in it is quietly wrong.
 
 **A device is polled ONCE per frame, guarded inside `PlayerInput`.** Two screens
 hold the same binding now — the pause menu reads every device in every phase, a
@@ -722,8 +738,7 @@ solo/co-op toggle, character select and run rules it will grow are decisions
 taken before a run exists, and this is the place that has them.
 
 Weapons carry CLASS TAGS, and holding several of a class grants authored stat
-bonuses at authored thresholds - two classes exist so far, blade and gun, which
-is what the four authored weapons divide into naturally.
+bonuses at authored thresholds, cumulative and authored per count.
 
 TWELVE WEAPON FAMILIES are authored, four tiers each, 48 files in all, drawn
 from `docs/weapon_list.md` and generated against its tier convention (damage
@@ -731,6 +746,18 @@ x1.55, price x2.2 per step, every axis identical). Five classes exist - gun,
 blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
 `rapid` grants something at every count from one to six, `bouncy` nothing until
 three. Not one of the twelve needed a new effect class.
+
+WEAPONS MERGE. Two carried copies of the same tier combine into one of the next
+through a MERGE / SELL / CLOSE menu on the owned tile, which is also where
+selling now lives. Duplicates are carried rather than folded together on sight,
+so four copies of one weapon complete a class set while one merged copy is
+stronger - and six slots mean you cannot have both. The only automatic merge is
+a purchase onto a full rack that duplicates something upgradeable.
+
+DEFENCE AND HEALING ARE WIRED. Dodge is rolled first and capped at 0.6, armor
+then takes `armor / (armor + 15)` of what is left, lifesteal takes its share of
+what actually landed, and HP_REGEN pays out once a second in every phase. No
+authored item is decorative any more.
 
 WEAPONS ARE BOUGHT AND SOLD like items. They roll from their own pool at an
 authored chance, take a WEAPON_SLOTS slot, appear in the hands the moment the
