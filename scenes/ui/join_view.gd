@@ -29,14 +29,29 @@ const SLOT_WIDTH := 420.0
 const SLOT_HEIGHT := 380.0
 const SLOT_GAP := 20.0
 
-const TILE_WIDTH := 200.0
-const TILE_HEIGHT := 148.0
-const TILE_GAP := 18.0
+const TILE_GAP := 14.0
+const TILE_MAX_WIDTH := 200.0
+## Height as a share of width. Fixed, so a tile keeps its shape whatever M and N
+## the rack is authored at - a grid that changes proportions with its column
+## count needs its portrait art authored twice.
+const TILE_ASPECT := 0.74
+const GRID_MARGIN := 60.0
 
-## How many tiles a row holds. The LOBBY asks this to turn "down" into a delta
-## of that many catalogue entries, which is why the grid's shape lives here and
-## not in PlayerRoster - the model is a flat list and stays one.
-const GRID_COLUMNS := 4
+## The rack, M x N. Authored on the lobby rather than fixed here, because how
+## many characters fit on a screen is a layout decision and the roster is meant
+## to grow to Brotato size and beyond.
+##
+## `columns` decides where "right" wraps and `visible_rows` decides when the
+## rack starts scrolling. Neither reaches PlayerRoster, which stays a flat list
+## - GridCursor turns the two into an index.
+var columns: int = 4
+var visible_rows: int = 2
+
+## First row on screen. ONE number for the whole rack rather than one per
+## player: the grid is shared, and four viewports would be four grids, which
+## takes away the only reason it is shared at all - seeing what the others are
+## looking at.
+var grid_top: int = 0
 
 const PORTRAIT := 96.0
 
@@ -405,22 +420,81 @@ func _wrap(font: Font, text: String, width: float, font_size: int) -> PackedStri
 
 # --- the rack ---------------------------------------------------------------
 
+## The tile size M and N imply, fitted to the space the rack actually has.
+##
+## Derived rather than authored, because M and N are the numbers somebody wants
+## to change: at eight columns the tiles have to be smaller or the row runs off
+## the screen, and asking an author to keep a width in step with a column count
+## is asking them to get it wrong.
+func tile_size(area: Vector2) -> Vector2:
+	var wide := maxi(1, columns)
+	var high := maxi(1, visible_rows)
+
+	var by_width := (area.x - float(wide - 1) * TILE_GAP) / float(wide)
+	var by_height := (area.y - float(high - 1) * TILE_GAP) / float(high) / TILE_ASPECT
+	var width := minf(TILE_MAX_WIDTH, minf(by_width, by_height))
+	return Vector2(width, width * TILE_ASPECT)
+
+func _grid_area(top: float) -> Rect2:
+	# Down to the footer, which is what leaves room for more rows on a taller
+	# screen instead of leaving the bottom third empty as the fixed layout did.
+	return Rect2(
+		Vector2(GRID_MARGIN, top),
+		Vector2(size.x - GRID_MARGIN * 2.0, maxf(80.0, size.y - 116.0 - top))
+	)
+
 func _draw_grid(font: Font, top: float) -> void:
 	if roster.catalogue == null or roster.catalogue.is_empty():
 		return
 
 	var total := roster.catalogue.count()
-	var columns := mini(GRID_COLUMNS, total)
-	var row_width := float(columns) * TILE_WIDTH + float(columns - 1) * TILE_GAP
-	var left := (size.x - row_width) * 0.5
+	var area := _grid_area(top)
+	var tile := tile_size(area.size)
+	var wide := mini(maxi(1, columns), total)
 
-	for entry in total:
-		var column := entry % GRID_COLUMNS
-		var row := entry / GRID_COLUMNS
-		_draw_tile(font, Rect2(
-			Vector2(left + float(column) * (TILE_WIDTH + TILE_GAP), top + float(row) * (TILE_HEIGHT + TILE_GAP)),
-			Vector2(TILE_WIDTH, TILE_HEIGHT)
-		), entry)
+	var row_width := float(wide) * tile.x + float(wide - 1) * TILE_GAP
+	var left := (size.x - row_width) * 0.5
+	var rows := GridCursor.row_count(total, columns)
+	var first := clampi(grid_top, 0, maxi(0, rows - visible_rows))
+
+	for row in range(first, mini(first + visible_rows, rows)):
+		for column in maxi(1, columns):
+			var entry := row * maxi(1, columns) + column
+			if entry >= total:
+				break
+			_draw_tile(font, Rect2(
+				Vector2(
+					left + float(column) * (tile.x + TILE_GAP),
+					area.position.y + float(row - first) * (tile.y + TILE_GAP)
+				),
+				tile
+			), entry)
+
+	_draw_grid_scrollbar(
+		Vector2(left + row_width + 14.0, area.position.y), tile, rows, first
+	)
+
+## Drawn only when there is somewhere to scroll to. A track whose thumb fills it
+## is a control that lies about being a control.
+##
+## Placed against the TILES rather than against the screen edge: the rack is
+## centred and is usually narrower than the space it is given, so an edge-hugging
+## bar reads as belonging to the window instead of to the thing it scrolls.
+func _draw_grid_scrollbar(at: Vector2, tile: Vector2, rows: int, first: int) -> void:
+	if rows <= visible_rows:
+		return
+
+	var height := float(visible_rows) * tile.y + float(visible_rows - 1) * TILE_GAP
+	var track := Rect2(at, Vector2(5.0, height))
+	draw_rect(track, Color(0.14, 0.16, 0.20))
+
+	var share := float(visible_rows) / float(rows)
+	var thumb := maxf(24.0, height * share)
+	var travel := (height - thumb) * float(first) / float(rows - visible_rows)
+	draw_rect(
+		Rect2(track.position + Vector2(0.0, travel), Vector2(5.0, thumb)),
+		Color(0.55, 0.6, 0.7)
+	)
 
 func _draw_tile(font: Font, rect: Rect2, entry: int) -> void:
 	var character := roster.catalogue.at(entry)
@@ -430,14 +504,18 @@ func _draw_tile(font: Font, rect: Rect2, entry: int) -> void:
 	draw_rect(rect, Color(0.08, 0.09, 0.12))
 	draw_rect(rect, Color(0.18, 0.20, 0.25), false, 1.0)
 
+	var portrait := rect.size.x * 0.5
 	_draw_portrait(
-		Rect2(rect.position + Vector2((TILE_WIDTH - PORTRAIT) * 0.5, 14.0), Vector2(PORTRAIT, PORTRAIT)),
+		Rect2(
+			rect.position + Vector2((rect.size.x - portrait) * 0.5, rect.size.y * 0.09),
+			Vector2(portrait, portrait)
+		),
 		character, Color(0.3, 0.33, 0.4)
 	)
 	draw_string(
-		font, Vector2(rect.position.x, rect.position.y + TILE_HEIGHT - 16.0),
-		tr(character.display_key), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 14,
-		Color(0.82, 0.86, 0.93)
+		font, Vector2(rect.position.x, rect.position.y + rect.size.y - 10.0),
+		tr(character.display_key), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x,
+		clampi(roundi(rect.size.x * 0.075), 9, 14), Color(0.82, 0.86, 0.93)
 	)
 
 	_draw_cursors(font, rect, entry)
@@ -468,14 +546,22 @@ func _draw_cursors(font: Font, rect: Rect2, entry: int) -> void:
 			# Tabs walk SIDEWAYS while the borders nest outwards. Stacking them
 			# on the same corner means the last one drawn hides the rest, and
 			# two players on one chassis is exactly the case the tab exists for.
+			#
+			# Sized off the TILE, so a rack authored eight columns wide does not
+			# wear four tabs wider than the thing they label.
+			var tab_width := minf(30.0, rect.size.x * 0.24)
 			var tab := Rect2(
-				Vector2(rect.position.x + float(stacked) * 34.0, rect.position.y - inset - 21.0),
-				Vector2(30.0, 18.0)
+				Vector2(
+					rect.position.x + float(stacked) * (tab_width + 4.0),
+					rect.position.y - inset - tab_width * 0.62
+				),
+				Vector2(tab_width, tab_width * 0.6)
 			)
 			draw_rect(tab, accent)
 			draw_string(
-				font, Vector2(tab.position.x, tab.position.y + 14.0), "P%d" % (index + 1),
-				HORIZONTAL_ALIGNMENT_CENTER, tab.size.x, 13, Color(0.05, 0.06, 0.08)
+				font, Vector2(tab.position.x, tab.position.y + tab_width * 0.47),
+				"P%d" % (index + 1), HORIZONTAL_ALIGNMENT_CENTER, tab.size.x,
+				clampi(roundi(tab_width * 0.44), 8, 13), Color(0.05, 0.06, 0.08)
 			)
 		stacked += 1
 

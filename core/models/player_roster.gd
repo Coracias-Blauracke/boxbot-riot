@@ -181,12 +181,28 @@ func select_previous(device_id: int) -> bool:
 ## Wrapping is deliberate: a list with ends to fall off makes the last character
 ## harder to reach than the first for no reason a player could name.
 func select_by(device_id: int, delta: int) -> bool:
+	var index := devices.find(device_id)
+	if index < 0:
+		return false
+	return select_index(device_id, posmod(_picks[index] + delta, maxi(1, _catalogue_size())))
+
+## Puts a player's cursor on an exact entry.
+##
+## The form the GRID needs: where "right" lands is decided by GridCursor from
+## the row it is in, and this is where the answer is stored. A roster that
+## computed it would have to know how wide the rack is drawn, which is a
+## property of the screen and changes with an authored number.
+func select_index(device_id: int, target: int) -> bool:
 	var size := _catalogue_size()
 	var index := devices.find(device_id)
-	if index < 0 or size <= 1 or is_confirmed(index):
+	if index < 0 or size <= 0 or is_confirmed(index):
 		return false
 
-	_picks[index] = posmod(_picks[index] + delta, size)
+	var clamped := clampi(target, 0, size - 1)
+	if clamped == _picks[index]:
+		return false
+
+	_picks[index] = clamped
 	selection_changed.emit()
 	return true
 
