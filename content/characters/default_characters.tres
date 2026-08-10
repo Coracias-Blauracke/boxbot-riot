@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="CharacterSet" format=3]
+
+[ext_resource type="Script" path="res://core/data/character_set.gd" id="1_set"]
+[ext_resource type="Script" path="res://core/data/character_data.gd" id="2_char"]
+[ext_resource type="Resource" path="res://content/characters/standard_unit.tres" id="c_standard"]
+[ext_resource type="Resource" path="res://content/characters/riveter.tres" id="c_riveter"]
+[ext_resource type="Resource" path="res://content/characters/bulwark.tres" id="c_bulwark"]
+[ext_resource type="Resource" path="res://content/characters/skirmisher.tres" id="c_skirmisher"]
+[ext_resource type="Resource" path="res://content/characters/bloodletter.tres" id="c_bloodletter"]
+[ext_resource type="Resource" path="res://content/characters/furnace.tres" id="c_furnace"]
+
+[resource]
+script = ExtResource("1_set")
+characters = Array[ExtResource("2_char")]([ExtResource("c_standard"), ExtResource("c_riveter"), ExtResource("c_bulwark"), ExtResource("c_skirmisher"), ExtResource("c_bloodletter"), ExtResource("c_furnace")])

@@ -11,12 +11,27 @@ extends Control
 ##
 ## Drawn rather than assembled from Containers, like every other screen here,
 ## because there is no art yet and a themed layout would be thrown away.
+##
+## A slot also shows WHAT that player is about to play, described from the
+## character's own modifiers rather than from authored prose - the same rule the
+## shop's detail block follows, and for the same reason: a hand-written line
+## drifts from the numbers it describes the moment somebody retunes one.
 
 const SLOT_WIDTH := 300.0
-const SLOT_HEIGHT := 220.0
+const SLOT_HEIGHT := 300.0
 const SLOT_GAP := 24.0
 
+## How many stat lines a slot draws before it stops. Five covers every authored
+## character; overflow is the shop's unsolved problem too, and solving it here
+## first would mean designing it twice.
+const MAX_STAT_LINES := 5
+
 var roster: PlayerRoster
+
+## Supplies the name and the format for a stat line. Null simply drops the
+## lines, which is what a lobby launched with nothing authored should do rather
+## than refuse to draw.
+var stat_sheet: StatSheet
 
 ## Which pads are plugged in, so an empty slot can say what to press. Refreshed
 ## by the lobby rather than polled here.
@@ -61,17 +76,18 @@ func _draw_slot(font: Font, rect: Rect2, index: int) -> void:
 	if taken:
 		var device: int = roster.devices[index]
 		draw_string(
-			font, Vector2(rect.position.x, rect.position.y + 62.0), "P%d" % (index + 1),
-			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 40, accent
+			font, Vector2(rect.position.x, rect.position.y + 44.0), "P%d" % (index + 1),
+			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 32, accent
 		)
 		draw_string(
-			font, Vector2(rect.position.x, rect.position.y + 108.0), _device_name(device),
-			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 20, Color(0.82, 0.86, 0.93)
+			font, Vector2(rect.position.x, rect.position.y + 68.0), _device_name(device),
+			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 15, Color(0.62, 0.66, 0.74)
 		)
+		_draw_character(font, rect, index, accent)
 		draw_string(
-			font, Vector2(rect.position.x, rect.position.y + 160.0),
+			font, Vector2(rect.position.x, rect.position.y + SLOT_HEIGHT - 22.0),
 			"%s to leave" % ("ESC" if device == PlayerRoster.KEYBOARD_DEVICE else "B"),
-			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 15, Color(0.5, 0.54, 0.62)
+			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 14, Color(0.5, 0.54, 0.62)
 		)
 		return
 
@@ -85,12 +101,106 @@ func _draw_slot(font: Font, rect: Rect2, index: int) -> void:
 		prompt = "A" if pads_connected > 0 else "CONNECT A PAD"
 
 	draw_string(
-		font, Vector2(rect.position.x, rect.position.y + 100.0), prompt,
+		font, Vector2(rect.position.x, rect.position.y + 140.0), prompt,
 		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 24, Color(0.55, 0.6, 0.68)
 	)
 	draw_string(
-		font, Vector2(rect.position.x, rect.position.y + 132.0), "to join",
+		font, Vector2(rect.position.x, rect.position.y + 172.0), "to join",
 		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 17, Color(0.4, 0.44, 0.52)
+	)
+
+## The chassis, and what it costs to play. Every line here is DERIVED from the
+## character's own modifiers, so authoring a character is a .tres and nothing
+## else - no screen learns that a new one exists.
+func _draw_character(font: Font, rect: Rect2, index: int, accent: Color) -> void:
+	var character := roster.character_at(index)
+	if character == null:
+		# No catalogue: the run will use whatever it authored, and saying so
+		# beats an empty half of a slot that reads as a missing character.
+		draw_string(
+			font, Vector2(rect.position.x, rect.position.y + 130.0), "DEFAULT CHASSIS",
+			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 18, Color(0.45, 0.49, 0.57)
+		)
+		return
+
+	var total := 0 if roster.catalogue == null else roster.catalogue.count()
+	draw_string(
+		font, Vector2(rect.position.x, rect.position.y + 116.0), tr(character.display_key),
+		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 22, Color(0.93, 0.94, 0.97)
+	)
+
+	# Arrows only when there is somewhere to go. A control hint for a control
+	# that does nothing is worse than no hint.
+	if total > 1:
+		draw_string(
+			font, Vector2(rect.position.x + 12.0, rect.position.y + 116.0), "<",
+			HORIZONTAL_ALIGNMENT_LEFT, 30.0, 22, accent
+		)
+		draw_string(
+			font, Vector2(rect.position.x + rect.size.x - 42.0, rect.position.y + 116.0), ">",
+			HORIZONTAL_ALIGNMENT_RIGHT, 30.0, 22, accent
+		)
+		draw_string(
+			font, Vector2(rect.position.x, rect.position.y + 138.0),
+			"%d / %d" % [roster.pick_of(index) + 1, total],
+			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 13, Color(0.5, 0.54, 0.62)
+		)
+
+	var y := rect.position.y + 168.0
+	var drawn := 0
+	for modifier in character.base_stats:
+		if modifier == null or drawn >= MAX_STAT_LINES:
+			break
+		_draw_stat_line(font, rect, y, modifier)
+		y += 19.0
+		drawn += 1
+
+	var weapons: Array[String] = []
+	for weapon in character.starting_weapons:
+		if weapon != null:
+			weapons.append(tr(weapon.display_key))
+	if weapons.is_empty():
+		return
+
+	draw_string(
+		font, Vector2(rect.position.x, rect.position.y + SLOT_HEIGHT - 48.0),
+		", ".join(weapons),
+		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 13, Color(0.66, 0.72, 0.82)
+	)
+
+## A BASE modifier is what the chassis IS and reads as a bare value; a FLAT or
+## PERCENT one is a DELTA from the baseline and reads with its sign and its
+## colour. Same distinction the authoring convention in docs/character_list.md
+## draws, and it is why 165 HP does not render as "+165".
+##
+## Good and bad come from StatMetadata.higher_is_better, never from the sign -
+## a character with less spread is a better one.
+func _draw_stat_line(font: Font, rect: Rect2, y: float, modifier: StatModifier) -> void:
+	var meta: StatMetadata = stat_sheet.metadata_for(modifier.stat) if stat_sheet != null else null
+	if meta == null:
+		return
+
+	var is_base := modifier.modifier_type == StatTypes.Modifier.BASE
+	var value := (
+		meta.format_value(modifier.value)
+		if is_base
+		else meta.format_modifier(modifier.modifier_type, modifier.value)
+	)
+	var color := Color(0.78, 0.82, 0.88)
+	if not is_base:
+		color = (
+			Color(0.5, 0.9, 0.55)
+			if meta.is_improvement(modifier.value)
+			else Color(0.95, 0.5, 0.45)
+		)
+
+	draw_string(
+		font, Vector2(rect.position.x + 14.0, y), tr(meta.display_key),
+		HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 110.0, 13, Color(0.7, 0.74, 0.81)
+	)
+	draw_string(
+		font, Vector2(rect.position.x + rect.size.x - 104.0, y), value,
+		HORIZONTAL_ALIGNMENT_RIGHT, 90.0, 13, color
 	)
 
 func _draw_footer(font: Font, y: float) -> void:
@@ -102,6 +212,16 @@ func _draw_footer(font: Font, y: float) -> void:
 
 	draw_string(
 		font, Vector2(0.0, y), text, HORIZONTAL_ALIGNMENT_CENTER, size.x, 24, color
+	)
+
+	# Only once somebody is in, and only when there is a roster to move through.
+	# An empty lobby has nothing to steer.
+	if roster.is_empty() or roster.catalogue == null or roster.catalogue.count() <= 1:
+		return
+
+	draw_string(
+		font, Vector2(0.0, y + 30.0), "LEFT and RIGHT change your chassis",
+		HORIZONTAL_ALIGNMENT_CENTER, size.x, 16, Color(0.5, 0.54, 0.62)
 	)
 
 func _device_name(device_id: int) -> String:

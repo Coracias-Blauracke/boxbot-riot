@@ -140,6 +140,10 @@ func _initialize() -> void:
 	_test_a_full_rack_takes_a_purchase_only_when_it_merges()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
 	_test_leaving_closes_the_gap_rather_than_leaving_a_hole()
+	_test_a_default_pick_prefers_a_chassis_nobody_is_on()
+	_test_leaving_takes_that_player_s_character_with_it()
+	_test_selecting_wraps_and_two_players_may_share_a_chassis()
+	_test_no_catalogue_means_the_run_keeps_its_own_character()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -2177,6 +2181,121 @@ func _test_leaving_closes_the_gap_rather_than_leaving_a_hole() -> void:
 	var handed := roster.to_player_devices()
 	handed.append(99)
 	_check_int("the roster is unchanged by its reader", roster.count(), 3)
+
+# --- what they are playing --------------------------------------------------
+
+## Three named chassis, so an assertion can say WHICH one a player ended up on
+## rather than only that the number moved.
+func _make_catalogue(names: Array) -> CharacterSet:
+	var set_data := CharacterSet.new()
+	var built: Array[CharacterData] = []
+	for key in names:
+		var character := CharacterData.new()
+		character.display_key = str(key)
+		built.append(character)
+	set_data.characters = built
+	return set_data
+
+func _test_a_default_pick_prefers_a_chassis_nobody_is_on() -> void:
+	print("\n-- default picks --")
+	var roster := PlayerRoster.new()
+	roster.catalogue = _make_catalogue(["ALPHA", "BETA", "GAMMA"])
+
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+	roster.join(0)
+	roster.join(1)
+
+	# Four players and eight characters is the real case, and the point is that
+	# the common one - everybody on something different - costs nobody a press.
+	_check_int("P1 defaults to the first chassis", roster.pick_of(0), 0)
+	_check_int("P2 does not double up on it", roster.pick_of(1), 1)
+	_check_int("nor does P3", roster.pick_of(2), 2)
+
+	# A DEFAULT, not a rule: past the end of the catalogue somebody has to share,
+	# and the seat number decides who with rather than an arbitrary first entry.
+	roster.join(2)
+	_check_int("the fourth player shares, because there is nothing left", roster.pick_of(3), 0)
+
+	var chosen := roster.to_player_characters()
+	_check_int("one character per player, in player order", chosen.size(), 4)
+	_check_bool("and P3 really holds the third", chosen[2].display_key == "GAMMA", true)
+
+func _test_leaving_takes_that_player_s_character_with_it() -> void:
+	print("\n-- leaving with a character --")
+	var roster := PlayerRoster.new()
+	roster.catalogue = _make_catalogue(["ALPHA", "BETA", "GAMMA"])
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+	roster.join(0)
+	roster.join(1)
+
+	# The regression this test exists for: devices and picks are two lists that
+	# must agree, and a leave that closes the gap in one and not the other hands
+	# the player who moved up somebody else's chassis while they keep their pad.
+	roster.leave(0)
+
+	_check_int("two are left", roster.count(), 2)
+	_check_bool("the keyboard kept its own", roster.character_for_device(PlayerRoster.KEYBOARD_DEVICE).display_key == "ALPHA", true)
+	_check_bool("and the pad that moved up kept ITS own", roster.character_for_device(1).display_key == "GAMMA", true)
+	_check_int("the emptied slot holds no pick at all", roster.pick_of(2), -1)
+
+	# Which is also what a rejoin has to see: the freed BETA, not a third ALPHA.
+	roster.join(0)
+	_check_bool("a rejoining player takes what nobody is on", roster.character_for_device(0).display_key == "BETA", true)
+
+func _test_selecting_wraps_and_two_players_may_share_a_chassis() -> void:
+	print("\n-- selecting --")
+	var roster := PlayerRoster.new()
+	roster.catalogue = _make_catalogue(["ALPHA", "BETA", "GAMMA"])
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+	roster.join(0)
+
+	_check_bool("stepping forward answers yes", roster.select_next(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_int("P1 moved one along", roster.pick_of(0), 1)
+	_check_int("and nobody else moved", roster.pick_of(1), 1)
+
+	# Wrapping in both directions. A list with ends to fall off makes the last
+	# character harder to reach than the first for no reason a player could name.
+	roster.select_next(PlayerRoster.KEYBOARD_DEVICE)
+	roster.select_next(PlayerRoster.KEYBOARD_DEVICE)
+	_check_int("forward wraps to the start", roster.pick_of(0), 0)
+	_check_bool("stepping back answers yes", roster.select_previous(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_int("and back wraps to the end", roster.pick_of(0), 2)
+
+	# Duplicates are allowed on purpose - see the character list. Forbidding them
+	# means answering what four players do with two authored characters.
+	roster.select_previous(PlayerRoster.KEYBOARD_DEVICE)
+	_check_int("two players may sit on one chassis", roster.pick_of(0), 1)
+	_check_int("without displacing the other", roster.pick_of(1), 1)
+
+	_check_bool("a device nobody joined on selects nothing", roster.select_next(7), false)
+
+	# The signal the lobby redraws on. Deliberately NOT `changed`: the lobby
+	# rebuilds its input list on that one, from inside a loop over that very
+	# list, and stepping a selection would mutate the array being iterated.
+	var beats: Array[int] = [0]
+	roster.selection_changed.connect(func() -> void: beats[0] += 1)
+	roster.changed.connect(func() -> void: beats[0] += 100)
+	roster.select_next(0)
+	_check_int("selecting reports selection_changed and nothing else", beats[0], 1)
+
+func _test_no_catalogue_means_the_run_keeps_its_own_character() -> void:
+	print("\n-- no catalogue --")
+	var roster := PlayerRoster.new()
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+
+	# main.tscn is still launchable on its own, and a capture run points straight
+	# at it. Nothing injected has to mean "keep what you authored" rather than
+	# "play as null".
+	_check_int("a player joined with nothing to choose", roster.count(), 1)
+	_check_bool("and holds no character", roster.character_at(0) == null, true)
+	_check_int("so the run is handed one empty slot, not a null one", roster.to_player_characters().size(), 1)
+	_check_bool("nothing is handed over", roster.to_player_characters()[0] == null, true)
+	_check_bool("and there is nothing to step through", roster.select_next(PlayerRoster.KEYBOARD_DEVICE), false)
+
+	# A catalogue arriving late must not leave picks pointing past its end.
+	roster.catalogue = _make_catalogue(["ALPHA"])
+	_check_bool("a late catalogue reaches the player already in", roster.character_at(0).display_key == "ALPHA", true)
+	_check_bool("a single entry has nowhere to step to", roster.select_next(PlayerRoster.KEYBOARD_DEVICE), false)
 
 # --- weapons as purchasables -----------------------------------------------
 

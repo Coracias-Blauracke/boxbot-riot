@@ -1,10 +1,14 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scenes/lobby.gd" id="1_lobby"]
 [ext_resource type="Script" path="res://scenes/ui/join_view.gd" id="2_joinview"]
+[ext_resource type="Resource" path="res://content/characters/default_characters.tres" id="3_roster"]
+[ext_resource type="Resource" path="res://content/stats/stat_sheet.tres" id="4_stats"]
 
 [node name="Lobby" type="Node"]
 script = ExtResource("1_lobby")
+characters = ExtResource("3_roster")
+stat_sheet = ExtResource("4_stats")
 
 [node name="Ui" type="CanvasLayer" parent="."]
 layer = 4

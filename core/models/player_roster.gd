@@ -15,8 +15,24 @@ extends RefCounted
 ## Join ORDER is player order. First to press is P1 and takes the top-left
 ## corner in combat, in the shop and in this list, so the person who sees
 ## themselves as P1 in the lobby is P1 everywhere afterwards.
+##
+## WHAT they are playing lives here too, beside who they are playing on. A
+## character is decided before a run and re-decided between runs, which is the
+## same argument that put the roster in the lobby rather than in the run - and
+## it is what makes a restart keep both the people and their chassis. The rules
+## of choosing are here rather than in the lobby for the same reason the rules
+## of joining are: they are testable headless only while nothing in this file
+## touches Input or a Node.
 
+## Who is in. Emitted by joining and leaving ONLY.
 signal changed
+
+## Somebody moved onto a different character. Deliberately NOT `changed`, and
+## the separation is load-bearing rather than tidy: the lobby rebuilds its
+## PlayerInput list on `changed`, and it steps selections from inside a loop
+## over that very list. One signal for both would mutate the array being
+## iterated, sixty times a second, on the frame a player nudges the stick.
+signal selection_changed
 
 ## Four is the hard ceiling everywhere else too - HUD corners, shop panel
 ## layouts, PlayerPalette. Raising it means answering what a fifth corner is.
@@ -34,6 +50,23 @@ const KEYBOARD_DEVICE := -1
 ## export takes, which is why the lobby can hand a run its composition without
 ## either of them learning anything new.
 var devices: Array[int] = []
+
+## What may be chosen between. Null or empty means no choice exists, every
+## selection call is a no-op and to_player_characters() hands back nothing - at
+## which point the run falls back to its own authored character, which is what
+## keeps main.tscn launchable with no lobby in front of it.
+var catalogue: CharacterSet = null:
+	set(value):
+		catalogue = value
+		# A catalogue swapped under a filled roster would otherwise leave picks
+		# pointing past the end of the new one, and character_at() would answer
+		# null for a player who is plainly standing in a slot.
+		_clamp_picks()
+
+## Index into the catalogue, one per joined slot, in the SAME order as
+## `devices`. Private, and kept in step by this class alone: two public arrays
+## that must agree is a bug waiting for the first caller who edits one of them.
+var _picks: Array[int] = []
 
 func count() -> int:
 	return devices.size()
@@ -58,7 +91,11 @@ func can_join(device_id: int) -> bool:
 func join(device_id: int) -> bool:
 	if not can_join(device_id):
 		return false
+	# Picked BEFORE the device is appended, so the seat number the default reads
+	# is the one this player is about to take rather than the next one.
+	var pick := _default_pick()
 	devices.append(device_id)
+	_picks.append(pick)
 	changed.emit()
 	return true
 
@@ -71,6 +108,9 @@ func leave(device_id: int) -> bool:
 	if index < 0:
 		return false
 	devices.remove_at(index)
+	# The SAME index, or every player after the one who left inherits somebody
+	# else's character while keeping their own pad.
+	_picks.remove_at(index)
 	changed.emit()
 	return true
 
@@ -78,8 +118,81 @@ func clear() -> void:
 	if devices.is_empty():
 		return
 	devices.clear()
+	_picks.clear()
 	changed.emit()
 
 ## A copy, so a run cannot edit the roster it was handed.
 func to_player_devices() -> Array[int]:
 	return devices.duplicate()
+
+# --- characters ------------------------------------------------------------
+
+## Which catalogue entry a player is on, or -1 for a slot nobody holds.
+func pick_of(index: int) -> int:
+	if index < 0 or index >= _picks.size():
+		return -1
+	return _picks[index]
+
+func character_at(index: int) -> CharacterData:
+	if catalogue == null:
+		return null
+	return catalogue.at(pick_of(index))
+
+func character_for_device(device_id: int) -> CharacterData:
+	return character_at(devices.find(device_id))
+
+## Index-aligned with to_player_devices(), which is what lets the lobby hand a
+## run both arrays and the run pair them up by position without either side
+## learning what a lobby is. Empty when there is no catalogue, so a run with
+## nothing injected keeps its authored character.
+func to_player_characters() -> Array[CharacterData]:
+	var chosen: Array[CharacterData] = []
+	for index in _picks.size():
+		chosen.append(character_at(index))
+	return chosen
+
+func select_next(device_id: int) -> bool:
+	return _step(device_id, 1)
+
+func select_previous(device_id: int) -> bool:
+	return _step(device_id, -1)
+
+## Wraps in both directions. A list of eight with ends to fall off is a list
+## where the last character is harder to reach than the first for no reason a
+## player could name.
+func _step(device_id: int, delta: int) -> bool:
+	var size := _catalogue_size()
+	var index := devices.find(device_id)
+	if index < 0 or size <= 1:
+		return false
+
+	_picks[index] = posmod(_picks[index] + delta, size)
+	selection_changed.emit()
+	return true
+
+## Start at the seat number, walk forward to the first character nobody else is
+## on. With eight characters and four players that is four different chassis
+## and nobody had to press anything to get there.
+##
+## A DEFAULT, not a rule. Duplicate picks are allowed - forbidding them means
+## answering what four players do with two authored characters, and "we both
+## want the tank" is not a problem worth code on a shared couch.
+func _default_pick() -> int:
+	var size := _catalogue_size()
+	if size <= 0:
+		return 0
+
+	var start := devices.size() % size
+	for step in size:
+		var candidate := (start + step) % size
+		if not _picks.has(candidate):
+			return candidate
+	return start
+
+func _catalogue_size() -> int:
+	return 0 if catalogue == null else catalogue.count()
+
+func _clamp_picks() -> void:
+	var size := _catalogue_size()
+	for index in _picks.size():
+		_picks[index] = 0 if size <= 0 else clampi(_picks[index], 0, size - 1)
