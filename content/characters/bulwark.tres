@@ -26,6 +26,7 @@ value = 6.0
 [resource]
 script = ExtResource("1_char")
 display_key = "CHAR_BULWARK"
+description_key = "CHAR_BULWARK_DESC"
 collider_radius = 13.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("armor")])
 weapon_slots = 5

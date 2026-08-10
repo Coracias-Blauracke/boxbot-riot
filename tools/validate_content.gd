@@ -558,6 +558,14 @@ func _validate_character_set(path: String, set_data: CharacterSet) -> void:
 			continue
 
 		_listed_characters[entry.resource_path] = true
+		# Asked of a SET member rather than of every character file, because the
+		# paragraph is a select-screen thing: a character nothing offers - a
+		# fallback, a test rig - has no screen to be blank on.
+		if entry.description_key.is_empty():
+			_warnings.append(
+				"%s : characters[%d] (%s) has no description_key, so its panel says nothing"
+				% [path, i, entry.display_key]
+			)
 		# Two identical entries are two slots a player cannot tell apart, and the
 		# select screen would show the same name twice with no way to say why.
 		if seen.has(entry.resource_path):

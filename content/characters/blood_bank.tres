@@ -42,6 +42,7 @@ payment_rate = 0.3
 [resource]
 script = ExtResource("1_char")
 display_key = "CHAR_BLOOD_BANK"
+description_key = "CHAR_BLOOD_BANK_DESC"
 collider_radius = 13.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("regen"), SubResource("crit")])
 innate_effects = Array[ExtResource("5_base")]([SubResource("e_blood_price")])

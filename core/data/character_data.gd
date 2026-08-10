@@ -13,6 +13,21 @@ extends EntityData
 ## who also explodes on every step" would need a new class instead of one more
 ## entry in a list.
 
+## A few sentences of flavour for the select screen, as a TRANSLATION KEY like
+## every other player-facing string here.
+##
+## Deliberately on CharacterData and NOT on ShopEntryData, which would give
+## every item and weapon one too. "Item text is DERIVED, never authored" is a
+## rule with a reason - hand-written text drifts from the numbers it describes
+## the moment somebody retunes one, silently, at a few hundred items. A chassis
+## is the exception because it is an IDENTITY rather than a bundle: "pays for
+## everything in blood" is a sentence no stat line can produce, and there are
+## eight of these rather than hundreds.
+##
+## The numbers under it are still derived. This adds a paragraph, it does not
+## replace the stat lines.
+@export var description_key: String = ""
+
 @export_group("Run start")
 ## Weapons this character begins the run holding.
 ##

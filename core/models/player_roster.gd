@@ -66,7 +66,18 @@ var catalogue: CharacterSet = null:
 ## Index into the catalogue, one per joined slot, in the SAME order as
 ## `devices`. Private, and kept in step by this class alone: two public arrays
 ## that must agree is a bug waiting for the first caller who edits one of them.
+##
+## This IS the cursor on the select screen. A player's cursor position and their
+## choice are the same number - there is no second "what I am hovering" to keep
+## in step with it, and no state that can disagree with what is drawn.
 var _picks: Array[int] = []
+
+## Who has locked their choice in. Same order, same lockstep.
+##
+## A confirmed player's cursor is FROZEN until they back out, which is the whole
+## reason confirming is worth a flag: without it somebody confirms one chassis,
+## carries on browsing, and their slot shows a character they will not play.
+var _confirmed: Array[bool] = []
 
 func count() -> int:
 	return devices.size()
@@ -96,6 +107,7 @@ func join(device_id: int) -> bool:
 	var pick := _default_pick()
 	devices.append(device_id)
 	_picks.append(pick)
+	_confirmed.append(false)
 	changed.emit()
 	return true
 
@@ -111,6 +123,7 @@ func leave(device_id: int) -> bool:
 	# The SAME index, or every player after the one who left inherits somebody
 	# else's character while keeping their own pad.
 	_picks.remove_at(index)
+	_confirmed.remove_at(index)
 	changed.emit()
 	return true
 
@@ -119,6 +132,7 @@ func clear() -> void:
 		return
 	devices.clear()
 	_picks.clear()
+	_confirmed.clear()
 	changed.emit()
 
 ## A copy, so a run cannot edit the roster it was handed.
@@ -152,23 +166,75 @@ func to_player_characters() -> Array[CharacterData]:
 	return chosen
 
 func select_next(device_id: int) -> bool:
-	return _step(device_id, 1)
+	return select_by(device_id, 1)
 
 func select_previous(device_id: int) -> bool:
-	return _step(device_id, -1)
+	return select_by(device_id, -1)
 
-## Wraps in both directions. A list of eight with ends to fall off is a list
-## where the last character is harder to reach than the first for no reason a
-## player could name.
-func _step(device_id: int, delta: int) -> bool:
+## Moves a player's cursor by `delta` catalogue entries, wrapping both ways.
+##
+## A DELTA rather than a direction, because the select screen is a GRID and
+## moving down is "forward by one row". How wide a row is belongs to the view -
+## the roster is a flat list and stays one, so a layout change never reaches
+## core/ and the rule can still be tested headless.
+##
+## Wrapping is deliberate: a list with ends to fall off makes the last character
+## harder to reach than the first for no reason a player could name.
+func select_by(device_id: int, delta: int) -> bool:
 	var size := _catalogue_size()
 	var index := devices.find(device_id)
-	if index < 0 or size <= 1:
+	if index < 0 or size <= 1 or is_confirmed(index):
 		return false
 
 	_picks[index] = posmod(_picks[index] + delta, size)
 	selection_changed.emit()
 	return true
+
+# --- locking it in ----------------------------------------------------------
+
+func is_confirmed(index: int) -> bool:
+	return index >= 0 and index < _confirmed.size() and _confirmed[index]
+
+func is_device_confirmed(device_id: int) -> bool:
+	return is_confirmed(devices.find(device_id))
+
+func confirm(device_id: int) -> bool:
+	var index := devices.find(device_id)
+	# Nothing to confirm with an empty catalogue: the run would be started on a
+	# choice nobody made.
+	if index < 0 or _confirmed[index] or _catalogue_size() <= 0:
+		return false
+
+	_confirmed[index] = true
+	selection_changed.emit()
+	return true
+
+## ONE button, two meanings, and the state says which - exactly as the shop's
+## tile menu layers CLOSE over the screen it was opened from. Backing out of a
+## locked choice returns to browsing; backing out of browsing leaves the lobby.
+##
+## The layering lives HERE rather than in DeviceJoiner so it can be tested
+## without a device: the joiner watches buttons and knows nothing about what a
+## press means.
+func back_out(device_id: int) -> bool:
+	var index := devices.find(device_id)
+	if index < 0:
+		return false
+
+	if _confirmed[index]:
+		_confirmed[index] = false
+		selection_changed.emit()
+		return true
+
+	return leave(device_id)
+
+## Whether the run may start. Everybody who joined, and at least one of them -
+## an empty lobby trivially satisfies "all of them agree" and must not start a
+## run with no players in it.
+func everyone_confirmed() -> bool:
+	if devices.is_empty():
+		return false
+	return not _confirmed.has(false)
 
 ## Start at the seat number, walk forward to the first character nobody else is
 ## on. With eight characters and four players that is four different chassis

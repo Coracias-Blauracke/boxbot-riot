@@ -32,6 +32,7 @@ value = -0.15
 [resource]
 script = ExtResource("1_char")
 display_key = "CHAR_RIVETER"
+description_key = "CHAR_RIVETER_DESC"
 collider_radius = 12.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("attack_speed"), SubResource("ranged")])
 weapon_slots = 6

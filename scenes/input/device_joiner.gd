@@ -46,9 +46,14 @@ func poll() -> void:
 	for pad in Input.get_connected_joypads():
 		_poll_device(pad)
 
-## A device that has not joined can join; one that has can leave. The same
-## device is never asked both questions in a frame, which is what stops a
-## confirm press from being read as a leave by the player it just created.
+## ONE press does ONE thing, and which thing is a question for the roster.
+##
+## The same device is never asked two questions in a frame, which is what stops
+## the press that joins somebody from also confirming their default character on
+## the very same frame - the edge is consumed here and the next one needs a
+## release first. That is also why confirming lives in this class rather than in
+## the lobby's PlayerInput loop, which polls the same physical button and would
+## see it go down on the join frame.
 func _poll_device(device_id: int) -> void:
 	var confirm := _confirm_pressed(device_id)
 	var cancel := _cancel_pressed(device_id)
@@ -59,8 +64,16 @@ func _poll_device(device_id: int) -> void:
 	_cancel_held[device_id] = cancel
 
 	if roster.has(device_id):
-		if cancel_edge and roster.leave(device_id):
-			left.emit(device_id)
+		if confirm_edge:
+			roster.confirm(device_id)
+		elif cancel_edge:
+			# back_out(), not leave(): a confirmed player is returned to
+			# browsing and only a browsing one leaves. The roster owns that
+			# layering - this class only knows a button went down.
+			var was_in := roster.has(device_id)
+			roster.back_out(device_id)
+			if was_in and not roster.has(device_id):
+				left.emit(device_id)
 		return
 
 	if confirm_edge and roster.join(device_id):

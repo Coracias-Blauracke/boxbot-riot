@@ -40,6 +40,7 @@ bonus = 0.2
 [resource]
 script = ExtResource("1_char")
 display_key = "CHAR_FURNACE"
+description_key = "CHAR_FURNACE_DESC"
 collider_radius = 13.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("burn_chance"), SubResource("attack_speed")])
 innate_effects = Array[ExtResource("5_base")]([SubResource("e_vs_burn")])

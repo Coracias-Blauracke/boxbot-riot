@@ -148,6 +148,9 @@ func _initialize() -> void:
 	_test_leaving_takes_that_player_s_character_with_it()
 	_test_selecting_wraps_and_two_players_may_share_a_chassis()
 	_test_no_catalogue_means_the_run_keeps_its_own_character()
+	_test_confirming_freezes_a_cursor_and_backing_out_thaws_it()
+	_test_the_run_waits_for_every_joined_player_to_confirm()
+	_test_a_grid_step_is_a_delta_the_view_chooses()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -2483,6 +2486,97 @@ func _test_no_catalogue_means_the_run_keeps_its_own_character() -> void:
 	roster.catalogue = _make_catalogue(["ALPHA"])
 	_check_bool("a late catalogue reaches the player already in", roster.character_at(0).display_key == "ALPHA", true)
 	_check_bool("a single entry has nowhere to step to", roster.select_next(PlayerRoster.KEYBOARD_DEVICE), false)
+
+func _test_confirming_freezes_a_cursor_and_backing_out_thaws_it() -> void:
+	print("\n-- locking a chassis in --")
+	var roster := PlayerRoster.new()
+	roster.catalogue = _make_catalogue(["ALPHA", "BETA", "GAMMA"])
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+
+	_check_bool("nobody starts confirmed", roster.is_confirmed(0), false)
+	_check_bool("confirming answers yes", roster.confirm(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_bool("and confirming twice does not", roster.confirm(PlayerRoster.KEYBOARD_DEVICE), false)
+
+	# The reason confirming is worth a flag at all: without the freeze somebody
+	# locks one chassis, carries on browsing, and their slot shows a character
+	# they will not be playing.
+	_check_bool("a locked cursor refuses to move", roster.select_next(PlayerRoster.KEYBOARD_DEVICE), false)
+	_check_int("and stays where it was", roster.pick_of(0), 0)
+
+	# ONE button, two meanings, and the state says which - the same layering the
+	# shop's tile menu uses for CLOSE.
+	_check_bool("backing out of a lock answers yes", roster.back_out(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_bool("and returns to browsing rather than leaving", roster.has(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_bool("the cursor moves again", roster.select_next(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_int("to the next chassis", roster.pick_of(0), 1)
+
+	# Backing out AGAIN is the one that leaves, which is what makes B a single
+	# button a player never has to think about.
+	_check_bool("backing out of browsing leaves", roster.back_out(PlayerRoster.KEYBOARD_DEVICE), true)
+	_check_int("the lobby is empty", roster.count(), 0)
+	_check_bool("and backing out of nothing does nothing", roster.back_out(PlayerRoster.KEYBOARD_DEVICE), false)
+
+func _test_the_run_waits_for_every_joined_player_to_confirm() -> void:
+	print("\n-- everybody, or nobody --")
+	var roster := PlayerRoster.new()
+	roster.catalogue = _make_catalogue(["ALPHA", "BETA"])
+
+	# An empty lobby trivially satisfies "all of them agree", which would start a
+	# run with no players in it.
+	_check_bool("an empty lobby is not ready", roster.everyone_confirmed(), false)
+
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+	roster.join(0)
+	_check_bool("two joined and neither confirmed", roster.everyone_confirmed(), false)
+
+	roster.confirm(PlayerRoster.KEYBOARD_DEVICE)
+	_check_bool("one of two is not everybody", roster.everyone_confirmed(), false)
+
+	roster.confirm(0)
+	_check_bool("both confirmed", roster.everyone_confirmed(), true)
+
+	# A third player arriving un-readies the lobby, which is the whole point of
+	# asking every JOINED player rather than counting confirmations.
+	roster.join(1)
+	_check_bool("somebody joining takes it back", roster.everyone_confirmed(), false)
+
+	# And leaving hands it back, rather than leaving a lobby nobody can start.
+	roster.leave(1)
+	_check_bool("and their leaving gives it back", roster.everyone_confirmed(), true)
+
+	# The flags travel with the PLAYER, exactly as the picks do: P2 leaving must
+	# not hand P3 somebody else's confirmation.
+	roster.join(1)
+	roster.confirm(1)
+	roster.back_out(0)
+	roster.leave(0)
+	_check_int("two are left", roster.count(), 2)
+	_check_bool("the keyboard is still locked", roster.is_confirmed(0), true)
+	_check_bool("and the player who moved up kept their own lock", roster.is_confirmed(1), true)
+
+func _test_a_grid_step_is_a_delta_the_view_chooses() -> void:
+	print("\n-- stepping a grid --")
+	var roster := PlayerRoster.new()
+	roster.catalogue = _make_catalogue(["A", "B", "C", "D", "E", "F", "G", "H"])
+	roster.join(PlayerRoster.KEYBOARD_DEVICE)
+
+	# "Down" is forward by one ROW, and how wide a row is belongs to the view.
+	# The roster is a flat list and stays one, so a layout change never reaches
+	# core/ - which is what keeps this testable without a screen.
+	_check_bool("a row step answers yes", roster.select_by(PlayerRoster.KEYBOARD_DEVICE, 4), true)
+	_check_int("four columns down is four entries on", roster.pick_of(0), 4)
+
+	_check_bool("and back up", roster.select_by(PlayerRoster.KEYBOARD_DEVICE, -4), true)
+	_check_int("returns to the first row", roster.pick_of(0), 0)
+
+	# Wrapping, so the bottom row is not a wall. Up from the top lands on the
+	# last row of a full grid.
+	roster.select_by(PlayerRoster.KEYBOARD_DEVICE, -4)
+	_check_int("up from the top wraps to the bottom", roster.pick_of(0), 4)
+
+	# A step wider than the catalogue is still a step, not a crash.
+	roster.select_by(PlayerRoster.KEYBOARD_DEVICE, 20)
+	_check_int("an oversized delta wraps rather than escaping", roster.pick_of(0), 0)
 
 # --- weapons as purchasables -----------------------------------------------
 

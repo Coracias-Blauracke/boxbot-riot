@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 689 assertions across three suites, no editor, no game window
+# tests — 716 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -80,6 +80,8 @@ accident:
 | `--capture-restart=N` | restarts the run, and photographs the result into `after_restart/` |
 | `--capture-lobby` | holds the lobby open with the roster filled, instead of starting the run |
 | `--capture-select=a,b,c` | puts player N on catalogue entry N, in the lobby and therefore in the run |
+| `--capture-confirmed` | locks every lobby player in, which is the only way the confirmed cursors and the START line are photographed |
+| `--capture-scroll=a,b,c` | scrolls player N's seat panel down N lines |
 | `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
 
 `--capture-select` STEPS the selection one nudge at a time rather than assigning
@@ -285,11 +287,56 @@ duplicates means inventing answers for a catalogue smaller than the player
 count, and "we both want the tank" is not a problem worth code on a shared
 couch.
 
-**A slot describes its character from the character's own modifiers**, through
-the same `StatMetadata` the shop's detail block uses, so authoring a character
-is a `.tres` and nothing else. One rule is new here: a BASE modifier is what the
-chassis IS and draws as a bare value, while FLAT and PERCENT are DELTAS and draw
-with their sign and their colour. Without that, 165 HP renders as "+165".
+**A seat panel describes its character from the character's own modifiers**,
+through the same `StatMetadata` the shop's detail block uses, so authoring a
+character is a `.tres` and nothing else. One rule is new here: a BASE modifier
+is what the chassis IS and draws as a bare value, while FLAT and PERCENT are
+DELTAS and draw with their sign and their colour. Without that, 165 HP renders
+as "+165".
+
+**The rack is ONE shared grid with four cursors, not four private lists.** The
+interesting thing on a couch is seeing what everybody else is hovering, and
+duplicate picks are allowed - so cursors NEST, drawn one inside the other, with
+their player tabs walking sideways. Stacking them on one corner means the last
+one drawn hides the rest, which is exactly the case the tab exists for.
+
+**Confirming FREEZES a cursor, and that is why it is worth a flag.** Without it
+somebody locks one chassis, carries on browsing, and their seat panel shows a
+character they will not be playing. `START` then waits for everybody, which
+REVERSES the earlier "any joined player may start it" - that was right while
+joining was the only decision, and stopped being right the moment there was
+something to be halfway through. Who presses it is still a couch problem.
+
+**B means two things and the state says which**: back out of a lock to browsing,
+back out of browsing to leave. The layering lives in `PlayerRoster.back_out()`
+rather than in `DeviceJoiner`, so it can be tested without a device - the joiner
+watches buttons and knows nothing about what a press means.
+
+**`DeviceJoiner` owns ACCEPT for joined players too**, not just for joining. It
+is the only thing that can guarantee the press which joins somebody does not
+also confirm their default chassis on the same frame: it consumes the edge, and
+the next one needs a release first. The lobby's `PlayerInput` loop reads the
+same physical button and would see it go down on the join frame.
+
+**Scrolling is the RIGHT stick, and the panel scrolls by whole LINES.** A
+fractional offset would draw the top and bottom lines cut in half, and a single
+`Control` that draws every seat cannot clip per seat. Whole lines need no
+clipping at all - a line is either inside the window or it is not drawn.
+`PlayerInput.scroll_axis()` is deliberately not an `Action`: the four directions
+are discrete steps with a repeat, and reading wants a rate, not a staircase.
+
+**`CharacterData.description_key` is the ONE piece of authored player-facing
+prose in the game**, and it is deliberately not on `ShopEntryData` - that would
+give every item and weapon one, and "item text is DERIVED, never authored" is a
+rule with a reason. A chassis is an identity rather than a bundle: "pays for
+everything in blood" is a sentence no stat line can produce, and there are eight
+of these rather than hundreds. The numbers under it are still derived.
+
+Note it renders as the KEY today (`CHAR_FURNACE_DESC`), because no translation
+is loaded - the same reason the shop reads `WEAPON_BOLT_DRIVER_I`. The prose
+itself lives in `docs/character_list.md` until there is a translation to put it
+in, and doing that properly means every key in the game at once, not a
+characters-only file that leaves one panel half-translated.
 
 **`CharacterData.slot_modifiers()` is where "a slot count IS a BASE modifier on
 its stat" lives.** That rule used to sit inside `EntityModel`, which meant any
@@ -816,15 +863,20 @@ restart and quit, and the same menu opens itself when the run ends, so a wipe no
 longer means closing the executable.
 
 The game starts in a LOBBY: up to four players join by pressing SPACE or A on
-the device they intend to play with, one player per device, and any joined
-player begins the run with START. The solo/co-op toggle and the run rules it
-will still grow are decisions taken before a run exists, and this is the place
-that has them.
+the device they intend to play with, one player per device. The solo/co-op
+toggle and the run rules it will still grow are decisions taken before a run
+exists, and this is the place that has them.
 
-CHARACTER SELECT IS IN IT. Each player moves through the authored roster with
-LEFT and RIGHT on their own device, their slot describes the chassis from its
-own modifiers, and the picks are injected into the run beside the devices - so a
-restart brings back both who was playing and what they were playing. EIGHT
+CHARACTER SELECT IS IN IT, as a shared RACK with one cursor per player. Four
+seat panels sit along the top and every character in the roster sits in a grid
+below them, carrying a cursor per joined player in that player's own colour.
+The seat panel describes whatever its cursor is on - portrait, authored prose
+and the derived stat and ability lines - and scrolls on the right stick when
+there is more of it than fits. A confirms and FREEZES that player's cursor, B
+backs out (to browsing, then out of the lobby), and START begins the run only
+once every joined player has confirmed. The picks are injected into the run
+beside the devices - so a restart brings back both who was playing and what they
+were playing. EIGHT
 characters are authored from `docs/character_list.md`: standard_unit, riveter,
 bulwark, skirmisher, bloodletter, furnace, prospector and blood_bank. Six are
 stat lines and nothing else. `furnace` is the first character with an ability
