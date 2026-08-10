@@ -13,4 +13,5 @@
 
 [resource]
 script = ExtResource("1_set")
+baseline = ExtResource("c_standard")
 characters = Array[ExtResource("2_char")]([ExtResource("c_standard"), ExtResource("c_riveter"), ExtResource("c_bulwark"), ExtResource("c_skirmisher"), ExtResource("c_bloodletter"), ExtResource("c_furnace"), ExtResource("c_prospector"), ExtResource("c_blood_bank")])

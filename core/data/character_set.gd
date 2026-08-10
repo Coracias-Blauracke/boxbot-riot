@@ -16,6 +16,26 @@ extends Resource
 
 @export var characters: Array[CharacterData] = []
 
+## The chassis every other one is READ against.
+##
+## Characters are meant to converge on one shared frame - the same health, the
+## same speed - so that what a character IS can be stated as what it trades. The
+## select screen therefore shows only the stats that DIFFER from this one, which
+## is the difference between a panel that lists six numbers and a panel that
+## says "tougher, slower, one weapon fewer".
+##
+## A READING aid and nothing else. Every character still carries its own
+## complete stat line and a run is built from that alone, so nothing here can
+## change what anybody actually plays - only what the screen bothers to mention.
+## Left empty, the FIRST character stands in, because a roster's first entry is
+## the plain one in every game that has a plain one.
+@export var baseline: CharacterData
+
+func baseline_or_first() -> CharacterData:
+	if baseline != null:
+		return baseline
+	return at(0)
+
 func count() -> int:
 	return characters.size()
 

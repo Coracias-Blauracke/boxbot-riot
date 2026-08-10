@@ -264,15 +264,7 @@ func _description_lines(character: CharacterData) -> Array[Line]:
 			lines.append(Line.new(text, "", Color(0.82, 0.86, 0.93), Color.WHITE, 14))
 		lines.append(Line.new(""))
 
-	var modifiers := character.base_stats.duplicate()
-	# The slot counts come LAST and always, never "only when unusual": a rule
-	# that hides the ordinary value leaves the player unable to tell a chassis
-	# with no opinion from one that happens to agree with the default.
-	modifiers.append_array(character.slot_modifiers())
-
-	for modifier in modifiers:
-		if modifier != null:
-			lines.append(_stat_line(modifier))
+	lines.append_array(_delta_lines(character))
 
 	# The ABILITIES, in the effect's own words - the same describe() the shop's
 	# detail block calls. Without them the two most interesting chassis in the
@@ -297,33 +289,97 @@ func _description_lines(character: CharacterData) -> Array[Line]:
 
 	return lines
 
-## A BASE modifier is what the chassis IS and reads as a bare value; a FLAT or
-## PERCENT one is a DELTA from the baseline and reads with its sign and its
-## colour. Same distinction the authoring convention in docs/character_list.md
-## draws, and it is why 165 HP does not render as "+165".
+## What a chassis TRADES, and nothing else.
 ##
-## Good and bad come from StatMetadata.higher_is_better, never from the sign -
-## a character with less spread is a better one.
-func _stat_line(modifier: StatModifier) -> Line:
-	var meta: StatMetadata = stat_sheet.metadata_for(modifier.stat) if stat_sheet != null else null
-	if meta == null:
-		return Line.new("STAT_%d" % modifier.stat, str(modifier.value))
+## Only stats that differ from the roster's baseline appear, so a panel says
+## "tougher, slower, one weapon fewer" instead of listing six numbers of which
+## four are the same on every character. An unchanged stat drawn in grey is
+## noise the player has to read past every single time.
+##
+## Deliberately NOT computed from effective stat values. A holder's PERCENT is
+## applied to their WEAPONS - Riveter's -15% RANGED_DAMAGE sits on a base of
+## zero and would compare equal to the baseline - so the comparison is between
+## the authored POOLS, which is also where the sign the player cares about is.
+##
+## Good and bad come from StatMetadata.higher_is_better, never from the sign: a
+## chassis with less spread is a better one, and lower SPREAD_ANGLE draws green.
+func _delta_lines(character: CharacterData) -> Array[Line]:
+	var lines: Array[Line] = []
+	if stat_sheet == null or roster.catalogue == null:
+		return lines
 
-	var is_base := modifier.modifier_type == StatTypes.Modifier.BASE
-	var value := (
-		meta.format_value(modifier.value)
-		if is_base
-		else meta.format_modifier(modifier.modifier_type, modifier.value)
-	)
-	var value_color := Color(0.78, 0.82, 0.88)
-	if not is_base:
-		value_color = (
-			Color(0.5, 0.9, 0.55)
-			if meta.is_improvement(modifier.value)
-			else Color(0.95, 0.5, 0.45)
+	var mine := _Pools.new(character)
+	var baseline := _Pools.new(roster.catalogue.baseline_or_first())
+
+	# In the STAT SHEET's order, for the same reason the shop's sheet enumerates
+	# it: a stat authored later appears here without this screen being touched.
+	for meta in stat_sheet.visible_sorted():
+		_append_delta(
+			lines, meta, StatTypes.Modifier.FLAT,
+			mine.additive_of(meta.stat) - baseline.additive_of(meta.stat)
+		)
+		_append_delta(
+			lines, meta, StatTypes.Modifier.PERCENT,
+			mine.percent_of(meta.stat) - baseline.percent_of(meta.stat)
 		)
 
-	return Line.new(tr(meta.display_key), value, Color(0.7, 0.74, 0.81), value_color)
+	if lines.is_empty():
+		# The baseline itself, and every future chassis that trades nothing.
+		# An empty block reads as a screen that failed to load.
+		lines.append(Line.new(
+			"no trades - the standard frame", "", Color(0.5, 0.54, 0.62), Color.WHITE, 13
+		))
+
+	return lines
+
+func _append_delta(
+	lines: Array[Line], meta: StatMetadata, kind: StatTypes.Modifier, delta: float
+) -> void:
+	if is_zero_approx(delta):
+		return
+
+	lines.append(Line.new(
+		tr(meta.display_key), meta.format_modifier(kind, delta), Color(0.7, 0.74, 0.81),
+		Color(0.5, 0.9, 0.55) if meta.is_improvement(delta) else Color(0.95, 0.5, 0.45)
+	))
+
+## One chassis's authored modifiers, gathered per stat.
+##
+## BASE and FLAT are summed because both are in the stat's own unit and both
+## move it by adding; PERCENT is kept apart because it scales instead. That is
+## the same split WeaponModel makes when a holder's stats reach a weapon, and
+## keeping it here means a -15% and a +15 never cancel into nothing.
+##
+## MULT is deliberately absent. Its neutral is 1.0, so a difference of two
+## multipliers is not a quantity of the stat and cannot be rendered as one -
+## nothing authored uses it on a character, and folding it in would be a lie the
+## day something does.
+class _Pools:
+	var _additive: Dictionary = {}
+	var _percent: Dictionary = {}
+
+	func _init(character: CharacterData) -> void:
+		if character == null:
+			return
+
+		var modifiers := character.base_stats.duplicate()
+		modifiers.append_array(character.slot_modifiers())
+
+		for modifier in modifiers:
+			if modifier == null:
+				continue
+			if modifier.modifier_type == StatTypes.Modifier.PERCENT:
+				_percent[modifier.stat] = percent_of(modifier.stat) + modifier.value
+			elif modifier.modifier_type != StatTypes.Modifier.MULT:
+				_additive[modifier.stat] = additive_of(modifier.stat) + modifier.value
+
+	func additive_of(stat: StatTypes.Stat) -> float:
+		var value: float = _additive.get(stat, 0.0)
+		return value
+
+	func percent_of(stat: StatTypes.Stat) -> float:
+		var value: float = _percent.get(stat, 0.0)
+		return value
 
 ## Greedy word wrap. Needed because the description is the first text in this
 ## repo long enough to need it, and because the scroll counts LINES - which

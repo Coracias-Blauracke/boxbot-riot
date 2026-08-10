@@ -287,12 +287,30 @@ duplicates means inventing answers for a catalogue smaller than the player
 count, and "we both want the tank" is not a problem worth code on a shared
 couch.
 
-**A seat panel describes its character from the character's own modifiers**,
-through the same `StatMetadata` the shop's detail block uses, so authoring a
-character is a `.tres` and nothing else. One rule is new here: a BASE modifier
-is what the chassis IS and draws as a bare value, while FLAT and PERCENT are
-DELTAS and draw with their sign and their colour. Without that, 165 HP renders
-as "+165".
+**A seat panel lists what a chassis TRADES, not what it has.** Only stats that
+differ from `CharacterSet.baseline` appear, signed and coloured; an unchanged
+stat is not drawn at all. Characters are meant to converge on one shared frame -
+the same health, the same speed - so "tougher, slower, one weapon fewer" is the
+sentence, and six numbers of which four are identical on every chassis is noise
+the player reads past every time. Standard Unit therefore says *no trades*.
+
+The comparison is between the authored POOLS, deliberately not between effective
+stat values. A holder's PERCENT is applied to their WEAPONS, so Riveter's -15%
+RANGED_DAMAGE sits on a base of zero and would compare exactly equal to the
+baseline - the sign the player cares about would vanish. BASE and FLAT are
+summed (both add, both in the stat's unit) and PERCENT is kept apart (it
+scales), which is the same split `WeaponModel` makes.
+
+The baseline is a READING aid and nothing else: every character still carries a
+complete stat line and a run is built from that alone, so it can never change
+what anybody plays - only what the screen bothers to mention.
+
+*(This replaces an earlier rule that a BASE modifier draws as a bare value and
+the slot counts are shown "always, never only when unusual". That was right
+while there was no reference point, when hiding an ordinary value would have
+left the player unable to tell "no opinion" from "agrees with the default".
+A baseline IS that reference point, so the absence of a line now means
+something.)*
 
 **The rack is ONE shared grid with four cursors, not four private lists.** The
 interesting thing on a couch is seeing what everybody else is hovering, and
@@ -343,10 +361,8 @@ its stat" lives.** That rule used to sit inside `EntityModel`, which meant any
 screen wanting to describe a chassis honestly had to know it a second time — and
 a chassis with five weapon slots would otherwise say nothing about the one trade
 that cannot be bought back cheaply. The model now applies exactly the list the
-data hands it, and the select screen draws the same list. Always, never "only
-when it differs from the default": a rule that hides the ordinary value leaves
-the player unable to tell a chassis with no opinion from one that agrees with
-the default.
+data hands it, and the select screen compares the same list against the
+baseline, so Bulwark's fifth slot reads `-1` beside its armour.
 
 **The validator warns about a character nothing can reach** - no `CharacterSet`
 lists it and no scene names it. That is content which loads, validates and can

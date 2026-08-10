@@ -46,6 +46,13 @@ number is written down.
 the deltas are written in the table so they can be compared at a glance rather
 than reconstructed from eight files.
 
+It is also the baseline in the ENGINE: `CharacterSet.baseline` names it, and the
+select screen shows only the stats a chassis changes relative to it. That is why
+the numbers in the table are the right way to think about a character - the
+screen shows exactly this column and nothing else, and Standard Unit's panel
+reads *no trades*. The long-term intent is that health and speed converge on one
+frame, so that a character that moves either one is SAYING something.
+
 ### Rules the roster follows
 
 **A character is a TRADE, not a bonus.** Every entry gives something up. A
