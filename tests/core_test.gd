@@ -151,6 +151,9 @@ func _initialize() -> void:
 	_test_confirming_freezes_a_cursor_and_backing_out_thaws_it()
 	_test_the_run_waits_for_every_joined_player_to_confirm()
 	_test_a_grid_step_is_a_delta_the_view_chooses()
+	_test_a_cursor_wraps_inside_its_row_and_its_column()
+	_test_a_ragged_last_row_wraps_among_what_is_there()
+	_test_the_rack_scrolls_only_when_the_cursor_would_leave_it()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -2579,28 +2582,103 @@ func _test_the_run_waits_for_every_joined_player_to_confirm() -> void:
 	_check_bool("and the player who moved up kept their own lock", roster.is_confirmed(1), true)
 
 func _test_a_grid_step_is_a_delta_the_view_chooses() -> void:
-	print("\n-- stepping a grid --")
+	print("\n-- landing on an entry --")
 	var roster := PlayerRoster.new()
 	roster.catalogue = _make_catalogue(["A", "B", "C", "D", "E", "F", "G", "H"])
 	roster.join(PlayerRoster.KEYBOARD_DEVICE)
 
-	# "Down" is forward by one ROW, and how wide a row is belongs to the view.
-	# The roster is a flat list and stays one, so a layout change never reaches
-	# core/ - which is what keeps this testable without a screen.
-	_check_bool("a row step answers yes", roster.select_by(PlayerRoster.KEYBOARD_DEVICE, 4), true)
-	_check_int("four columns down is four entries on", roster.pick_of(0), 4)
+	# WHERE a nudge lands is GridCursor's answer, computed from the row the
+	# cursor is in; the roster only stores it. A roster that worked it out would
+	# have to know how wide the rack is drawn, which is a screen's business and
+	# changes with an authored number.
+	_check_bool("landing somewhere else answers yes", roster.select_index(PlayerRoster.KEYBOARD_DEVICE, 5), true)
+	_check_int("and that is where the cursor is", roster.pick_of(0), 5)
 
-	_check_bool("and back up", roster.select_by(PlayerRoster.KEYBOARD_DEVICE, -4), true)
-	_check_int("returns to the first row", roster.pick_of(0), 0)
+	# A no-op is reported as one, so the lobby can skip the scroll-follow rather
+	# than dragging a shared rack around for a press that changed nothing.
+	_check_bool("landing where you already are is not a move", roster.select_index(PlayerRoster.KEYBOARD_DEVICE, 5), false)
 
-	# Wrapping, so the bottom row is not a wall. Up from the top lands on the
-	# last row of a full grid.
-	roster.select_by(PlayerRoster.KEYBOARD_DEVICE, -4)
-	_check_int("up from the top wraps to the bottom", roster.pick_of(0), 4)
+	# Clamped rather than trusted: an index out of range would leave the panel
+	# describing a character nobody can point at.
+	roster.select_index(PlayerRoster.KEYBOARD_DEVICE, 99)
+	_check_int("past the end lands on the last", roster.pick_of(0), 7)
+	roster.select_index(PlayerRoster.KEYBOARD_DEVICE, -4)
+	_check_int("before the start lands on the first", roster.pick_of(0), 0)
 
-	# A step wider than the catalogue is still a step, not a crash.
-	roster.select_by(PlayerRoster.KEYBOARD_DEVICE, 20)
-	_check_int("an oversized delta wraps rather than escaping", roster.pick_of(0), 0)
+	# The flat stepper is still what a capture run drives, and a locked cursor
+	# refuses both forms.
+	_check_bool("stepping flat still works", roster.select_by(PlayerRoster.KEYBOARD_DEVICE, 3), true)
+	_check_int("three entries on", roster.pick_of(0), 3)
+	roster.confirm(PlayerRoster.KEYBOARD_DEVICE)
+	_check_bool("a locked cursor refuses to be placed", roster.select_index(PlayerRoster.KEYBOARD_DEVICE, 1), false)
+	_check_int("and has not moved", roster.pick_of(0), 3)
+
+func _test_a_cursor_wraps_inside_its_row_and_its_column() -> void:
+	print("\n-- wrapping in a rack --")
+	# Twelve at four wide: three full rows.
+	var total := 12
+	var columns := 4
+
+	# RIGHT from the end of a row returns to the start of THAT row, never to the
+	# next one. A flat wrap reads as the cursor teleporting - you press right
+	# expecting the row you are reading and land a row down, which is how
+	# somebody loses their place in a rack of eighty.
+	_check_int("right along a row", GridCursor.step_horizontal(1, total, columns, 1), 2)
+	_check_int("right from the end wraps to the same row", GridCursor.step_horizontal(3, total, columns, 1), 0)
+	_check_int("and in the middle row too", GridCursor.step_horizontal(7, total, columns, 1), 4)
+	_check_int("left from the start wraps to the end of the row", GridCursor.step_horizontal(4, total, columns, -1), 7)
+
+	# DOWN walks the column and wraps inside it, for the same reason.
+	_check_int("down a column", GridCursor.step_vertical(1, total, columns, 1), 5)
+	_check_int("down from the bottom wraps to the top", GridCursor.step_vertical(9, total, columns, 1), 1)
+	_check_int("up from the top wraps to the bottom", GridCursor.step_vertical(2, total, columns, -1), 10)
+
+	# One row, or one column, still has to answer.
+	_check_int("a single row wraps on itself", GridCursor.step_horizontal(2, 3, 4, 1), 0)
+	_check_int("a single column steps nowhere sideways", GridCursor.step_horizontal(1, 3, 1, 1), 1)
+	_check_int("but still walks vertically", GridCursor.step_vertical(1, 3, 1, 1), 2)
+	_check_int("an empty rack is index zero", GridCursor.step_horizontal(0, 0, 4, 1), 0)
+
+func _test_a_ragged_last_row_wraps_among_what_is_there() -> void:
+	print("\n-- a ragged last row --")
+	# Ten at four wide: rows of 4, 4 and 2. The last row is where every
+	# off-by-one in this kind of arithmetic lives.
+	var total := 10
+	var columns := 4
+
+	_check_int("the last row holds two", GridCursor.row_length(8, total, columns), 2)
+	_check_int("right in the short row wraps after the second", GridCursor.step_horizontal(9, total, columns, 1), 8)
+	_check_int("and left from its start goes to the second", GridCursor.step_horizontal(8, total, columns, -1), 9)
+
+	# A column the short row does not reach must wrap one row EARLIER, or the
+	# cursor lands on an index that is not drawn and the panel describes a
+	# character nobody can see.
+	_check_int("column 0 reaches all three rows", GridCursor.column_length(0, total, columns), 3)
+	_check_int("column 2 reaches only two", GridCursor.column_length(2, total, columns), 2)
+	_check_int("down column 2 wraps at the second row", GridCursor.step_vertical(6, total, columns, 1), 2)
+	_check_int("up column 2 lands on the last row that has it", GridCursor.step_vertical(2, total, columns, -1), 6)
+	_check_int("while column 0 reaches the short row", GridCursor.step_vertical(4, total, columns, 1), 8)
+
+	_check_int("three rows in all", GridCursor.row_count(total, columns), 3)
+	_check_int("and one row for a rack smaller than a row", GridCursor.row_count(2, columns), 1)
+
+func _test_the_rack_scrolls_only_when_the_cursor_would_leave_it() -> void:
+	print("\n-- scrolling the rack --")
+	var columns := 4
+	# A cursor already on screen must not move the view. The rack is SHARED, so
+	# a view that re-centred on every step would drag three other players'
+	# screens around every time one of them nudged a stick.
+	_check_int("a visible cursor leaves the view alone", GridCursor.scroll_to_show(5, columns, 0, 2), 0)
+	_check_int("even at the bottom of the window", GridCursor.scroll_to_show(7, columns, 0, 2), 0)
+
+	# And when it does move, it moves the LEAST it can.
+	_check_int("dropping past the bottom scrolls one row", GridCursor.scroll_to_show(8, columns, 0, 2), 1)
+	_check_int("rising above the top scrolls back", GridCursor.scroll_to_show(3, columns, 2, 2), 0)
+	_check_int("a jump lands the row at the bottom", GridCursor.scroll_to_show(40, columns, 0, 3), 8)
+
+	_check_int("the view cannot park past the end", GridCursor.clamp_scroll(9, 12, columns, 2), 1)
+	_check_int("nor before the start", GridCursor.clamp_scroll(-3, 12, columns, 2), 0)
+	_check_int("and a rack that fits never scrolls", GridCursor.clamp_scroll(2, 6, columns, 2), 0)
 
 # --- weapons as purchasables -----------------------------------------------
 

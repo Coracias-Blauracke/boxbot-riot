@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 720 assertions across three suites, no editor, no game window
+# tests — 752 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -82,6 +82,8 @@ accident:
 | `--capture-select=a,b,c` | puts player N on catalogue entry N, in the lobby and therefore in the run |
 | `--capture-confirmed` | locks every lobby player in, which is the only way the confirmed cursors and the START line are photographed |
 | `--capture-scroll=a,b,c` | scrolls player N's seat panel down N lines |
+| `--capture-grid=CxR` | overrides the rack's columns and visible rows, so M x N is A/B-able one variable at a time |
+| `--capture-roster=N` | builds N throwaway characters, so the rack can be photographed at fifty before fifty are authored |
 | `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
 
 `--capture-select` STEPS the selection one nudge at a time rather than assigning
@@ -151,7 +153,8 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   managers/  StatsManager, CounterManager, EffectDispatcher, StatusManager,
              ItemsManager, WaveDirector, RunRandom, WorldOverrides,
              ShopManager (+ ShopOffer), WorldCensus
-  models/    EntityModel, WorldModel, WeaponModel, RunModel, PlayerRoster
+  models/    EntityModel, WorldModel, WeaponModel, RunModel, PlayerRoster,
+             GridCursor (where a nudge lands in an M x N rack)
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
   behaviors/ MovementBehavior, ChaseBehavior
@@ -318,6 +321,37 @@ interesting thing on a couch is seeing what everybody else is hovering, and
 duplicate picks are allowed - so cursors NEST, drawn one inside the other, with
 their player tabs walking sideways. Stacking them on one corner means the last
 one drawn hides the rest, which is exactly the case the tab exists for.
+
+**The rack is M x N, authored, and the tiles are DERIVED from it.** `grid_columns`
+and `grid_rows` are exports on the lobby; tile size falls out of them and the
+space available, so raising the column count shrinks the tiles instead of
+running the row off the screen. The two numbers are different questions - how
+many characters exist is content, how many should be readable at a glance is a
+layout decision that wants a person's eye - which is why neither is derived from
+the roster size.
+
+**A cursor wraps inside its ROW and inside its COLUMN, never across the whole
+list.** Right from the end of a row returns to the start of that same row. A
+flat wrap reads as the cursor teleporting - press right expecting the row you
+are reading and land one row down - which is how somebody loses their place in a
+rack of eighty. `GridCursor` holds that arithmetic in `core/`, because the edge
+cases are real: a ragged last row wraps among what is actually there, and a
+column the last row does not reach wraps one row earlier, or the cursor lands on
+an index that is not drawn.
+
+`PlayerRoster` still knows nothing about rows. It takes `select_index()`, the
+view supplies the width, and `GridCursor` turns one into the other - so the rack
+can be relaid out without a line of core/ changing, and the rule stays testable
+without a screen.
+
+**The rack scrolls as ONE viewport, following whoever moved LAST, and only when
+that cursor would otherwise be off screen.** Four private viewports would be
+four grids, which throws away the only reason the rack is shared. The cost is
+real and accepted: a player at the far end can pull the view away from somebody
+standing still. A shared screen has to move for somebody, and moving for
+whoever just acted is the only rule a player can predict. Every path that moves
+a cursor goes through the same follow, capture runs included, or a capture
+photographs a cursor on a row the rack is not showing.
 
 **Confirming FREEZES a cursor, and that is why it is worth a flag.** Without it
 somebody locks one chassis, carries on browsing, and their seat panel shows a
@@ -891,7 +925,11 @@ there is more of it than fits. A confirms and FREEZES that player's cursor, B
 backs out (to browsing, then out of the lobby), and START begins the run only
 once every joined player has confirmed. The picks are injected into the run
 beside the devices - so a restart brings back both who was playing and what they
-were playing. EIGHT
+were playing.
+
+The rack is M x N and scrolls, so the roster is no longer capped by the screen:
+photographed at 52 characters in an 8x4 rack and in a 4x3 one, with the view
+following the cursor that moved last. EIGHT
 characters are authored from `docs/character_list.md`: standard_unit, riveter,
 bulwark, skirmisher, bloodletter, furnace, prospector and blood_bank. Six are
 stat lines and nothing else. `furnace` is the first character with an ability

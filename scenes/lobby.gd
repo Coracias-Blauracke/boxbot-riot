@@ -33,6 +33,18 @@ const RUN_SCENE := preload("res://scenes/main.tscn")
 ## how to render a modifier and whether it helps.
 @export var stat_sheet: StatSheet
 
+@export_group("Rack layout")
+## M x N: tiles across, and rows on screen at once. Everything past N rows
+## scrolls.
+##
+## Authored rather than derived from the roster size, because the two questions
+## are different: how many characters exist is content, and how many should be
+## readable at a glance is a layout decision that wants a person's eye. Tile
+## size follows from these, so raising the column count shrinks the tiles rather
+## than running the row off the screen.
+@export_range(1, 12) var grid_columns: int = 4
+@export_range(1, 8) var grid_rows: int = 2
+
 @onready var _join_view: JoinView = $Ui/JoinView
 
 var roster := PlayerRoster.new()
@@ -55,6 +67,8 @@ func _ready() -> void:
 
 	_join_view.roster = roster
 	_join_view.stat_sheet = stat_sheet
+	_join_view.columns = grid_columns
+	_join_view.visible_rows = grid_rows
 	get_viewport().size_changed.connect(_on_roster_changed)
 	_on_roster_changed()
 
@@ -82,22 +96,7 @@ func _process(_delta: float) -> void:
 			start_run()
 			return
 
-		var device: int = roster.devices[index]
-		# The same stick and the same repeat the shop cursor uses. A player who
-		# learned to browse offers already knows how to browse a rack.
-		#
-		# Up and down are a DELTA of one row. The roster is a flat list and does
-		# not know the grid is four wide; that number belongs to the view, which
-		# is what draws the rows.
-		if input.triggered(PlayerInput.Action.LEFT):
-			roster.select_by(device, -1)
-		elif input.triggered(PlayerInput.Action.RIGHT):
-			roster.select_by(device, 1)
-		elif input.triggered(PlayerInput.Action.UP):
-			roster.select_by(device, -JoinView.GRID_COLUMNS)
-		elif input.triggered(PlayerInput.Action.DOWN):
-			roster.select_by(device, JoinView.GRID_COLUMNS)
-
+		_move_cursor(index, input)
 		_advance_scroll(index, input, _delta)
 
 ## Anybody may press it, but not until EVERY joined player has locked a chassis
@@ -147,6 +146,46 @@ func _build_run() -> void:
 	add_child(run)
 	_join_view.visible = false
 	_inputs.clear()
+
+## The same stick and the same repeat the shop cursor uses, so a player who
+## learned to browse offers already knows how to browse a rack.
+##
+## Where a nudge LANDS is GridCursor's answer, not the roster's: the roster is a
+## flat list and does not know how wide the rack is drawn, and the wrapping the
+## player expects is per ROW and per COLUMN rather than across the whole list.
+## Right from the end of a row returns to the start of that same row.
+func _move_cursor(index: int, input: PlayerInput) -> void:
+	var total := 0 if characters == null else characters.count()
+	if total <= 0:
+		return
+
+	var device: int = roster.devices[index]
+	var from := roster.pick_of(index)
+	var to := from
+
+	if input.triggered(PlayerInput.Action.LEFT):
+		to = GridCursor.step_horizontal(from, total, _join_view.columns, -1)
+	elif input.triggered(PlayerInput.Action.RIGHT):
+		to = GridCursor.step_horizontal(from, total, _join_view.columns, 1)
+	elif input.triggered(PlayerInput.Action.UP):
+		to = GridCursor.step_vertical(from, total, _join_view.columns, -1)
+	elif input.triggered(PlayerInput.Action.DOWN):
+		to = GridCursor.step_vertical(from, total, _join_view.columns, 1)
+
+	if roster.select_index(device, to):
+		_follow_cursor(to)
+
+## The rack scrolls as ONE viewport, following whoever moved last, and only when
+## that cursor would otherwise be off screen. Four private viewports would be
+## four grids, which throws away the only reason the rack is shared: seeing what
+## everybody else is looking at. The cost is that a player at the far end can
+## pull the view away from somebody standing still - a shared screen has to move
+## for somebody, and moving for whoever just acted is the only rule a player can
+## predict.
+func _follow_cursor(index: int) -> void:
+	_join_view.grid_top = GridCursor.scroll_to_show(
+		index, _join_view.columns, _join_view.grid_top, _join_view.visible_rows
+	)
 
 ## How many description lines a second the stick scrolls at full push. Slow
 ## enough to read while moving, which is the only speed that matters here.
@@ -220,6 +259,15 @@ func _apply_capture_args() -> void:
 	for arg in args:
 		if arg.begins_with("--capture-players="):
 			wanted = clampi(int(arg.substr("--capture-players=".length())), 1, PlayerRoster.MAX_PLAYERS)
+		elif arg.begins_with("--capture-grid="):
+			# Framing for the rack, A/B-able the way --capture-zoom is for the
+			# camera: one variable changed, same seed, same shots.
+			var shape := arg.substr("--capture-grid=".length()).split("x", false)
+			if shape.size() == 2:
+				_join_view.columns = maxi(1, int(shape[0]))
+				_join_view.visible_rows = maxi(1, int(shape[1]))
+		elif arg.begins_with("--capture-roster="):
+			_apply_capture_roster(int(arg.substr("--capture-roster=".length())))
 
 	# Keyboard first, then pads in order - what one keyboard player and a couch
 	# of pads actually produces.
@@ -253,6 +301,35 @@ func _confirm_every_player() -> void:
 	for device in roster.devices:
 		roster.confirm(device)
 
+## A roster of N chassis built on the spot, so the rack can be photographed at
+## fifty and at a hundred without authoring a hundred characters first.
+##
+## The layout has to be answered BEFORE the content exists - that is the whole
+## reason for the flag - and a stress roster committed to content/ would be a
+## hundred files that validate, offer themselves in a lobby and mean nothing.
+## Each one differs in max health so the seat panels differ too, which is what
+## makes a screenshot of fifty tiles worth reading.
+func _apply_capture_roster(count: int) -> void:
+	var built := CharacterSet.new()
+	var made: Array[CharacterData] = []
+
+	for entry in maxi(1, count):
+		var character := CharacterData.new()
+		character.display_key = "CHAR_STRESS_%02d" % (entry + 1)
+		character.collider_radius = 12.0
+
+		var hp := StatModifier.new()
+		hp.stat = StatTypes.Stat.MAX_HP
+		hp.modifier_type = StatTypes.Modifier.BASE
+		hp.value = 100.0 + float(entry)
+		character.base_stats = [hp]
+		made.append(character)
+
+	built.characters = made
+	built.baseline = made[0]
+	characters = built
+	roster.catalogue = built
+
 ## --capture-select=0,3,5 puts player N on catalogue entry N, which no scripted
 ## player can do for themselves. Without it a capture can only ever photograph
 ## the default picks, and "everybody is on something different" would be
@@ -278,6 +355,11 @@ func _apply_capture_selection(text: String) -> void:
 			if roster.pick_of(index) == target:
 				break
 			roster.select_next(device)
+
+		# Through the same follow the stick goes through, or a capture parks a
+		# cursor on a row the rack is not showing and photographs a screen no
+		# player could ever produce.
+		_follow_cursor(roster.pick_of(index))
 
 ## --capture-scroll=0,3 scrolls player N's panel down N lines. The right stick
 ## is the same hole every selected, hovered or focused state falls into: nobody
