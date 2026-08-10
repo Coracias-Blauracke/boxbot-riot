@@ -60,6 +60,15 @@ func _ready() -> void:
 	_hitbox.area_entered.connect(_on_hitbox_area_entered)
 	_hitbox.area_exited.connect(_on_hitbox_area_exited)
 
+	# A bug spits out of itself: no visible weapon, and the mount collapsed onto
+	# the body so the shot leaves the creature rather than a barrel beside it.
+	# The weapon still fires - hiding a node does not stop it processing, which
+	# is the same thing character.gd relies on for a downed player.
+	var mount := $WeaponMount as WeaponMount
+	if enemy_data != null and not enemy_data.weapons_visible:
+		mount.radius = 0.0
+		mount.visible = false
+
 	# The same view-of-the-model the players use. An armed bug gets its weapons
 	# from EnemyData.weapons through EntityModel, so nothing here knows whether
 	# it is holding one.

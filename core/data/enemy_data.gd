@@ -33,5 +33,18 @@ extends EntityData
 ## merges one, so there is no "starting" to distinguish from "later".
 @export var weapons: Array[WeaponData] = []
 
+## Whether the armament is DRAWN, and where the shot leaves from.
+##
+## False by default, because the default enemy is a BUG: a biter spits a glob
+## out of itself, and a beetle holding a pistol is a different game. Off, the
+## mount is invisible and sits at the body's centre, so the projectile leaves
+## the creature rather than a rifle floating beside it.
+##
+## Kept as a flag rather than as two kinds of enemy, because a turret, a mech
+## and a boss with a visible cannon are all things this roster will want, and
+## they differ from a spitter in exactly this one respect. Whether an armament
+## SHOWS is a property of the creature, not of the weapon.
+@export var weapons_visible: bool = false
+
 @export_group("Rewards")
 @export var currency_reward: int = 1

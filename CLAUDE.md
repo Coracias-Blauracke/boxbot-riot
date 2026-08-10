@@ -823,6 +823,16 @@ with — without it a spitter would be refused its own gun, silently, because
 more: a bug never buys, sells or merges, so a spare slot is capacity nobody can
 ever use.
 
+**Whether an armament SHOWS is a property of the creature.**
+`EnemyData.weapons_visible` is FALSE by default, because the default enemy is a
+bug: a biter spits a glob out of itself, and a beetle holding a pistol is a
+different game. Off, the mount is invisible and collapsed onto the body, so the
+shot leaves the creature rather than a rifle floating beside it — hiding a node
+does not stop it processing, which is the same thing `character.gd` relies on
+for a downed player. A flag rather than two kinds of enemy, because a turret, a
+mech and a boss with a visible cannon all differ from a spitter in exactly this
+one respect.
+
 **`EntityModel.world_position` is written by the view, read by core.** A bare
 `Vector2` handed down once per frame from `Actor`, which is what lets `core/`
 answer "what is within 90 units of this corpse" without ever seeing a Node -
