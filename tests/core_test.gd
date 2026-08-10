@@ -154,6 +154,8 @@ func _initialize() -> void:
 	_test_a_cursor_wraps_inside_its_row_and_its_column()
 	_test_a_ragged_last_row_wraps_among_what_is_there()
 	_test_the_rack_scrolls_only_when_the_cursor_would_leave_it()
+	_test_an_orbiting_enemy_keeps_its_distance()
+	_test_an_armed_enemy_gets_a_rack_to_put_it_in()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -2679,6 +2681,69 @@ func _test_the_rack_scrolls_only_when_the_cursor_would_leave_it() -> void:
 	_check_int("the view cannot park past the end", GridCursor.clamp_scroll(9, 12, columns, 2), 1)
 	_check_int("nor before the start", GridCursor.clamp_scroll(-3, 12, columns, 2), 0)
 	_check_int("and a rack that fits never scrolls", GridCursor.clamp_scroll(2, 6, columns, 2), 0)
+
+func _test_an_orbiting_enemy_keeps_its_distance() -> void:
+	print("\n-- orbiting --")
+	var orbit := OrbitBehavior.new()
+	orbit.preferred_distance = 200.0
+	orbit.tolerance = 40.0
+	orbit.strafe_weight = 1.0
+
+	var target := Vector2.ZERO
+
+	# Too far: close in, straight at the target.
+	var far := orbit.get_direction(null, Vector2(400.0, 0.0), target, 0.016)
+	_check("far away it walks in", far.x, -1.0)
+	_check("and does not veer", far.y, 0.0)
+
+	# Too near: back off. The retreat carries some of the circle, so a group of
+	# them does not collapse into a line reversing along one axis.
+	var near := orbit.get_direction(null, Vector2(80.0, 0.0), target, 0.016)
+	_check_bool("close in it backs away", near.x > 0.0, true)
+	_check_bool("while still curving", absf(near.y) > 0.0, true)
+
+	# THE BAND between them is what stops the enemy juddering in place at exactly
+	# the preferred distance, flipping between "too near" and "too far" every
+	# frame. Inside it there is no radial motion at all.
+	var banded := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016)
+	_check("in the band it does not close", banded.x, 0.0)
+	_check_bool("it circles instead", absf(banded.y) > 0.9, true)
+
+	# Which way round is authored, so two of them do not smear into a cloud.
+	orbit.clockwise = true
+	var other_way := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016)
+	_check("clockwise circles the other way", other_way.y, -banded.y)
+
+	# A turret rather than a skirmisher, with one authored number.
+	orbit.strafe_weight = 0.0
+	var still := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016)
+	_check("no strafe weight stands still in the band", still.length(), 0.0)
+
+	# On top of the target there is no direction to be had, and no divide by zero.
+	_check("standing on it asks for nothing", orbit.get_direction(null, target, target, 0.016).length(), 0.0)
+
+func _test_an_armed_enemy_gets_a_rack_to_put_it_in() -> void:
+	print("\n-- an armed bug --")
+	var unarmed := EnemyData.new()
+	unarmed.display_key = "ENEMY_TEST"
+	var plain := EntityModel.new(unarmed)
+	_check("an unarmed bug has no rack", plain.stats.get_stat(StatTypes.Stat.WEAPON_SLOTS), 0.0)
+
+	# The trap this exists for: add_weapon asks WEAPON_SLOTS exactly as it does
+	# for a player, so without a seeded capacity a bug would be refused its own
+	# authored gun - silently, since add_weapon returns false and nothing looks.
+	var armed := EnemyData.new()
+	armed.display_key = "ENEMY_TEST_ARMED"
+	armed.weapons = [_make_weapon("SPIT", 1, 0, 6.0)]
+
+	var model := EntityModel.new(armed)
+	_check("an armed bug gets exactly one slot", model.stats.get_stat(StatTypes.Stat.WEAPON_SLOTS), 1.0)
+	_check_bool("and the weapon fits", model.add_weapon(armed.weapons[0]), true)
+	_check_int("it is carrying it", model.weapons.size(), 1)
+
+	# Exactly what it was authored with, and no more: a bug never buys, sells or
+	# merges, so a spare slot would be capacity nobody can ever use.
+	_check_bool("with no room for a second", model.add_weapon(armed.weapons[0]), false)
 
 # --- weapons as purchasables -----------------------------------------------
 

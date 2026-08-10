@@ -21,5 +21,17 @@ extends EntityData
 ## the two stay in contact.
 @export var contact_damage_interval: float = 0.6
 
+@export_group("Armament")
+## What this bug attacks WITH, beyond simply touching you.
+##
+## The same WeaponData a player carries, on the same WeaponModel, aimed by the
+## same TargetSelector - the whole weapon stack was already side-agnostic, and
+## the one thing that was not is now Actor.hostile_group. A spitter is therefore
+## an ordinary enemy with a weapon in the list, not a second attack system.
+##
+## Named `weapons` rather than `starting_weapons`: a bug never buys, sells or
+## merges one, so there is no "starting" to distinguish from "later".
+@export var weapons: Array[WeaponData] = []
+
 @export_group("Rewards")
 @export var currency_reward: int = 1

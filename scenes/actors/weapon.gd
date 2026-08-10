@@ -107,7 +107,7 @@ func _report_unimplemented_delivery() -> void:
 	)
 
 func _acquire_target() -> Actor:
-	var enemies := get_tree().get_nodes_in_group(&"enemies")
+	var enemies := get_tree().get_nodes_in_group(wielder.hostile_group)
 	if enemies.is_empty() or data.targeting == null:
 		return null
 
@@ -210,7 +210,10 @@ func _fire_projectiles(shot: ShotSnapshot, directions: PackedVector2Array) -> vo
 
 	for direction in directions:
 		var projectile := scene.instantiate() as Projectile
-		projectile.launch(data.projectile, shot, direction, pierce, bounce, speed_multiplier, wielder.world)
+		projectile.launch(
+			data.projectile, shot, direction, pierce, bounce, speed_multiplier,
+			wielder.world, wielder.hostile_group, wielder.attack_layer, wielder.attack_mask
+		)
 		projectile.global_position = global_position
 		# Parented to the level, not the weapon: a bullet must not follow the
 		# barrel once it has left it.
@@ -276,7 +279,7 @@ func _check_swing_overlap(t: float) -> void:
 	var centre := global_position + _swing.offset_at(t, _swing_mirrored).rotated(rotation) * _reach_scale()
 	var radius := _swing.hitbox_radius
 
-	for node in get_tree().get_nodes_in_group(&"enemies"):
+	for node in get_tree().get_nodes_in_group(wielder.hostile_group):
 		var enemy := node as Actor
 		if enemy == null or enemy.model == null or not enemy.model.is_alive:
 			continue

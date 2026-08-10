@@ -17,6 +17,37 @@ var model: EntityModel
 var data: EntityData
 var world: WorldModel
 
+## WHICH GROUP THIS ACTOR'S WEAPONS SHOOT AT.
+##
+## A property of the WIELDER rather than a constant in the weapon, because the
+## weapon system is the same one on both sides: EntityModel and WeaponModel are
+## already shared between a player and a bug, and the only thing that ever
+## differed was a hardcoded &"enemies" in three places - targeting, the melee
+## sweep and a projectile's collision. That single constant is what stopped an
+## enemy from ever holding a weapon, since it would have shot the other bugs.
+##
+## Set by the subclass: a Character shoots enemies, an Enemy shoots players.
+## Anything that carries a weapon and forgets to say hits nothing, which is a
+## great deal louder than hitting its own side.
+var hostile_group: StringName = &""
+
+## The physics layers named in project.godot, spelled once.
+##
+## A projectile finds what it hits through LAYERS rather than through a group -
+## it is an Area2D and that is what Area2D does - so "whose side is this shot
+## on" has to be answered twice, in two different vocabularies. Both answers
+## live here so they cannot drift apart, and so no scene file has to carry a
+## bare 32 that nobody can read.
+const LAYER_PLAYER_HURTBOX := 8
+const LAYER_ENEMY_HURTBOX := 16
+const LAYER_PLAYER_HITBOX := 32
+const LAYER_ENEMY_HITBOX := 64
+
+## Which layer this actor's attacks live on, and which they look for. The same
+## split as hostile_group, for the half of the engine that speaks in layers.
+var attack_layer: int = LAYER_PLAYER_HITBOX
+var attack_mask: int = LAYER_ENEMY_HURTBOX
+
 var placeholder_color: Color = Color.WHITE
 
 ## Knockback and recoil arrive here rather than in `velocity`, which is
