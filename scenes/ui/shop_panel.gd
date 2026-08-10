@@ -414,7 +414,7 @@ func _draw_header(font: Font) -> float:
 	# buyable, so hiding it would mean shopping blind for the one stat the shop
 	# can take from you.
 	var money := "%d HP   %d  |  reroll %d" % [
-		roundi(model.current_hp), model.get_currency(), shop.reroll_cost()
+		roundi(model.current_hp), model.get_currency(), shop.reroll_price
 	]
 	draw_string(
 		font, Vector2(left + width - 300.0, PAD + 18.0), money,
@@ -452,18 +452,35 @@ func _draw_shop(font: Font, top: float) -> void:
 			font, y, row_height, selected, offer.sold or blocked,
 			tr(offer.entry.display_key),
 			"T%d" % offer.entry.tier,
-			"-" if offer.sold else ("FULL" if blocked else str(offer.price))
+			"-" if offer.sold else ("FULL" if blocked else str(offer.price)),
+			# A price paid in a STAT is not the same number as a price paid in
+			# money, and without a marker a buyer who pays in blood reads "3"
+			# beside "16" with no way to know they are different currencies.
+			_icon_for(offer.sold or blocked, offer.uses_stat_payment),
+			offer.pay_with_stat
 		)
 		y += row_height
 
 	var reroll_selected := zone == Zone.OFFERS and cursor == shop.offers.size()
-	_draw_row(font, y, row_height, reroll_selected, false, "REROLL", "", str(shop.reroll_cost()))
+	# The QUOTED price, not the authored one: a reroll goes through the same
+	# pipeline a purchase does, so a buyer who pays in blood pays for this in
+	# blood too and the row has to say the same thing the offers above it do.
+	_draw_row(
+		font, y, row_height, reroll_selected, false, "REROLL", "",
+		str(shop.reroll_price),
+		_icon_for(false, shop.reroll_uses_stat_payment), shop.reroll_pay_with_stat
+	)
 	y += row_height + 12.0
 
 	y = _draw_detail(font, y)
 	_draw_owned(font, y)
 	# Last, so it sits over the strip it belongs to rather than under it.
 	_draw_menu(font, y)
+
+func _icon_for(unavailable: bool, stat_payment: bool) -> PriceIcon:
+	if unavailable:
+		return PriceIcon.NONE
+	return PriceIcon.STAT if stat_payment else PriceIcon.CURRENCY
 
 ## Drawn beside the strip rather than centred: it belongs to ONE tile, and a
 ## menu that appears in the middle of the panel loses the thing it acts on.
@@ -547,6 +564,24 @@ func _draw_detail(font: Font, top: float) -> float:
 			)
 			y += line
 
+	# What this offer is actually PAID WITH, and only when it is not money. The
+	# row can colour the number but has no room to name a stat, so the fact
+	# lands here beside everything else the highlighted entry says about itself.
+	var offered := _offer_under_cursor()
+	if offered != null and offered.uses_stat_payment:
+		var meta: StatMetadata = (
+			stat_sheet.metadata_for(offered.pay_with_stat) if stat_sheet != null else null
+		)
+		draw_string(
+			font, Vector2(left + 10.0, y),
+			"* costs %d %s, not currency" % [
+				offered.price,
+				tr(meta.display_key) if meta != null else str(offered.pay_with_stat)
+			],
+			HORIZONTAL_ALIGNMENT_LEFT, _column_width() - 10.0, font_size, Color(0.95, 0.55, 0.55)
+		)
+		y += line
+
 	if zone == Zone.OWNED and entry.can_sell():
 		# Names the MENU, not the sale, because that is what the button does
 		# now. A hint promising an action the button no longer performs is
@@ -588,6 +623,15 @@ func _draw_modifier_line(
 	)
 	return y + line
 
+## The OFFER under the cursor, which is not the same thing as the entry under
+## it: a price and what it is paid with belong to the offer, and the owned strip
+## has neither.
+func _offer_under_cursor() -> ShopOffer:
+	if zone != Zone.OFFERS or cursor >= shop.offers.size():
+		return null
+	var offer := shop.offers[cursor]
+	return null if offer.sold else offer
+
 func _highlighted() -> OwnedEntry:
 	if zone == Zone.OWNED:
 		return _owned[cursor] if cursor < _owned.size() else null
@@ -597,9 +641,19 @@ func _highlighted() -> OwnedEntry:
 	var offered := shop.offers[cursor].entry
 	return _make_entry(offered, 1) if offered != null else null
 
+## What a number in the value column is paid in. NONE is for the values that are
+## not prices at all - a sold row's "-", a weapon the rack has no room for.
+enum PriceIcon {
+	NONE,
+	CURRENCY,
+	STAT,
+}
+
 func _draw_row(
 	font: Font, y: float, height: float, selected: bool, dimmed: bool,
-	label: String, badge: String, value: String
+	label: String, badge: String, value: String,
+	icon: PriceIcon = PriceIcon.NONE,
+	payment_stat: StatTypes.Stat = StatTypes.Stat.MAX_HP
 ) -> void:
 	var row := Rect2(Vector2(_column_x(), y), Vector2(_column_width(), height - 4.0))
 	if selected:
@@ -618,11 +672,55 @@ func _draw_row(
 			font, Vector2(_column_x() + _column_width() - 130.0, baseline), badge,
 			HORIZONTAL_ALIGNMENT_RIGHT, 60.0, font_size - 2, Color(0.6, 0.66, 0.78)
 		)
+	var value_color := Color(0.95, 0.86, 0.62)
+	if dimmed:
+		value_color = Color(0.45, 0.48, 0.54)
+	elif icon == PriceIcon.STAT:
+		value_color = Color(0.95, 0.55, 0.55)
+
 	draw_string(
 		font, Vector2(_column_x() + _column_width() - 70.0, baseline), value,
-		HORIZONTAL_ALIGNMENT_RIGHT, 58.0, font_size,
-		Color(0.45, 0.48, 0.54) if dimmed else Color(0.95, 0.86, 0.62)
+		HORIZONTAL_ALIGNMENT_RIGHT, 58.0, font_size, value_color
 	)
+
+	# The icon sits LEFT of the number, as the genre does it, and every price on
+	# this screen goes through here so they cannot drift apart. A row whose value
+	# is not a price ("-", "FULL") passes NONE and gets no marker.
+	_draw_price_icon(
+		Vector2(_column_x() + _column_width() - 86.0, baseline - 11.0),
+		icon, payment_stat, value_color
+	)
+
+## What a price is paid IN, drawn 13px square to the LEFT of the number.
+##
+## Placeholder shapes until there is art, exactly like every actor on the arena:
+## the LAYOUT is the decision being made here, and dropping a Texture2D in later
+## changes nothing about it. A stat takes its texture from StatMetadata and
+## currency takes its from ShopData, because both are authored content and no
+## scene should have to be edited to change what the money looks like.
+func _draw_price_icon(
+	at: Vector2, kind: PriceIcon, stat: StatTypes.Stat, tint: Color
+) -> void:
+	if kind == PriceIcon.NONE:
+		return
+
+	var texture: Texture2D = null
+	if kind == PriceIcon.CURRENCY:
+		texture = shop.data.currency_icon if shop != null and shop.data != null else null
+	elif stat_sheet != null:
+		var meta := stat_sheet.metadata_for(stat)
+		texture = meta.icon if meta != null else null
+
+	if texture != null:
+		draw_texture_rect(texture, Rect2(at, Vector2(13.0, 13.0)), false)
+		return
+
+	# Round for money, square for a stat - two SHAPES rather than two colours,
+	# so the difference survives a player who cannot tell the colours apart.
+	if kind == PriceIcon.CURRENCY:
+		draw_circle(at + Vector2(6.5, 6.5), 6.0, tint)
+	else:
+		draw_rect(Rect2(at, Vector2(13.0, 13.0)), tint)
 
 ## Placeholder tiles rather than icons, because there is no art. The tile still
 ## carries the tier and the refund, so "walk over it and read what it does" works

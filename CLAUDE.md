@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 652 assertions across three suites, no editor, no game window
+# tests — 689 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -290,6 +290,16 @@ the same `StatMetadata` the shop's detail block uses, so authoring a character
 is a `.tres` and nothing else. One rule is new here: a BASE modifier is what the
 chassis IS and draws as a bare value, while FLAT and PERCENT are DELTAS and draw
 with their sign and their colour. Without that, 165 HP renders as "+165".
+
+**`CharacterData.slot_modifiers()` is where "a slot count IS a BASE modifier on
+its stat" lives.** That rule used to sit inside `EntityModel`, which meant any
+screen wanting to describe a chassis honestly had to know it a second time — and
+a chassis with five weapon slots would otherwise say nothing about the one trade
+that cannot be bought back cheaply. The model now applies exactly the list the
+data hands it, and the select screen draws the same list. Always, never "only
+when it differs from the default": a rule that hides the ordinary value leaves
+the player unable to tell a chassis with no opinion from one that agrees with
+the default.
 
 **The validator warns about a character nothing can reach** - no `CharacterSet`
 lists it and no scene names it. That is content which loads, validates and can
@@ -567,6 +577,27 @@ blood and one paying in max HP want completely different numbers. A stat can
 never be paid down to its `StatTypes.FLOORS` value — that would let a purchase
 kill the buyer, or divide by zero further along.
 
+`EffectPriceModifier` is what finally drives it from content: a price share, a
+kind filter (any / items / weapons) and an optional payment stat with its own
+rate. It knows nothing about characters — the same file works in an item, on a
+weapon or on a class threshold — and `blood_bank` is one `.tres` using it.
+
+**A REROLL is priced by the same pipeline as a purchase.** It used to be the one
+price on the screen decided by arithmetic alone, so a buyer who paid for
+everything in blood still paid MONEY to reroll. `quote_reroll()` sets
+`PriceEvent.is_reroll`, and a KIND filter deliberately does not match it: a
+reroll is not one of the kinds, so only "everything" covers it. The quote is
+cached on the manager in three plain fields, exactly as `ShopOffer` keeps them,
+because the screen reads it every frame and re-running a pipeline to draw one
+number would make every price effect a hot path.
+
+**Every price on the shop screen is an ICON plus a number**, the icon to the
+left, as the genre does it. Currency takes its texture from `ShopData`, a stat
+from its `StatMetadata` — both authored, so changing what money looks like never
+edits a scene. There is no art yet, so it draws a placeholder: a CIRCLE for
+money and a SQUARE for a stat. Two shapes rather than two colours, because the
+difference has to survive a player who cannot tell the colours apart.
+
 **A refund is not earnings.** `ShopManager.sell` adds to `CURRENCY` directly
 rather than calling `add_currency()`, which also credits `CURRENCY_EARNED`.
 Otherwise a buy-then-sell loop farms every "for each 500 earned" effect for the
@@ -793,11 +824,14 @@ that has them.
 CHARACTER SELECT IS IN IT. Each player moves through the authored roster with
 LEFT and RIGHT on their own device, their slot describes the chassis from its
 own modifiers, and the picks are injected into the run beside the devices - so a
-restart brings back both who was playing and what they were playing. Six
-characters are authored: standard_unit, riveter, bulwark, skirmisher,
-bloodletter and furnace, from `docs/character_list.md`. Five are stat lines and
-nothing else; furnace is the first character with an ability, and it needed no
-new effect class.
+restart brings back both who was playing and what they were playing. EIGHT
+characters are authored from `docs/character_list.md`: standard_unit, riveter,
+bulwark, skirmisher, bloodletter, furnace, prospector and blood_bank. Six are
+stat lines and nothing else. `furnace` is the first character with an ability
+and needed no new effect class; `prospector` paid for wiring CURRENCY_GAIN; and
+`blood_bank` buys EVERYTHING — items, weapons and rerolls — with max HP at 0.3
+per unit of price, which is the content the shop's stat-payment path was built
+for and never given.
 
 Weapons carry CLASS TAGS, and holding several of a class grants authored stat
 bonuses at authored thresholds, cumulative and authored per count.
@@ -882,19 +916,18 @@ art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
 but nothing positive exists yet.
 
-**Nothing in the effect library drives `CALCULATE_PRICE`**, which the character
-list found. The pipeline exists, `ShopManager` honours both a changed price and
-a payment in a stat, and the only things that have ever used either are two test
-doubles inside `core_test.gd`. So "items cost 20% less" and "you pay in blood"
-are unauthorable today despite the machinery being finished — one effect class,
-price share plus an optional payment stat, covers the whole family.
+The effect library is **thirteen classes**: `EffectPriceModifier` closed the
+last gap the character list found — nothing in content had ever driven
+`CALCULATE_PRICE`, so "items cost 20% less" and "you pay in blood" were
+unauthorable despite the machinery being finished and only two test doubles had
+ever exercised it.
 
-The effect library is **twelve classes**. It was four when the item list was
-written, and the eight added since each cover a FAMILY rather than an item:
+The effect library is **thirteen classes**. It was four when the item list was
+written, and the nine added since each cover a FAMILY rather than an item:
 apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
-double-status-stacks, stat-per-world-count, and the three status kinds. That
-ratio is the point - sixteen of the twenty-four authored items needed no new
-code at all.
+double-status-stacks, stat-per-world-count, price-modifier, and the three status
+kinds. That ratio is the point - sixteen of the twenty-four authored items and
+six of the eight authored characters needed no new code at all.
 
 **Localisation is DEFERRED ON PURPOSE, and is not a gap.** `tr()` is already
 wrapped around every `display_key` and `description_key`, so the door is open
@@ -978,13 +1011,19 @@ without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
 
-### Ten of the 45 stats do nothing, ON PURPOSE - and eleven more do nothing from a PLAYER
+### Five of the 45 stats do nothing, and every one of them needs a SYSTEM
 
 | state | stats |
 |---|---|
-| **read by something** | 39 of 45 |
-| **cheap to wire** | CURRENCY_GAIN — the last one left, and it is a single read in add_currency. `docs/character_list.md` now has the content that pays for it (prospector), which is the argument that was missing |
+| **read by something** | 40 of 45 |
 | **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
+
+There is no longer a "cheap to wire" row. CURRENCY_GAIN was the last entry in it
+and is wired now, in `add_currency` — the ONE door currency comes through, so no
+caller had to learn the stat exists and none of them can forget it. It scales
+what is EARNED and never what is spent (the same call takes a negative amount
+when the shop charges), and its floor of -1.0 lives in `StatTypes.FLOORS` rather
+than as a clamp, so the stat sheet shows the number the arithmetic uses.
 
 **Do not measure this with `grep "Stat.<NAME>"` alone.** That was the method
 here and it is now wrong: the eleven per-status axes plus `STATUS_CHANCE` and

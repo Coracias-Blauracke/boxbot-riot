@@ -50,3 +50,27 @@ extends EntityData
 ## particle system, some bespoke visual), they are instantiated as a child.
 ## An escape hatch without scene inheritance.
 @export var extra_nodes: PackedScene
+
+## The two slot fields as the MODIFIERS they become.
+##
+## They are stats like any other - that is the whole reason "this item grants a
+## weapon slot" and "this curse takes a shop slot away" need no code anywhere.
+## But the fact that `weapon_slots` IS a BASE modifier on WEAPON_SLOTS used to
+## live inside EntityModel, which meant the select screen would have had to know
+## it a second time to describe a chassis honestly. Two copies of a rule is one
+## copy too many, so it lives here, next to the fields it is about.
+##
+## Built fresh rather than cached: a .tres is shared by every holder, and a
+## mutable field on one is how state leaks between players.
+func slot_modifiers() -> Array[StatModifier]:
+	return [
+		_slot_modifier(StatTypes.Stat.WEAPON_SLOTS, weapon_slots),
+		_slot_modifier(StatTypes.Stat.SHOP_SLOTS, shop_slots),
+	]
+
+func _slot_modifier(stat: StatTypes.Stat, value: int) -> StatModifier:
+	var modifier := StatModifier.new()
+	modifier.stat = stat
+	modifier.modifier_type = StatTypes.Modifier.BASE
+	modifier.value = float(value)
+	return modifier

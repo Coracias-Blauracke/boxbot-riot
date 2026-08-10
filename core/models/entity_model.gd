@@ -116,14 +116,12 @@ func setup_from_data(data: EntityData) -> void:
 			continue
 		effects.register(EffectInstance.new(effect, data))
 
+	# Asked of the DATA rather than derived here. The rule that a slot count is a
+	# BASE modifier on its stat belongs beside the fields, or every screen that
+	# wants to describe a chassis has to know it too - see slot_modifiers().
 	if data is CharacterData:
-		var character := data as CharacterData
-		stats.add_modifier(
-			StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, float(character.weapon_slots), data
-		)
-		stats.add_modifier(
-			StatTypes.Stat.SHOP_SLOTS, StatTypes.Modifier.BASE, float(character.shop_slots), data
-		)
+		for modifier in (data as CharacterData).slot_modifiers():
+			stats.add_modifier(modifier.stat, modifier.modifier_type, modifier.value, data)
 
 	current_hp = stats.get_stat(StatTypes.Stat.MAX_HP)
 	_last_max_hp = current_hp
@@ -334,7 +332,25 @@ func _refresh_class_bonuses() -> void:
 func get_currency() -> int:
 	return counters.get_value(CounterTypes.Counter.CURRENCY)
 
+## CURRENCY_GAIN is read HERE and nowhere else, because this is the one door
+## currency comes through. A kill, a wave-end payout and an effect handing out
+## money all arrive at this function, so none of them has to learn that the stat
+## exists - and none of them can forget it either.
+##
+## It scales what is EARNED and never what is spent: the same call takes a
+## NEGATIVE amount when the shop charges, and a "+30% currency" stat that also
+## inflated prices would be a curse wearing a bonus's name. Selling never
+## reaches this at all - ShopManager credits CURRENCY directly, because a refund
+## is not earnings.
+##
+## The bonus lands in CURRENCY_EARNED too, deliberately. That tally is what
+## "for every 500 earned" effects hang on, and crediting the pre-bonus figure
+## there would hide the stat from precisely the effects that count earnings.
 func add_currency(amount: int) -> void:
+	if amount > 0:
+		# Floored at -1.0 on the stat, so this can reach zero and never reverse.
+		amount = roundi(float(amount) * (1.0 + stats.get_stat(StatTypes.Stat.CURRENCY_GAIN)))
+
 	counters.add(CounterTypes.Counter.CURRENCY, amount)
 	if amount > 0:
 		counters.add(CounterTypes.Counter.CURRENCY_EARNED, amount)

@@ -18,13 +18,17 @@ extends Control
 ## drifts from the numbers it describes the moment somebody retunes one.
 
 const SLOT_WIDTH := 300.0
-const SLOT_HEIGHT := 300.0
+const SLOT_HEIGHT := 360.0
 const SLOT_GAP := 24.0
 
-## How many stat lines a slot draws before it stops. Five covers every authored
-## character; overflow is the shop's unsolved problem too, and solving it here
-## first would mean designing it twice.
-const MAX_STAT_LINES := 5
+## How many stat lines a slot draws before it stops. Seven covers every authored
+## character with its two slot counts; overflow is the shop's unsolved problem
+## too, and solving it here first would mean designing it twice.
+const MAX_STAT_LINES := 7
+
+## Abilities are prose and wrap badly at this width, so two is the honest
+## ceiling until the tooltip the shop is waiting for exists here too.
+const MAX_ABILITY_LINES := 2
 
 var roster: PlayerRoster
 
@@ -146,14 +150,37 @@ func _draw_character(font: Font, rect: Rect2, index: int, accent: Color) -> void
 			HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 13, Color(0.5, 0.54, 0.62)
 		)
 
-	var y := rect.position.y + 168.0
+	# The slot counts come LAST and always, never "only when unusual": a rule
+	# that hides the ordinary value leaves the player unable to tell a chassis
+	# that says nothing about slots from one that happens to agree with the
+	# default. They are asked of the character rather than rebuilt here.
+	var lines := character.base_stats.duplicate()
+	lines.append_array(character.slot_modifiers())
+
+	var y := rect.position.y + 160.0
 	var drawn := 0
-	for modifier in character.base_stats:
+	for modifier in lines:
 		if modifier == null or drawn >= MAX_STAT_LINES:
 			break
 		_draw_stat_line(font, rect, y, modifier)
-		y += 19.0
+		y += 17.0
 		drawn += 1
+
+	# The ABILITIES, in the effect's own words - the same describe() the shop's
+	# detail block calls. Without them the two most interesting chassis in the
+	# roster look like ordinary stat bundles: nothing on screen would say that
+	# one hits burning targets harder and the other pays for the shop in blood.
+	var abilities := 0
+	for effect in character.innate_effects:
+		if effect == null or abilities >= MAX_ABILITY_LINES:
+			break
+		draw_string(
+			font, Vector2(rect.position.x + 14.0, y + 6.0),
+			"* " + effect.describe(EffectInstance.new(effect, character, 1)),
+			HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 24.0, 12, Color(0.72, 0.82, 0.95)
+		)
+		y += 15.0
+		abilities += 1
 
 	var weapons: Array[String] = []
 	for weapon in character.starting_weapons:
@@ -163,7 +190,7 @@ func _draw_character(font: Font, rect: Rect2, index: int, accent: Color) -> void
 		return
 
 	draw_string(
-		font, Vector2(rect.position.x, rect.position.y + SLOT_HEIGHT - 48.0),
+		font, Vector2(rect.position.x, rect.position.y + SLOT_HEIGHT - 46.0),
 		", ".join(weapons),
 		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 13, Color(0.66, 0.72, 0.82)
 	)

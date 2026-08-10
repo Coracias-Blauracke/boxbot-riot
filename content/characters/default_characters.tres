@@ -8,7 +8,9 @@
 [ext_resource type="Resource" path="res://content/characters/skirmisher.tres" id="c_skirmisher"]
 [ext_resource type="Resource" path="res://content/characters/bloodletter.tres" id="c_bloodletter"]
 [ext_resource type="Resource" path="res://content/characters/furnace.tres" id="c_furnace"]
+[ext_resource type="Resource" path="res://content/characters/prospector.tres" id="c_prospector"]
+[ext_resource type="Resource" path="res://content/characters/blood_bank.tres" id="c_blood_bank"]
 
 [resource]
 script = ExtResource("1_set")
-characters = Array[ExtResource("2_char")]([ExtResource("c_standard"), ExtResource("c_riveter"), ExtResource("c_bulwark"), ExtResource("c_skirmisher"), ExtResource("c_bloodletter"), ExtResource("c_furnace")])
+characters = Array[ExtResource("2_char")]([ExtResource("c_standard"), ExtResource("c_riveter"), ExtResource("c_bulwark"), ExtResource("c_skirmisher"), ExtResource("c_bloodletter"), ExtResource("c_furnace"), ExtResource("c_prospector"), ExtResource("c_blood_bank")])

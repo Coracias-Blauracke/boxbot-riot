@@ -140,6 +140,10 @@ func _initialize() -> void:
 	_test_a_full_rack_takes_a_purchase_only_when_it_merges()
 	_test_a_device_joins_once_and_the_keyboard_is_a_device()
 	_test_leaving_closes_the_gap_rather_than_leaving_a_hole()
+	_test_currency_gain_scales_earnings_and_never_spending()
+	_test_a_price_effect_discounts_by_kind_and_switches_the_payment()
+	_test_the_blood_bank_pays_for_everything_in_blood()
+	_test_the_model_applies_exactly_the_slot_modifiers_the_data_names()
 	_test_a_default_pick_prefers_a_chassis_nobody_is_on()
 	_test_leaving_takes_that_player_s_character_with_it()
 	_test_selecting_wraps_and_two_players_may_share_a_chassis()
@@ -2181,6 +2185,189 @@ func _test_leaving_closes_the_gap_rather_than_leaving_a_hole() -> void:
 	var handed := roster.to_player_devices()
 	handed.append(99)
 	_check_int("the roster is unchanged by its reader", roster.count(), 3)
+
+# --- what a purchase costs --------------------------------------------------
+
+func _test_currency_gain_scales_earnings_and_never_spending() -> void:
+	print("\n-- currency gain --")
+	var earner := _living(100.0)
+	earner.stats.add_modifier(
+		StatTypes.Stat.CURRENCY_GAIN, StatTypes.Modifier.FLAT, 0.3, &"prospector"
+	)
+
+	earner.add_currency(10)
+	_check_int("a payout is worth 30% more", earner.get_currency(), 13)
+	# The tally moves with the balance: it is what "for every 500 earned" hangs
+	# on, and crediting the pre-bonus figure would hide the stat from exactly
+	# the effects that count earnings.
+	_check_int(
+		"and the lifetime tally is credited the same figure",
+		earner.counters.get_value(CounterTypes.Counter.CURRENCY_EARNED), 13
+	)
+
+	# Spending arrives at the SAME call with a negative amount. A bonus that
+	# also inflated prices would be a curse wearing a bonus's name.
+	earner.add_currency(-13)
+	_check_int("spending is not scaled", earner.get_currency(), 0)
+	_check_int(
+		"and never credits earnings",
+		earner.counters.get_value(CounterTypes.Counter.CURRENCY_EARNED), 13
+	)
+
+	# Floored on the STAT rather than clamped in add_currency, so the stat sheet
+	# shows the same number the arithmetic uses.
+	var cursed := _living(100.0)
+	cursed.stats.add_modifier(
+		StatTypes.Stat.CURRENCY_GAIN, StatTypes.Modifier.FLAT, -3.0, &"curse"
+	)
+	_check("the stat floors at -100%", cursed.stats.get_stat(StatTypes.Stat.CURRENCY_GAIN), -1.0)
+	cursed.add_currency(50)
+	_check_int("so a payout is worth nothing rather than costing money", cursed.get_currency(), 0)
+
+	# A refund goes to CURRENCY directly and must stay out of this entirely, or
+	# buying and selling with a currency bonus prints money.
+	var shop := _make_shop()
+	var trader := _make_buyer(0)
+	trader.stats.add_modifier(
+		StatTypes.Stat.CURRENCY_GAIN, StatTypes.Modifier.FLAT, 0.3, &"prospector"
+	)
+	var item := _make_priced_item("REFUND", 1, 100)
+	trader.add_item(item)
+	_check_bool("the sale goes through", shop.sell(trader, item), true)
+	_check_int("a refund is half the authored price and no more", trader.get_currency(), 50)
+
+func _test_a_price_effect_discounts_by_kind_and_switches_the_payment() -> void:
+	print("\n-- priced by an effect --")
+	var shop := _make_shop()
+	var item := _make_priced_item("PRICED", 1, 100)
+	var weapon := _make_weapon("PRICED_W", 1, 100)
+
+	var buyer := _make_buyer(500)
+	var discount := EffectPriceModifier.new()
+	discount.price_share = 0.8
+	discount.applies_to = EffectPriceModifier.Applies.ITEMS
+	buyer.effects.register(EffectInstance.new(discount, &"discount"))
+
+	_check_int("an item is a fifth cheaper", shop.quote(buyer, item).price, 80)
+	# The kind filter is why this is ONE class rather than two: "weapons cost
+	# more" and "items cost less" are the same sentence with a different subject.
+	_check_int("a weapon is untouched by an items-only discount", shop.quote(buyer, weapon).price, 100)
+
+	# Stacks MULTIPLY. Additive stacking would reach free at five copies and
+	# then start paying the buyer, which the shop's own clamp would hide.
+	var doubled := _make_buyer(500)
+	var stacked := EffectInstance.new(discount, &"discount")
+	stacked.stacks = 2
+	doubled.effects.register(stacked)
+	_check_int("two copies compound rather than add", shop.quote(doubled, item).price, 64)
+
+	var payer := _make_buyer(500)
+	var blood := EffectPriceModifier.new()
+	blood.uses_stat_payment = true
+	blood.payment_stat = StatTypes.Stat.MAX_HP
+	blood.payment_rate = 0.5
+	var blood_instance := EffectInstance.new(blood, &"blood")
+	blood_instance.stacks = 2
+	payer.effects.register(blood_instance)
+
+	var quoted := shop.quote(payer, item)
+	_check_bool("the buyer is switched onto a stat", quoted.uses_stat_payment, true)
+	_check_int("which stat is the effect's business too", quoted.pay_with_stat, StatTypes.Stat.MAX_HP)
+	# The EXCHANGE RATE lives in the effect, and is applied ONCE whatever the
+	# stack count - two copies of "pay in HP" is still one payment, and
+	# compounding it would make the second copy a discount.
+	_check_int("the rate converts once, not once per stack", quoted.price, 50)
+
+	# A reroll goes through the same pipeline, which is the whole reason it was
+	# moved onto it: "you pay for everything in blood" must not leave the one
+	# price on the screen that is still money.
+	var reroll := shop.quote_reroll(payer)
+	_check_bool("and so does the reroll", reroll.uses_stat_payment, true)
+	_check_bool("which knows it is not a purchase", reroll.is_reroll, true)
+	_check_bool("and has no entry to be a kind of", reroll.entry == null, true)
+
+	# A KIND filter is a statement about what is being bought, so it must not
+	# reach the reroll at all - otherwise "items cost 20% less" quietly reprices
+	# a thing that is not an item.
+	_check_int(
+		"an items-only effect leaves the reroll alone",
+		shop.quote_reroll(buyer).price, shop.reroll_cost()
+	)
+
+## The authored file, asserted rather than a hand-built copy of it. Two of these
+## exist already (riot_shield, bloodstone) and both caught a real gap between
+## what a .tres says and what the engine does with it.
+func _test_the_blood_bank_pays_for_everything_in_blood() -> void:
+	print("\n-- blood bank --")
+	var character: CharacterData = load("res://content/characters/blood_bank.tres")
+	if character == null:
+		_failed += 1
+		printerr("  FAIL  blood_bank did not load")
+		return
+
+	var buyer := EntityModel.new(character)
+	buyer.add_currency(500)
+	var shop := _make_shop()
+
+	var item_quote := shop.quote(buyer, _make_priced_item("ITEM", 1, 40))
+	_check_bool("an item is paid for in a stat", item_quote.uses_stat_payment, true)
+	_check_int("at the authored rate of 0.3", item_quote.price, 12)
+
+	# EVERYTHING, weapons included. Max HP is this character's currency, so a
+	# kind it could not buy with blood would be a kind it could barely buy at
+	# all - its money only pays for rerolls.
+	var weapon_quote := shop.quote(buyer, _make_weapon("WEAPON", 1, 40))
+	_check_bool("and so is a weapon", weapon_quote.uses_stat_payment, true)
+	_check_int("at the same rate", weapon_quote.price, 12)
+
+	# End to end, through the shop rather than through quote(): the pool here is
+	# items only, so the first offer is one.
+	var rng := RunRandom.new(4242)
+	shop.open(buyer, 1, rng)
+	var hp_before := buyer.get_max_hp()
+	var currency_before := buyer.get_currency()
+	var price := shop.offers[0].price
+
+	_check_bool("the purchase goes through", shop.buy(buyer, 0), true)
+	_check_int("currency is untouched", buyer.get_currency(), currency_before)
+	_check("max HP paid for it", buyer.get_max_hp(), hp_before - float(price))
+
+	# Rerolling too. "Everything" has to include the one price that used to be
+	# decided by arithmetic instead of by the pipeline.
+	_check_bool("the reroll is quoted in blood as well", shop.reroll_uses_stat_payment, true)
+	var hp_before_reroll := buyer.get_max_hp()
+	var reroll_price := shop.reroll_price
+	_check_bool("the reroll goes through", shop.reroll(buyer, rng), true)
+	_check_int("and it too left the money alone", buyer.get_currency(), currency_before)
+	_check("paying for it in blood", buyer.get_max_hp(), hp_before_reroll - float(reroll_price))
+	# A shrinking MAX_HP has to drag current_hp down with it, or the buyer walks
+	# around above their own maximum. This is the first content that shrinks it.
+	_check_bool("and current health is clamped to the new maximum", buyer.current_hp <= buyer.get_max_hp(), true)
+
+func _test_the_model_applies_exactly_the_slot_modifiers_the_data_names() -> void:
+	print("\n-- slots as modifiers --")
+	var character := CharacterData.new()
+	character.weapon_slots = 5
+	character.shop_slots = 7
+
+	var model := EntityModel.new(character)
+	_check("the rack is what the chassis says", model.stats.get_stat(StatTypes.Stat.WEAPON_SLOTS), 5.0)
+	_check("and so is the shop", model.stats.get_stat(StatTypes.Stat.SHOP_SLOTS), 7.0)
+
+	# The regression this guards: the rule "a slot count IS a BASE modifier on
+	# its stat" used to live inside EntityModel, so any screen wanting to
+	# describe a chassis had to know it a second time. Asserting the two agree
+	# is asserting there is still only one copy of it.
+	var named := character.slot_modifiers()
+	_check_int("the data names both of them", named.size(), 2)
+	for modifier in named:
+		_check_int(
+			"a named modifier is a BASE one", modifier.modifier_type, StatTypes.Modifier.BASE
+		)
+		_check(
+			"and the model applies exactly it",
+			model.stats.get_stat(modifier.stat), modifier.value
+		)
 
 # --- what they are playing --------------------------------------------------
 

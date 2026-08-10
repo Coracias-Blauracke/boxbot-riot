@@ -50,6 +50,17 @@ extends Resource
 ## a decision rather than a free scan of the whole pool.
 @export var reroll_cost_growth: float = 1.6
 
+@export_group("Presentation")
+## What a price paid in CURRENCY is marked with. A price paid in a STAT takes
+## its icon from that stat's StatMetadata instead, which is the whole reason
+## StatMetadata carries one.
+##
+## Here rather than on a screen, because it is authored content: the theme may
+## end up being scrap, crystals or blood, and no scene should have to be edited
+## to say so. Null draws a placeholder shape, which is what the rest of the game
+## does while there is no art.
+@export var currency_icon: Texture2D
+
 @export_group("Selling")
 ## Fraction of the item's AUTHORED price, deliberately not of what it would cost
 ## today. Buy prices rise with the wave; a refund that tracked them would make

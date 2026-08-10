@@ -84,6 +84,9 @@ are FLAT.
 | 7 | **Prospector** | 95 / 220 | CURRENCY_GAIN +30%, SHOP_SLOTS +2, RANGED_DAMAGE -20% | Bolt Driver I | one stat read |
 | 8 | **Blood Bank** | 220 / 205 | HP_REGEN +0.5, CRIT_CHANCE -0.05 | Hydraulic Shears I | one new effect class |
 
+All eight are authored. The costs column is what each turned out to need, and
+six of the eight needed nothing.
+
 **1. Standard Unit** is `test_character` with its eight bleed items stripped -
 those were debug scaffolding for the status system and are called out as
 temporary in CLAUDE.md. It keeps the Bolt Driver, which the weapon list already
@@ -118,12 +121,24 @@ and nothing else. It is here specifically to walk `innate_effects` end to end.
 shop slots, and a fifth off its damage to pay for it. **CURRENCY_GAIN is not
 read by anything today** - see below.
 
-**8. Blood Bank** pays for everything in MAX HP instead of currency, at 0.35 HP
-per unit of price, which is why it is a 220 HP chassis. It is the character the
-shop's stat-payment path was built for and never given: `PriceEvent` carries
-`uses_stat_payment` and `pay_with_stat`, `ShopManager` spends whichever is
-named, and **no effect in `core/effects/library` sets either one**. Only a test
-double does.
+**8. Blood Bank** pays for EVERYTHING in MAX HP instead of currency - items and
+weapons alike - at 0.3 HP per unit of price, which is why it is a 220 HP
+chassis. It is the character the shop's stat-payment path was built for and
+never given: `PriceEvent` carries `uses_stat_payment` and `pay_with_stat`,
+`ShopManager` spends whichever is named, and no effect in
+`core/effects/library` set either one. Only a test double did.
+
+An earlier draft had it pay in blood for ITEMS only, so that its currency still
+bought weapons. That was rejected: max HP is meant to BE this character's
+currency, and a kind it could not buy with blood would be a kind it could barely
+buy at all. The consequence is deliberate and worth knowing - **its currency now
+pays for rerolls and nothing else**, because a reroll is priced by `ShopData`
+and never goes through `CALCULATE_PRICE`. Making rerolls cost blood too is a
+change in `ShopManager`, not in any content file.
+
+The kind filter it no longer uses stayed on the effect class, because "weapons
+cost 20% less" is the same sentence with a different subject and it is one
+authored field rather than a second class.
 
 ---
 
@@ -132,18 +147,31 @@ double does.
 Six of the eight need no code at all, which is the same ratio the item list
 produced and the reason the prose comes first.
 
-1. **CURRENCY_GAIN is a dead stat.** It has metadata, a row in the stat sheet
-   and no reader anywhere - `add_currency()` credits the raw amount. CLAUDE.md
-   already lists it as the one remaining cheap wire. Prospector is the content
-   that makes it worth doing: one read, one regression test.
+1. **CURRENCY_GAIN was a dead stat** - metadata, a row in the stat sheet, and no
+   reader anywhere, because `add_currency()` credited the raw amount. FIXED, in
+   the one place currency enters the model, so no caller had to learn the stat
+   exists and none of them can forget it either. It scales what is EARNED and
+   never what is spent: the same call takes a negative amount when the shop
+   charges, and a "+30% currency" stat that also inflated prices would be a
+   curse wearing a bonus's name. The floor went onto the stat (-1.0) rather than
+   into a clamp, so the sheet shows the number the arithmetic uses.
 
-2. **Nothing drives `CALCULATE_PRICE` from content.** The pipeline exists, the
-   shop honours both a changed price and a stat payment, and the only things
-   that have ever used it are two test doubles inside `core_test.gd`. One effect
-   class - price share plus an optional payment stat - covers Blood Bank, every
-   "items cost 20% less" item, and every future character that pays in
-   something other than money. That is a FAMILY, which is the bar this repo sets
-   for writing an effect class at all.
+2. **Nothing drove `CALCULATE_PRICE` from content.** The pipeline existed, the
+   shop honoured both a changed price and a stat payment, and the only things
+   that had ever used either were two test doubles inside `core_test.gd`. FIXED
+   by `EffectPriceModifier`: a price share, a kind filter, and an optional
+   payment stat with its own rate. One class covers Blood Bank, every "items
+   cost 20% less" item, and every future character that pays in something other
+   than money - which is the bar this repo sets for writing an effect class at
+   all. It knows nothing about characters: the same file works in an item, on a
+   weapon, or on a weapon class threshold.
+
+3. **The shop could not SAY what an offer is paid with.** Found by playing the
+   first content that uses it: a Blood Bank player saw an item at 3 beside a
+   weapon at 16 with nothing to distinguish blood from money. Prices paid in a
+   stat now draw in a different colour and the detail block names the stat. The
+   real answer is an icon, which is what `StatMetadata.icon` is for and what the
+   art pass will supply.
 
 3. **A character has no portrait.** `EntityData.icon` exists and nothing draws
    it; the select screen will show a name and derived stat lines, exactly as the

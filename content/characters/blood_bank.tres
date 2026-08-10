@@ -1,0 +1,50 @@
+[gd_resource type="Resource" script_class="CharacterData" format=3]
+
+[ext_resource type="Script" path="res://core/data/character_data.gd" id="1_char"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="3_weapon"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="5_base"]
+[ext_resource type="Script" path="res://core/effects/library/effect_price_modifier.gd" id="6_price"]
+[ext_resource type="Resource" path="res://content/weapons/hydraulic_shears_1.tres" id="4_shears"]
+
+[sub_resource type="Resource" id="hp"]
+script = ExtResource("2_mod")
+stat = 0
+modifier_type = 0
+value = 220.0
+
+[sub_resource type="Resource" id="speed"]
+script = ExtResource("2_mod")
+stat = 14
+modifier_type = 0
+value = 205.0
+
+[sub_resource type="Resource" id="regen"]
+script = ExtResource("2_mod")
+stat = 1
+modifier_type = 1
+value = 0.5
+
+[sub_resource type="Resource" id="crit"]
+script = ExtResource("2_mod")
+stat = 9
+modifier_type = 1
+value = -0.05
+
+[sub_resource type="Resource" id="e_blood_price"]
+script = ExtResource("6_price")
+price_share = 1.0
+applies_to = 0
+uses_stat_payment = true
+payment_stat = 0
+payment_rate = 0.3
+
+[resource]
+script = ExtResource("1_char")
+display_key = "CHAR_BLOOD_BANK"
+collider_radius = 13.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("regen"), SubResource("crit")])
+innate_effects = Array[ExtResource("5_base")]([SubResource("e_blood_price")])
+weapon_slots = 6
+shop_slots = 4
+starting_weapons = Array[ExtResource("3_weapon")]([ExtResource("4_shears")])
