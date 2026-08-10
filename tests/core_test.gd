@@ -2284,6 +2284,30 @@ func _test_a_price_effect_discounts_by_kind_and_switches_the_payment() -> void:
 	# A reroll goes through the same pipeline, which is the whole reason it was
 	# moved onto it: "you pay for everything in blood" must not leave the one
 	# price on the screen that is still money.
+	# The CACHED quote the screen reads, not just the freshly computed one. It
+	# is refreshed by every path that can change what a reroll costs - opening,
+	# rerolling, buying, and SELLING, because selling can take away the very
+	# effect that priced it. Missing one leaves a stale number on screen.
+	var trader := _make_buyer(500)
+	var discount_item := _make_priced_item("DISCOUNTER", 1, 10)
+	var seller_effect := EffectPriceModifier.new()
+	seller_effect.price_share = 0.5
+	discount_item.dynamic_effects = [seller_effect]
+
+	var rng_sell := RunRandom.new(77)
+	shop.open(trader, 1, rng_sell)
+	_check_int("the reroll starts at its authored cost", shop.reroll_price, 5)
+
+	trader.add_item(discount_item)
+	shop.sell(trader, discount_item)
+	_check_int("selling the discounter puts the reroll back up", shop.reroll_price, 5)
+
+	trader.add_item(discount_item)
+	shop.open(trader, 1, rng_sell)
+	_check_int("and holding one halves it", shop.reroll_price, 3)
+	shop.sell(trader, discount_item)
+	_check_int("selling it refreshes the cached quote", shop.reroll_price, 5)
+
 	var reroll := shop.quote_reroll(payer)
 	_check_bool("and so does the reroll", reroll.uses_stat_payment, true)
 	_check_bool("which knows it is not a purchase", reroll.is_reroll, true)

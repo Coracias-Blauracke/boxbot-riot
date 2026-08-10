@@ -178,6 +178,11 @@ func sell(host: EntityModel, entry: ShopEntryData) -> bool:
 	event.base_price = entry.base_price
 	event.price = refund
 	host.notify(Hooks.Hook.ON_ITEM_SOLD, event)
+
+	# Selling can take away the very effect that prices a reroll, exactly as
+	# buying can grant one. Missing this half leaves the discount on screen
+	# after the item that granted it is gone.
+	_refresh_reroll_quote(host)
 	return true
 
 func reroll(host: EntityModel, rng: RunRandom) -> bool:
