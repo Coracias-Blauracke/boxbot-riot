@@ -54,6 +54,11 @@ move_down={
 ]
 }
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://content/locale/en.po")
+locale/fallback="en"
+
 [layer_names]
 
 2d_physics/layer_1="Environment"

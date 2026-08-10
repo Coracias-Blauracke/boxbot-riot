@@ -623,11 +623,25 @@ func _test_a_weapon_says_what_it_scales_with() -> void:
 
 	var notes := data.detail_notes()
 	_check_int("one line per entry", notes.size(), 3)
-	# The SAME key the stat sheet shows, built from the enum rather than spelled
-	# again - two spellings of one name is how a screen disagrees with itself.
-	_check_bool("names the stat as the sheet does", notes[0] == "scales 50% with STAT_RANGED_DAMAGE", true)
-	_check_bool("and the foreign one too", notes[1] == "scales 10% with STAT_MAX_HP", true)
-	_check_bool("inheritance reads differently", notes[2] == "inherits 50% of STAT_ATTACK_SPEED", true)
+	# The SAME name the stat sheet shows, and asserted THROUGH tr() rather than
+	# against a spelling written out here. The note is a sentence with a name
+	# inside it, so it is translated where it is built - a caller handed the
+	# whole string could only translate all of it or none of it. Comparing
+	# against tr() is what keeps this test honest whether or not a translation
+	# happens to be loaded, and two spellings of one name is exactly how a
+	# screen ends up disagreeing with itself.
+	_check_bool(
+		"names the stat as the sheet does",
+		notes[0] == "scales 50%% with %s" % tr("STAT_RANGED_DAMAGE"), true
+	)
+	_check_bool(
+		"and the foreign one too",
+		notes[1] == "scales 10%% with %s" % tr("STAT_MAX_HP"), true
+	)
+	_check_bool(
+		"inheritance reads differently",
+		notes[2] == "inherits 50%% of %s" % tr("STAT_ATTACK_SPEED"), true
+	)
 
 ## THIRTY stats at once, half of them pulling the other way.
 ##

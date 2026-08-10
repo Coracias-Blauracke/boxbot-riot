@@ -1,0 +1,573 @@
+msgid ""
+msgstr ""
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "ARENA_TEST"
+msgstr "Test Arena"
+
+msgid "CHAR_BLOODLETTER"
+msgstr "Bloodletter"
+
+msgid "CHAR_BLOODLETTER_DESC"
+msgstr "Bleeds whatever it touches and drinks what runs out. The drill hits often enough to make six percent of a hit worth having."
+
+msgid "CHAR_BLOOD_BANK"
+msgstr "Blood Bank"
+
+msgid "CHAR_BLOOD_BANK_DESC"
+msgstr "Pays for everything in maximum health - items, weapons and rerolls alike. Starts with more of it than anyone and spends it faster than it comes back."
+
+msgid "CHAR_BULWARK"
+msgstr "Bulwark"
+
+msgid "CHAR_BULWARK_DESC"
+msgstr "Six points of armour behind a hundred and sixty five health, slow enough that the horde catches up. Carries one weapon fewer than everybody else, which is the one thing the shop cannot sell back to you."
+
+msgid "CHAR_FURNACE"
+msgstr "Furnace"
+
+msgid "CHAR_FURNACE_DESC"
+msgstr "A walking boiler. Sets what it hits on fire more often than anything else in the roster, and hurts whatever is already burning."
+
+msgid "CHAR_PROSPECTOR"
+msgstr "Prospector"
+
+msgid "CHAR_PROSPECTOR_DESC"
+msgstr "Buys its way through the run: a third more currency, two more things offered every visit, and a fifth less damage to pay for it."
+
+msgid "CHAR_RIVETER"
+msgstr "Riveter"
+
+msgid "CHAR_RIVETER_DESC"
+msgstr "Fires faster than anything else on the rack, and hits softer for it. A flat damage bonus is worth less on every small shot, so it wants many improvements rather than one large one."
+
+msgid "CHAR_SKIRMISHER"
+msgstr "Skirmisher"
+
+msgid "CHAR_SKIRMISHER_DESC"
+msgstr "Never gets hit by the first bug through the door. Seventy health means the second one finishes it."
+
+msgid "CHAR_STANDARD_UNIT"
+msgstr "Standard Unit"
+
+msgid "CHAR_STANDARD_UNIT_DESC"
+msgstr "The frame every other chassis is measured against. Nothing given, nothing taken away - a Bolt Driver and whatever you make of it."
+
+msgid "CHAR_TEST"
+msgstr "Test Rig"
+
+msgid "CLASS_BLADE"
+msgstr "Blade"
+
+msgid "CLASS_BLOODY"
+msgstr "Bloody"
+
+msgid "CLASS_BOUNCY"
+msgstr "Bouncy"
+
+msgid "CLASS_GUN"
+msgstr "Gun"
+
+msgid "CLASS_RAPID"
+msgstr "Rapid"
+
+msgid "ENEMY_BRUTE"
+msgstr "Brute"
+
+msgid "ENEMY_CHASER"
+msgstr "Chaser"
+
+msgid "ITEM_BARBED_EDGE"
+msgstr "Barbed Edge"
+
+msgid "ITEM_BLOODSTONE"
+msgstr "Bloodstone"
+
+msgid "ITEM_BLOOD_CONTAINER"
+msgstr "Blood Container"
+
+msgid "ITEM_COLD_FIRE"
+msgstr "Cold Fire"
+
+msgid "ITEM_DIVERSE_EFFECT"
+msgstr "Diverse Effect"
+
+msgid "ITEM_FUEL"
+msgstr "Fuel"
+
+msgid "ITEM_GREEN_SANDWICH"
+msgstr "Green Sandwich"
+
+msgid "ITEM_INCENDIARY_ROUNDS"
+msgstr "Incendiary Rounds"
+
+msgid "ITEM_INTERNAL_FURNACE"
+msgstr "Internal Furnace"
+
+msgid "ITEM_LUCKY_CHARM"
+msgstr "Lucky Charm"
+
+msgid "ITEM_MACHINED_SIGHTS"
+msgstr "Machined Sights"
+
+msgid "ITEM_MOLTEN_CORE"
+msgstr "Molten Core"
+
+msgid "ITEM_OVERFLOWING_TOXINS"
+msgstr "Overflowing Toxins"
+
+msgid "ITEM_PACEMAKER"
+msgstr "Pacemaker"
+
+msgid "ITEM_PYROJOY"
+msgstr "Pyrojoy"
+
+msgid "ITEM_REACTOR_CORE"
+msgstr "Reactor Core"
+
+msgid "ITEM_RIOT_SHIELD"
+msgstr "Riot Shield"
+
+msgid "ITEM_SCRAP_PLATING"
+msgstr "Scrap Plating"
+
+msgid "ITEM_SERRATED_ROUNDS"
+msgstr "Serrated Rounds"
+
+msgid "ITEM_SHARP_BLADE"
+msgstr "Sharp Blade"
+
+msgid "ITEM_TINDERBOX"
+msgstr "Tinderbox"
+
+msgid "ITEM_TURBO_SPRINGS"
+msgstr "Turbo Springs"
+
+msgid "ITEM_UNIVERSAL_DOUBLER"
+msgstr "Universal Doubler"
+
+msgid "ITEM_WHETSTONE"
+msgstr "Whetstone"
+
+msgid "PROJ_BULLET"
+msgstr "Bullet"
+
+msgid "STAT_ARMOR"
+msgstr "Armor"
+
+msgid "STAT_ARMOR_DESC"
+msgstr "Takes a share off every hit, armor / (armor + 15). The share climbs more slowly the higher it gets, but each point is worth the same amount of effective health."
+
+msgid "STAT_ATTACK_SPEED"
+msgstr "Attack Speed"
+
+msgid "STAT_ATTACK_SPEED_DESC"
+msgstr "How fast your weapons swing and fire. A multiplier, so 1.0 is the ordinary rate."
+
+msgid "STAT_BLEED_CHANCE"
+msgstr "Bleed Chance"
+
+msgid "STAT_BLEED_CHANCE_DESC"
+msgstr "Chance for one of your hits to start a bleed, added to whatever the weapon brings."
+
+msgid "STAT_BLEED_DAMAGE"
+msgstr "Bleed Damage"
+
+msgid "STAT_BLEED_DAMAGE_DESC"
+msgstr "Damage each tick of bleeding deals."
+
+msgid "STAT_BLEED_MAX_STACKS"
+msgstr "Bleed Max Stacks"
+
+msgid "STAT_BLEED_MAX_STACKS_DESC"
+msgstr "How many bleeds one enemy can carry at once."
+
+msgid "STAT_BLEED_RATE"
+msgstr "Bleed Rate"
+
+msgid "STAT_BLEED_RATE_DESC"
+msgstr "How fast bleeding ticks. A faster bleed delivers its ticks sooner, never more of them."
+
+msgid "STAT_BOUNCING"
+msgstr "Bouncing"
+
+msgid "STAT_BOUNCING_DESC"
+msgstr "How many further enemies a projectile bounces to."
+
+msgid "STAT_BURN_CHANCE"
+msgstr "Burn Chance"
+
+msgid "STAT_BURN_CHANCE_DESC"
+msgstr "Chance for one of your hits to set the target on fire."
+
+msgid "STAT_BURN_DAMAGE"
+msgstr "Burn Damage"
+
+msgid "STAT_BURN_DAMAGE_DESC"
+msgstr "Damage each tick of burning deals."
+
+msgid "STAT_BURN_MAX_STACKS"
+msgstr "Burn Max Stacks"
+
+msgid "STAT_BURN_MAX_STACKS_DESC"
+msgstr "How many fires one enemy can carry at once."
+
+msgid "STAT_BURN_RATE"
+msgstr "Burn Rate"
+
+msgid "STAT_BURN_RATE_DESC"
+msgstr "How fast burning ticks. A faster fire delivers its ticks sooner, never more of them."
+
+msgid "STAT_BURN_SPREAD_RADIUS"
+msgstr "Burn Spread Radius"
+
+msgid "STAT_BURN_SPREAD_RADIUS_DESC"
+msgstr "How far fire jumps when something burning dies."
+
+msgid "STAT_CRIT_CHANCE"
+msgstr "Crit Chance"
+
+msgid "STAT_CRIT_CHANCE_DESC"
+msgstr "Chance for a shot to land critically. Rolled once per shot, so every pellet of a blast crits together."
+
+msgid "STAT_CRIT_MULTIPLIER"
+msgstr "Crit Multiplier"
+
+msgid "STAT_CRIT_MULTIPLIER_DESC"
+msgstr "How much a critical hit multiplies damage by."
+
+msgid "STAT_CURRENCY_GAIN"
+msgstr "Currency Gain"
+
+msgid "STAT_CURRENCY_GAIN_DESC"
+msgstr "How much more you earn. It never changes what anything costs."
+
+msgid "STAT_DODGE"
+msgstr "Dodge"
+
+msgid "STAT_DODGE_DESC"
+msgstr "Chance to avoid a hit outright. Capped at 60%, and it answers hits only - never damage over time."
+
+msgid "STAT_ELEMENTAL_DAMAGE"
+msgstr "Elemental Damage"
+
+msgid "STAT_ELEMENTAL_DAMAGE_DESC"
+msgstr "Damage added to elemental weapons."
+
+msgid "STAT_ENGINEERING"
+msgstr "Engineering"
+
+msgid "STAT_ENGINEERING_DESC"
+msgstr "How well the things you build fight for you."
+
+msgid "STAT_HARVESTING"
+msgstr "Harvesting"
+
+msgid "STAT_HARVESTING_DESC"
+msgstr "How much you gather at the end of a wave."
+
+msgid "STAT_HEAT_CAPACITY"
+msgstr "Heat Capacity"
+
+msgid "STAT_HEAT_CAPACITY_DESC"
+msgstr "How long a weapon fires before it overheats."
+
+msgid "STAT_HEAT_DISSIPATION"
+msgstr "Heat Dissipation"
+
+msgid "STAT_HEAT_DISSIPATION_DESC"
+msgstr "How fast a weapon cools down."
+
+msgid "STAT_HP_REGEN"
+msgstr "HP Regen"
+
+msgid "STAT_HP_REGEN_DESC"
+msgstr "Health restored every second, during a wave and between waves alike."
+
+msgid "STAT_LIFESTEAL"
+msgstr "Lifesteal"
+
+msgid "STAT_LIFESTEAL_DESC"
+msgstr "Share of the damage you land that comes back as health. Hits only, and taken from what actually landed."
+
+msgid "STAT_LUCK"
+msgstr "Luck"
+
+msgid "STAT_LUCK_DESC"
+msgstr "Tilts the odds wherever something is rolled."
+
+msgid "STAT_MAP_SIZE"
+msgstr "Map Size"
+
+msgid "STAT_MAP_SIZE_DESC"
+msgstr "How large the arena is."
+
+msgid "STAT_MAX_HP"
+msgstr "Max HP"
+
+msgid "STAT_MAX_HP_DESC"
+msgstr "How much damage you can take. At zero you go down."
+
+msgid "STAT_MELEE_DAMAGE"
+msgstr "Melee Damage"
+
+msgid "STAT_MELEE_DAMAGE_DESC"
+msgstr "Damage added to your melee weapons."
+
+msgid "STAT_MOVEMENT_SPEED"
+msgstr "Movement Speed"
+
+msgid "STAT_MOVEMENT_SPEED_DESC"
+msgstr "How fast you walk."
+
+msgid "STAT_PICKUP_RANGE"
+msgstr "Pickup Range"
+
+msgid "STAT_PICKUP_RANGE_DESC"
+msgstr "How far away you collect things from."
+
+msgid "STAT_PIERCING"
+msgstr "Piercing"
+
+msgid "STAT_PIERCING_DESC"
+msgstr "How many further enemies a projectile passes through."
+
+msgid "STAT_POISON_CHANCE"
+msgstr "Poison Chance"
+
+msgid "STAT_POISON_CHANCE_DESC"
+msgstr "Chance for one of your hits to poison the target."
+
+msgid "STAT_POISON_DAMAGE"
+msgstr "Poison Damage"
+
+msgid "STAT_POISON_DAMAGE_DESC"
+msgstr "Damage each tick of poison deals."
+
+msgid "STAT_POISON_MAX_STACKS"
+msgstr "Poison Max Stacks"
+
+msgid "STAT_POISON_MAX_STACKS_DESC"
+msgstr "How many poisons one enemy can carry at once."
+
+msgid "STAT_POISON_RATE"
+msgstr "Poison Rate"
+
+msgid "STAT_POISON_RATE_DESC"
+msgstr "How fast poison ticks. A faster poison delivers its ticks sooner, never more of them."
+
+msgid "STAT_PROJECTILE_SPEED"
+msgstr "Projectile Speed"
+
+msgid "STAT_PROJECTILE_SPEED_DESC"
+msgstr "How fast your projectiles travel. A multiplier."
+
+msgid "STAT_RANGE"
+msgstr "Range"
+
+msgid "STAT_RANGED_DAMAGE"
+msgstr "Ranged Damage"
+
+msgid "STAT_RANGED_DAMAGE_DESC"
+msgstr "Damage added to your ranged weapons."
+
+msgid "STAT_RANGE_DESC"
+msgstr "How far your weapons reach, and how far they look for a target."
+
+msgid "STAT_RECOIL"
+msgstr "Recoil"
+
+msgid "STAT_RECOIL_DESC"
+msgstr "How hard a weapon shoves you when it fires."
+
+msgid "STAT_SHOP_SLOTS"
+msgstr "Shop Slots"
+
+msgid "STAT_SHOP_SLOTS_DESC"
+msgstr "How many things the shop offers you each visit."
+
+msgid "STAT_SLOW_CHANCE"
+msgstr "Slow Chance"
+
+msgid "STAT_SLOW_CHANCE_DESC"
+msgstr "Chance for one of your hits to slow the target."
+
+msgid "STAT_SLOW_DURATION"
+msgstr "Slow Duration"
+
+msgid "STAT_SLOW_DURATION_DESC"
+msgstr "How long a slow lasts."
+
+msgid "STAT_SLOW_POWER"
+msgstr "Slow Power"
+
+msgid "STAT_SLOW_POWER_DESC"
+msgstr "How much speed a slow takes away."
+
+msgid "STAT_SPREAD_ANGLE"
+msgstr "Spread Angle"
+
+msgid "STAT_SPREAD_ANGLE_DESC"
+msgstr "How wide a weapon scatters its shots. Lower is better."
+
+msgid "STAT_STATUS_CHANCE"
+msgstr "Status Chance"
+
+msgid "STAT_STATUS_CHANCE_DESC"
+msgstr "Chance to apply any status at all, on top of the chance for that particular one."
+
+msgid "STAT_WEAPON_SLOTS"
+msgstr "Weapon Slots"
+
+msgid "STAT_WEAPON_SLOTS_DESC"
+msgstr "How many weapons you can carry at once."
+
+msgid "WAVE_MOD_HORDE"
+msgstr "Horde"
+
+msgid "WEAPON_BOLT_DRIVER_I"
+msgstr "Bolt Driver I"
+
+msgid "WEAPON_BOLT_DRIVER_II"
+msgstr "Bolt Driver II"
+
+msgid "WEAPON_BOLT_DRIVER_III"
+msgstr "Bolt Driver III"
+
+msgid "WEAPON_BOLT_DRIVER_IV"
+msgstr "Bolt Driver IV"
+
+msgid "WEAPON_CAROM_PISTOL_I"
+msgstr "Carom Pistol I"
+
+msgid "WEAPON_CAROM_PISTOL_II"
+msgstr "Carom Pistol II"
+
+msgid "WEAPON_CAROM_PISTOL_III"
+msgstr "Carom Pistol III"
+
+msgid "WEAPON_CAROM_PISTOL_IV"
+msgstr "Carom Pistol IV"
+
+msgid "WEAPON_CIRCULAR_SAW_I"
+msgstr "Circular Saw I"
+
+msgid "WEAPON_CIRCULAR_SAW_II"
+msgstr "Circular Saw II"
+
+msgid "WEAPON_CIRCULAR_SAW_III"
+msgstr "Circular Saw III"
+
+msgid "WEAPON_CIRCULAR_SAW_IV"
+msgstr "Circular Saw IV"
+
+msgid "WEAPON_HYDRAULIC_SHEARS_I"
+msgstr "Hydraulic Shears I"
+
+msgid "WEAPON_HYDRAULIC_SHEARS_II"
+msgstr "Hydraulic Shears II"
+
+msgid "WEAPON_HYDRAULIC_SHEARS_III"
+msgstr "Hydraulic Shears III"
+
+msgid "WEAPON_HYDRAULIC_SHEARS_IV"
+msgstr "Hydraulic Shears IV"
+
+msgid "WEAPON_NEEDLE_ARRAY_I"
+msgstr "Needle Array I"
+
+msgid "WEAPON_NEEDLE_ARRAY_II"
+msgstr "Needle Array II"
+
+msgid "WEAPON_NEEDLE_ARRAY_III"
+msgstr "Needle Array III"
+
+msgid "WEAPON_NEEDLE_ARRAY_IV"
+msgstr "Needle Array IV"
+
+msgid "WEAPON_PINBALL_LAUNCHER_I"
+msgstr "Pinball Launcher I"
+
+msgid "WEAPON_PINBALL_LAUNCHER_II"
+msgstr "Pinball Launcher II"
+
+msgid "WEAPON_PINBALL_LAUNCHER_III"
+msgstr "Pinball Launcher III"
+
+msgid "WEAPON_PINBALL_LAUNCHER_IV"
+msgstr "Pinball Launcher IV"
+
+msgid "WEAPON_RAIL_SPIKE_I"
+msgstr "Rail Spike I"
+
+msgid "WEAPON_RAIL_SPIKE_II"
+msgstr "Rail Spike II"
+
+msgid "WEAPON_RAIL_SPIKE_III"
+msgstr "Rail Spike III"
+
+msgid "WEAPON_RAIL_SPIKE_IV"
+msgstr "Rail Spike IV"
+
+msgid "WEAPON_RIVET_REPEATER_I"
+msgstr "Rivet Repeater I"
+
+msgid "WEAPON_RIVET_REPEATER_II"
+msgstr "Rivet Repeater II"
+
+msgid "WEAPON_RIVET_REPEATER_III"
+msgstr "Rivet Repeater III"
+
+msgid "WEAPON_RIVET_REPEATER_IV"
+msgstr "Rivet Repeater IV"
+
+msgid "WEAPON_SANGUINE_SPRAYER_I"
+msgstr "Sanguine Sprayer I"
+
+msgid "WEAPON_SANGUINE_SPRAYER_II"
+msgstr "Sanguine Sprayer II"
+
+msgid "WEAPON_SANGUINE_SPRAYER_III"
+msgstr "Sanguine Sprayer III"
+
+msgid "WEAPON_SANGUINE_SPRAYER_IV"
+msgstr "Sanguine Sprayer IV"
+
+msgid "WEAPON_SCATTER_VENT_I"
+msgstr "Scatter Vent I"
+
+msgid "WEAPON_SCATTER_VENT_II"
+msgstr "Scatter Vent II"
+
+msgid "WEAPON_SCATTER_VENT_III"
+msgstr "Scatter Vent III"
+
+msgid "WEAPON_SCATTER_VENT_IV"
+msgstr "Scatter Vent IV"
+
+msgid "WEAPON_SERRATED_DRILL_I"
+msgstr "Serrated Drill I"
+
+msgid "WEAPON_SERRATED_DRILL_II"
+msgstr "Serrated Drill II"
+
+msgid "WEAPON_SERRATED_DRILL_III"
+msgstr "Serrated Drill III"
+
+msgid "WEAPON_SERRATED_DRILL_IV"
+msgstr "Serrated Drill IV"
+
+msgid "WEAPON_SERVO_FISTS_I"
+msgstr "Servo Fists I"
+
+msgid "WEAPON_SERVO_FISTS_II"
+msgstr "Servo Fists II"
+
+msgid "WEAPON_SERVO_FISTS_III"
+msgstr "Servo Fists III"
+
+msgid "WEAPON_SERVO_FISTS_IV"
+msgstr "Servo Fists IV"

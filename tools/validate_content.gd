@@ -22,6 +22,7 @@ func _initialize() -> void:
 
 	_validate_tags_name_real_classes()
 	_validate_characters_are_reachable()
+	_validate_keys_are_translated()
 	_validate_source_is_english()
 
 	for warning in _warnings:
@@ -102,6 +103,14 @@ func _validate(path: String) -> void:
 	if resource == null:
 		_errors.append("%s : cannot be loaded" % path)
 		return
+
+	# Read GENERICALLY rather than per type. Every player-facing string in
+	# content/ is a translation key on some resource, and chasing them type by
+	# type means the next content type quietly opts out of being checked.
+	for field in ["display_key", "description_key"]:
+		var value: Variant = resource.get(field)
+		if value is String and not (value as String).is_empty():
+			_used_keys[value as String] = path
 
 	if resource is ItemData:
 		_validate_item(path, resource)
@@ -539,6 +548,44 @@ func _validate_tags_name_real_classes() -> void:
 			_warnings.append(
 				"%s : tagged '%s', which no authored class declares, so it counts toward nothing"
 				% [path, tag]
+			)
+
+## Every translation key content asks for, and where it was asked from.
+const LOCALE_PATH := "res://content/locale/en.po"
+
+var _used_keys: Dictionary = {}
+
+## A key with no English behind it renders as ITSELF - the shop reads
+## WEAPON_BOLT_DRIVER_I and nothing errors. That was the state of the whole game
+## until there was a translation at all, and the failure mode of adding the
+## forty-ninth weapon is exactly the same: it loads, it sells, and it has no
+## name. Cheap to catch here, invisible everywhere else.
+##
+## Read as TEXT rather than through TranslationServer, because the validator
+## must report on the file in the repo rather than on whatever the engine
+## happens to have loaded for the current locale.
+func _validate_keys_are_translated() -> void:
+	var text := FileAccess.get_file_as_string(LOCALE_PATH)
+	if text.is_empty():
+		_warnings.append("%s : missing or empty, so every name on screen is a key" % LOCALE_PATH)
+		return
+
+	var translated: Dictionary = {}
+	var pending := ""
+	for line in text.split("\n"):
+		var trimmed := line.strip_edges()
+		if trimmed.begins_with("msgid \""):
+			pending = trimmed.substr(7, trimmed.length() - 8)
+		elif trimmed.begins_with("msgstr \"") and not pending.is_empty():
+			if trimmed.length() > 9:
+				translated[pending] = true
+			pending = ""
+
+	for key in _used_keys:
+		if not translated.has(key):
+			_warnings.append(
+				"%s : '%s' has no entry in %s, so it draws as the key itself"
+				% [_used_keys[key], key, LOCALE_PATH]
 			)
 
 ## Every authored character, and every character some set lists. Compared at the

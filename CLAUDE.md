@@ -166,6 +166,7 @@ content/     authored .tres: characters/ (six + the set that lists them,
              enemies, weapons/ (12 families x 4
              tiers, + classes/), items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
+             locale/en.po (every authored key, loaded by project.godot),
              stats/ (StatMetadata + the StatSheet reading order),
              statuses/ (bleed, poison, burn, slow)
 tests/       headless suites
@@ -350,11 +351,9 @@ rule with a reason. A chassis is an identity rather than a bundle: "pays for
 everything in blood" is a sentence no stat line can produce, and there are eight
 of these rather than hundreds. The numbers under it are still derived.
 
-Note it renders as the KEY today (`CHAR_FURNACE_DESC`), because no translation
-is loaded - the same reason the shop reads `WEAPON_BOLT_DRIVER_I`. The prose
-itself lives in `docs/character_list.md` until there is a translation to put it
-in, and doing that properly means every key in the game at once, not a
-characters-only file that leaves one panel half-translated.
+It is the only prose in `content/locale/en.po` that could not have been
+generated from a key, and writing it is what finally made the panel's scroll do
+anything: with names alone nothing was ever long enough to overflow.
 
 **`CharacterData.slot_modifiers()` is where "a slot count IS a BASE modifier on
 its stat" lives.** That rule used to sit inside `EntityModel`, which meant any
@@ -997,11 +996,38 @@ double-status-stacks, stat-per-world-count, price-modifier, and the three status
 kinds. That ratio is the point - sixteen of the twenty-four authored items and
 six of the eight authored characters needed no new code at all.
 
-**Localisation is DEFERRED ON PURPOSE, and is not a gap.** `tr()` is already
-wrapped around every `display_key` and `description_key`, so the door is open
-and no content file will need touching. Until a translation is loaded, `tr()`
-returns the key unchanged, which is why the shop reads `ITEM_WHETSTONE` rather
-than a name. That looks like a placeholder and is not one.
+**The game reads in ENGLISH now.** `content/locale/en.po` translates all 189
+authored keys - every stat name and its description, every item, all 48 weapons,
+the classes, the enemies and the eight characters - and `project.godot` loads it
+directly by `res://` path. That last part is the reason it is a `.po` and not a
+CSV: a CSV imports into `.godot/imported/`, which is gitignored, so the project
+setting would point at a path that does not survive a move to another machine.
+A `.po` is referenced where it actually lives and re-imports itself like any
+other resource.
+
+This was deferred on purpose for a long time and stopped being the right call
+once there was content worth judging: the shop reading `WEAPON_BOLT_DRIVER_I`
+beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
+
+**Names are mechanical, prose is written.** A name comes straight from its key
+(`WEAPON_BOLT_DRIVER_I` -> "Bolt Driver I"), so a new weapon needs one obvious
+line. The 45 stat descriptions and the 8 character descriptions are hand-written
+and are the only authored player-facing prose in the game.
+
+**The validator fails a key with no English behind it.** A missing entry renders
+as the key itself and nothing errors - which is exactly how the whole game read
+until this existed, and exactly what adding the forty-ninth weapon would do. The
+check reads the `.po` as TEXT rather than through `TranslationServer`, so it
+reports on the file in the repo rather than on whatever the engine loaded for
+the current locale. It was verified by blanking one entry and watching it fire.
+
+**A sentence with a name inside it is translated where it is BUILT.**
+`WeaponData.detail_notes()` and `EffectPriceModifier.describe()` call `tr()`
+themselves, because a caller handed the whole string can only translate all of
+it or none of it - which is why the shop used to read "scales 50% with
+STAT_RANGED_DAMAGE". That does not break the layer rule: `tr()` is an `Object`
+method reading the engine's translation server, not a Node and not a project
+autoload.
 
 **Settled: the base resolution is 1920×1080 and stays there.** `stretch/aspect`
 is `"keep"` (16:9 fills, 21:9 letterboxes). **Pixel art is ruled out** — the user

@@ -107,6 +107,11 @@ func describe(inst: EffectInstance) -> String:
 			subject, roundi(absf(1.0 - share) * 100.0), "less" if share < 1.0 else "more"
 		])
 	if uses_stat_payment:
-		lines.append("%s is paid for with %s" % [subject, StatTypes.Stat.keys()[payment_stat]])
+		# The same key the stat sheet shows, translated here for the same reason
+		# WeaponData.detail_notes() translates its own: a caller handed a whole
+		# sentence can only translate all of it or none of it.
+		lines.append("%s is paid for with %s" % [
+			subject, tr("STAT_%s" % StatTypes.Stat.keys()[payment_stat])
+		])
 
 	return ", ".join(lines)
