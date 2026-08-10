@@ -180,4 +180,9 @@ const FLOORS: Dictionary = {
 	Stat.HEAT_CAPACITY: 1.0,
 	Stat.HEAT_DISSIPATION: 0.0,
 	Stat.RECOIL: 0.0,
+	## A share ADDED to 1.0, so -1.0 is "you earn nothing" and anything below it
+	## would mean a kill TAKES money off the killer. The floor lives here rather
+	## than as a clamp inside add_currency for the usual reason: it is a property
+	## of the stat, so the stat sheet shows the same number the arithmetic uses.
+	Stat.CURRENCY_GAIN: -1.0,
 }

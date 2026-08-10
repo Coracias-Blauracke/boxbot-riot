@@ -34,6 +34,17 @@ var wave_number: int = 0
 var rerolls_used: int = 0
 var is_ready: bool = false
 
+## What the NEXT reroll actually costs this buyer, and in what. Three plain
+## fields rather than a stored PriceEvent, exactly as ShopOffer keeps them: the
+## screen reads this every frame, and re-running the pipeline sixty times a
+## second to draw one number would make every price effect a hot path.
+##
+## Refreshed whenever anything that feeds it can have moved - the shop opening,
+## a reroll, a purchase that may have granted a discount.
+var reroll_price: int = 0
+var reroll_pay_with_stat: StatTypes.Stat = StatTypes.Stat.MAX_HP
+var reroll_uses_stat_payment: bool = false
+
 # --- opening and closing ---------------------------------------------------
 
 func open(host: EntityModel, p_wave_number: int, rng: RunRandom) -> void:
@@ -59,11 +70,24 @@ func set_ready(value: bool) -> void:
 ## because the pipeline can also decide this buyer pays with a STAT and the
 ## caller has to know which.
 func quote(host: EntityModel, entry: ShopEntryData) -> PriceEvent:
+	return _quote(host, entry, data.price_for(entry, wave_number) if data != null else 0, false)
+
+## The reroll, through the SAME pipeline a purchase goes through. It used to be
+## the one price on the screen decided by arithmetic alone, which meant a buyer
+## who pays for everything in blood still paid money to reroll - a hole that
+## only content could reveal, and did.
+func quote_reroll(host: EntityModel) -> PriceEvent:
+	return _quote(host, null, reroll_cost(), true)
+
+func _quote(
+	host: EntityModel, entry: ShopEntryData, base: int, is_reroll: bool
+) -> PriceEvent:
 	var event := PriceEvent.new()
 	event.buyer = host
 	event.entry = entry
-	event.base_price = data.price_for(entry, wave_number) if data != null else 0
-	event.price = event.base_price
+	event.is_reroll = is_reroll
+	event.base_price = base
+	event.price = base
 
 	host.pipeline(Hooks.Hook.CALCULATE_PRICE, event)
 	event.price = maxi(0, event.price)
@@ -71,6 +95,9 @@ func quote(host: EntityModel, entry: ShopEntryData) -> PriceEvent:
 
 ## Compounds WITHIN a visit and resets when the shop reopens, so rerolling is a
 ## decision rather than a free scan of the entire pool.
+##
+## The AUTHORED cost, before any effect has had its say - what quote_reroll
+## starts from. What the player actually pays is `reroll_price`.
 func reroll_cost() -> int:
 	if data == null:
 		return 0
@@ -112,6 +139,9 @@ func buy(host: EntityModel, index: int) -> bool:
 	offer.uses_stat_payment = event.uses_stat_payment
 
 	host.notify(Hooks.Hook.ON_ITEM_BOUGHT, event)
+	# A purchase can grant the very effect that prices a reroll, so the quote is
+	# stale the instant one lands.
+	_refresh_reroll_quote(host)
 	offers_changed.emit()
 	return true
 
@@ -148,19 +178,32 @@ func sell(host: EntityModel, entry: ShopEntryData) -> bool:
 	event.base_price = entry.base_price
 	event.price = refund
 	host.notify(Hooks.Hook.ON_ITEM_SOLD, event)
+
+	# Selling can take away the very effect that prices a reroll, exactly as
+	# buying can grant one. Missing this half leaves the discount on screen
+	# after the item that granted it is gone.
+	_refresh_reroll_quote(host)
 	return true
 
 func reroll(host: EntityModel, rng: RunRandom) -> bool:
-	var cost := reroll_cost()
-	if not host.can_afford(cost):
+	# Re-quoted at the moment it is paid for rather than trusting the number on
+	# screen, for the same reason a purchase is: a displayed price is a view.
+	var event := quote_reroll(host)
+	if not _can_pay(host, event):
 		return false
 
-	host.add_currency(-cost)
+	_pay(host, event)
 	rerolls_used += 1
 	host.counters.add(CounterTypes.Counter.REROLLS_USED)
 	_roll(host, rng)
-	host.notify(Hooks.Hook.ON_REROLL, EventPayload.new())
+	host.notify(Hooks.Hook.ON_REROLL, event)
 	return true
+
+func _refresh_reroll_quote(host: EntityModel) -> void:
+	var event := quote_reroll(host)
+	reroll_price = event.price
+	reroll_pay_with_stat = event.pay_with_stat
+	reroll_uses_stat_payment = event.uses_stat_payment
 
 # --- payment ---------------------------------------------------------------
 #
@@ -232,6 +275,9 @@ func _roll(host: EntityModel, rng: RunRandom) -> void:
 		offer.uses_stat_payment = quoted.uses_stat_payment
 		offers.append(offer)
 
+	# Here rather than in open(): every path that changes what a reroll costs -
+	# opening the shop and rerolling - goes through this function.
+	_refresh_reroll_quote(host)
 	offers_changed.emit()
 
 ## How many slots this buyer sees.

@@ -133,6 +133,28 @@ func movement() -> Vector2:
 
 	return direction
 
+## Analogue, for scrolling a panel that is taller than its box. The RIGHT stick,
+## so it never fights the cursor on the left one: the lobby wants to move a
+## selection and read a description at the same time, and one stick cannot do
+## both without the panel jumping every time somebody changes character.
+##
+## Deliberately NOT an Action. The four directions are discrete steps with a
+## repeat, which is what a menu wants and exactly what scrolling does not:
+## reading wants a rate, not a staircase.
+func scroll_axis() -> float:
+	if is_pad():
+		var raw := Input.get_joy_axis(device_id, JOY_AXIS_RIGHT_Y)
+		if absf(raw) > 0.2:
+			return raw
+
+	if uses_keyboard():
+		if Input.is_key_pressed(KEY_PAGEDOWN):
+			return 1.0
+		if Input.is_key_pressed(KEY_PAGEUP):
+			return -1.0
+
+	return 0.0
+
 # --- menus -----------------------------------------------------------------
 
 ## Call once per frame, before reading anything. Turns held buttons into

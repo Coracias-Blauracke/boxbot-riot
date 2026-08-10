@@ -21,6 +21,8 @@ func _initialize() -> void:
 		_validate(path)
 
 	_validate_tags_name_real_classes()
+	_validate_characters_are_reachable()
+	_validate_keys_are_translated()
 	_validate_source_is_english()
 
 	for warning in _warnings:
@@ -102,6 +104,14 @@ func _validate(path: String) -> void:
 		_errors.append("%s : cannot be loaded" % path)
 		return
 
+	# Read GENERICALLY rather than per type. Every player-facing string in
+	# content/ is a translation key on some resource, and chasing them type by
+	# type means the next content type quietly opts out of being checked.
+	for field in ["display_key", "description_key"]:
+		var value: Variant = resource.get(field)
+		if value is String and not (value as String).is_empty():
+			_used_keys[value as String] = path
+
 	if resource is ItemData:
 		_validate_item(path, resource)
 	elif resource is WaveTable:
@@ -124,6 +134,8 @@ func _validate(path: String) -> void:
 		_validate_weapon_class(path, resource)
 	elif resource is WeaponClassSet:
 		_validate_weapon_class_set(path, resource)
+	elif resource is CharacterSet:
+		_validate_character_set(path, resource)
 	elif resource is CharacterData:
 		_validate_character(path, resource)
 	elif resource is EntityData:
@@ -538,11 +550,120 @@ func _validate_tags_name_real_classes() -> void:
 				% [path, tag]
 			)
 
+## Every translation key content asks for, and where it was asked from.
+const LOCALE_PATH := "res://content/locale/en.po"
+
+var _used_keys: Dictionary = {}
+
+## A key with no English behind it renders as ITSELF - the shop reads
+## WEAPON_BOLT_DRIVER_I and nothing errors. That was the state of the whole game
+## until there was a translation at all, and the failure mode of adding the
+## forty-ninth weapon is exactly the same: it loads, it sells, and it has no
+## name. Cheap to catch here, invisible everywhere else.
+##
+## Read as TEXT rather than through TranslationServer, because the validator
+## must report on the file in the repo rather than on whatever the engine
+## happens to have loaded for the current locale.
+func _validate_keys_are_translated() -> void:
+	var text := FileAccess.get_file_as_string(LOCALE_PATH)
+	if text.is_empty():
+		_warnings.append("%s : missing or empty, so every name on screen is a key" % LOCALE_PATH)
+		return
+
+	var translated: Dictionary = {}
+	var pending := ""
+	for line in text.split("\n"):
+		var trimmed := line.strip_edges()
+		if trimmed.begins_with("msgid \""):
+			pending = trimmed.substr(7, trimmed.length() - 8)
+		elif trimmed.begins_with("msgstr \"") and not pending.is_empty():
+			if trimmed.length() > 9:
+				translated[pending] = true
+			pending = ""
+
+	for key in _used_keys:
+		if not translated.has(key):
+			_warnings.append(
+				"%s : '%s' has no entry in %s, so it draws as the key itself"
+				% [_used_keys[key], key, LOCALE_PATH]
+			)
+
+## Every authored character, and every character some set lists. Compared at the
+## END, because a set may be walked before the characters it names or after.
+var _character_paths: PackedStringArray = []
+var _listed_characters: Dictionary = {}
+
+func _validate_character_set(path: String, set_data: CharacterSet) -> void:
+	if set_data.is_empty():
+		_errors.append("%s : character set is empty, the lobby offers no choice at all" % path)
+
+	var seen: Dictionary = {}
+	for i in set_data.characters.size():
+		var entry: CharacterData = set_data.characters[i]
+		if entry == null:
+			_errors.append("%s : characters[%d] is null (deleted resource?)" % [path, i])
+			continue
+
+		_listed_characters[entry.resource_path] = true
+		# Asked of a SET member rather than of every character file, because the
+		# paragraph is a select-screen thing: a character nothing offers - a
+		# fallback, a test rig - has no screen to be blank on.
+		if entry.description_key.is_empty():
+			_warnings.append(
+				"%s : characters[%d] (%s) has no description_key, so its panel says nothing"
+				% [path, i, entry.display_key]
+			)
+		# Two identical entries are two slots a player cannot tell apart, and the
+		# select screen would show the same name twice with no way to say why.
+		if seen.has(entry.resource_path):
+			_warnings.append(
+				"%s : characters[%d] (%s) is listed twice" % [path, i, entry.display_key]
+			)
+		seen[entry.resource_path] = true
+
+## A character no set lists and no scene names is content that loads, validates
+## and can never be played - which is exactly the trap the select screen exists
+## to close, so it would be perverse for the validator to miss it.
+##
+## Scenes are read as TEXT rather than instantiated: a .tscn names its resources
+## by path, the answer needed here is only "does anything mention this", and
+## instantiating a scene from a headless tool drags in the whole node layer.
+func _validate_characters_are_reachable() -> void:
+	var scene_text := ""
+	for path in _collect_scenes("res://scenes"):
+		scene_text += FileAccess.get_file_as_string(path)
+
+	for path in _character_paths:
+		if _listed_characters.has(path) or scene_text.contains(path):
+			continue
+		_warnings.append(
+			"%s : no character set lists it and no scene names it, so it cannot be played" % path
+		)
+
+func _collect_scenes(dir_path: String) -> PackedStringArray:
+	var found := PackedStringArray()
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return found
+
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			found.append_array(_collect_scenes(full))
+		elif entry.ends_with(".tscn"):
+			found.append(full)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return found
+
 ## A loadout that does not fit is the worst kind of authoring mistake: the run
 ## starts, the character walks around, and the weapons past the cap are simply
 ## not there. add_weapon refuses rather than overflowing, so nothing errors.
 func _validate_character(path: String, character: CharacterData) -> void:
 	_validate_entity(path, character)
+	_character_paths.append(path)
 
 	if character.weapon_slots <= 0:
 		_errors.append("%s : weapon_slots must be positive, nothing can be carried" % path)

@@ -17,6 +17,11 @@ const ENEMY_SCENE := preload("res://scenes/actors/enemy.tscn")
 signal restart_requested
 
 @export var world_data: WorldData
+
+## The character everybody plays when the lobby has not said otherwise. Kept as
+## a single export precisely so main.tscn stays launchable on its own - every
+## capture command in CLAUDE.md points straight at it and none of them should
+## need a select screen in front.
 @export var character_data: CharacterData
 @export var wave_table: WaveTable
 @export var shop_data: ShopData
@@ -42,6 +47,16 @@ signal restart_requested
 ## This is the placeholder for a join flow, which is still a known gap: the real
 ## version assigns a device when somebody presses a button to join.
 @export var player_devices: Array[int] = []
+
+## Which character each player is playing, index-aligned with player_devices and
+## injected by the lobby's select screen.
+##
+## An ARRAY beside character_data rather than instead of it, exactly as
+## player_devices sits beside its own fallback: a short or empty list means the
+## run was not composed by a lobby, and every player it does not name keeps the
+## authored character. A run is therefore never half-described - which is the
+## whole reason the lobby owns the run and not the other way round.
+@export var player_characters: Array[CharacterData] = []
 
 ## What happens to a player who runs out of health. A permadeath challenge is
 ## this dropdown and nothing else - see RunTypes.DeathRule.
@@ -263,8 +278,16 @@ func _on_run_ended(outcome: RunTypes.Outcome) -> void:
 		"VICTORY" if outcome == RunTypes.Outcome.VICTORY else "DEFEAT", run.wave_number
 	])
 
+## Which chassis player `index` is in. The lobby's answer when it gave one, the
+## authored fallback otherwise - see player_characters.
+func _character_for(index: int) -> CharacterData:
+	if index < player_characters.size() and player_characters[index] != null:
+		return player_characters[index]
+	return character_data
+
 func _spawn_player(index: int) -> Character:
-	var model := EntityModel.new(character_data)
+	var character := _character_for(index)
+	var model := EntityModel.new(character)
 	# Before any weapon arrives, so the starting loadout is counted too - though
 	# the recompute is idempotent either way.
 	model.weapon_classes = weapon_classes
@@ -272,7 +295,7 @@ func _spawn_player(index: int) -> Character:
 
 	var node := CHARACTER_SCENE.instantiate() as Character
 	# bind() before add_child(): _ready() sizes the colliders from the data.
-	node.bind(model, character_data, run.world)
+	node.bind(model, character, run.world)
 	node.player_index = index
 
 	node.input = _device_for(index)
@@ -288,14 +311,14 @@ func _spawn_player(index: int) -> Character:
 
 	# Granted through the normal inventory path, so they show in the owned strip,
 	# describe themselves like any purchase and can be sold.
-	for item in character_data.starting_items:
+	for item in character.starting_items:
 		if item != null:
 			model.add_item(item)
 
 	# Same for the loadout, and from the CHARACTER rather than from an export on
 	# this scene. The rack in the hands follows the model, so nothing here has to
 	# tell the view about them.
-	for weapon_data in character_data.starting_weapons:
+	for weapon_data in character.starting_weapons:
 		if weapon_data != null:
 			model.add_weapon(weapon_data)
 
@@ -512,8 +535,12 @@ func _describe_state() -> String:
 		# They are the same number only if the view really is following the
 		# model - which is the whole claim weapons in the shop rest on, and a
 		# single count could not tell a working sync from a stale one.
-		per_player += " p%d=(%.0f,%.0f)%s$%d wp%d/%d" % [
+		# The CHASSIS by name, because a capture of four players on four different
+		# characters and one of four players on the same character four times are
+		# the same picture: four boxes. Only the numbers can tell them apart.
+		per_player += " p%d=%s(%.0f,%.0f)%s$%d wp%d/%d" % [
 			index,
+			"?" if entry.data == null else entry.data.display_key,
 			entry.global_position.x,
 			entry.global_position.y,
 			"hp%.0f" % entry.model.current_hp if entry.model.is_alive else "DOWN",

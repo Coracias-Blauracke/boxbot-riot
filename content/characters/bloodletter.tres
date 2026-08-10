@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="CharacterData" format=3]
+
+[ext_resource type="Script" path="res://core/data/character_data.gd" id="1_char"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="3_weapon"]
+[ext_resource type="Resource" path="res://content/weapons/serrated_drill_1.tres" id="4_drill"]
+
+[sub_resource type="Resource" id="hp"]
+script = ExtResource("2_mod")
+stat = 0
+modifier_type = 0
+value = 75.0
+
+[sub_resource type="Resource" id="speed"]
+script = ExtResource("2_mod")
+stat = 14
+modifier_type = 0
+value = 230.0
+
+[sub_resource type="Resource" id="lifesteal"]
+script = ExtResource("2_mod")
+stat = 2
+modifier_type = 1
+value = 0.06
+
+[sub_resource type="Resource" id="bleed_chance"]
+script = ExtResource("2_mod")
+stat = 32
+modifier_type = 1
+value = 0.15
+
+[resource]
+script = ExtResource("1_char")
+display_key = "CHAR_BLOODLETTER"
+description_key = "CHAR_BLOODLETTER_DESC"
+collider_radius = 12.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("lifesteal"), SubResource("bleed_chance")])
+weapon_slots = 6
+shop_slots = 4
+starting_weapons = Array[ExtResource("3_weapon")]([ExtResource("4_drill")])

@@ -134,19 +134,27 @@ func detail_notes() -> PackedStringArray:
 
 	# Classes first: which set a weapon belongs to is the reason to buy it over
 	# a stronger one, so it should not be the last line the eye reaches.
+	# tr() is called HERE because the note is a SENTENCE with a name inside it,
+	# and a caller can only translate the whole string or none of it. Building
+	# the class key from the tag is the same trick _stat_key uses on the enum:
+	# core/ cannot reach the authored WeaponClassSet, and two spellings of one
+	# name is how a screen ends up disagreeing with itself.
+	#
+	# Note this does not break the layer rule - tr() is an Object method reading
+	# the engine's translation server, not a Node and not a project autoload.
 	for tag in tags:
-		notes.append("class %s" % tag)
+		notes.append("class %s" % tr("CLASS_%s" % String(tag).to_upper()))
 
 	for scaling in damage_scaling:
 		if scaling != null:
 			notes.append("scales %d%% with %s" % [
-				roundi(scaling.coefficient * 100.0), _stat_key(scaling.stat)
+				roundi(scaling.coefficient * 100.0), tr(_stat_key(scaling.stat))
 			])
 
 	for scaling in stat_inheritance:
 		if scaling != null:
 			notes.append("inherits %d%% of %s" % [
-				roundi(scaling.coefficient * 100.0), _stat_key(scaling.stat)
+				roundi(scaling.coefficient * 100.0), tr(_stat_key(scaling.stat))
 			])
 
 	return notes

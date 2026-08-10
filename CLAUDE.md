@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 624 assertions across three suites, no editor, no game window
+# tests — 720 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -79,7 +79,22 @@ accident:
 | `--capture-pause=N` | toggles the pause menu, which no scripted player can press START for; repeat it to resume |
 | `--capture-restart=N` | restarts the run, and photographs the result into `after_restart/` |
 | `--capture-lobby` | holds the lobby open with the roster filled, instead of starting the run |
+| `--capture-select=a,b,c` | puts player N on catalogue entry N, in the lobby and therefore in the run |
+| `--capture-confirmed` | locks every lobby player in, which is the only way the confirmed cursors and the START line are photographed |
+| `--capture-scroll=a,b,c` | scrolls player N's seat panel down N lines |
 | `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
+
+`--capture-select` STEPS the selection one nudge at a time rather than assigning
+it, for the same reason `--capture-pause` calls `request_toggle()`: a capture
+that reaches a state by a route no player has verifies nothing about the route
+players take. Without it a capture can only ever photograph the DEFAULT picks,
+and "everybody is on something different" would be indistinguishable from
+"nobody can change chassis at all".
+
+Both capture state lines name the chassis rather than its index — the lobby's as
+`characters=["CHAR_RIVETER", ...]` and the run's as `p0=CHAR_BULWARK(...)`.
+Four players on four characters and four players on the same character are the
+same picture (four boxes), so only the numbers can tell them apart.
 
 `--capture-intermission=N` holds the shop phase open (four seconds is not long
 enough to photograph) and `--capture-shop-owned` parks every shop cursor on the
@@ -126,7 +141,8 @@ stay inside the horde and die before the wave can end. Nothing is then observed.
 core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencies
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
   data/      .tres schemas: ShopEntryData (the base every purchasable shares),
-             EntityData, CharacterData, EnemyData, WeaponData, ItemData,
+             EntityData, CharacterData, CharacterSet (the roster a lobby offers),
+             EnemyData, WeaponData, ItemData,
              StatScaling (which stat feeds a weapon, and how much),
              WeaponClassData/Tier/Set (tags and what holding several is worth)
   effects/   DynamicEffect base, EffectInstance, StatusEffect, library/
@@ -145,15 +161,18 @@ scenes/      the view — nodes, physics, rendering
              PauseScreen, JoinView
   input/     PlayerInput (device binding, movement + menus),
              DeviceJoiner (watches devices that have NOT joined)
-content/     authored .tres: characters, enemies, weapons/ (12 families x 4
+content/     authored .tres: characters/ (six + the set that lists them,
+             plus test_character, which is main.tscn's own fallback),
+             enemies, weapons/ (12 families x 4
              tiers, + classes/), items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
+             locale/en.po (every authored key, loaded by project.godot),
              stats/ (StatMetadata + the StatSheet reading order),
              statuses/ (bleed, poison, burn, slow)
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
-docs/        weapon_list.md - the prose list the .tres files were built from,
-             including what it exposed as missing in the engine
+docs/        weapon_list.md, character_list.md - the prose lists the .tres files
+             were built from, including what each exposed as missing
 ```
 
 **`core/` must never import a Node or touch an autoload.** That constraint is
@@ -236,19 +255,125 @@ Solo is deliberately NOT a second code path. It is one entry in the roster, and
 the run cannot tell the difference — which is why the toggle, when it arrives,
 is a branch in the lobby and nowhere else.
 
-**CHARACTER SELECT COMES BEFORE AUTHORING CHARACTERS**, for exactly the reason
-the shop came before weapon content. `main.tscn` holds a single `character_data`
-export, so a second authored character is reachable only by editing the scene -
-which is the same trap weapons were in when `WeaponMount` owned the list and
-only `main.gd` could add one. Authoring a roster against that means every one of
-them is invisible until the select screen exists.
+**CHARACTER SELECT CAME BEFORE AUTHORING CHARACTERS**, for exactly the reason
+the shop came before weapon content. `main.tscn` held a single `character_data`
+export, so a second authored character was reachable only by editing the scene -
+the same trap weapons were in when `WeaponMount` owned the list and only
+`main.gd` could add one. It is done, and these are the decisions it settled.
 
-Worth knowing before that work starts: `CharacterData.innate_effects` - the
-ability list, the same type as item effects - is **declared and used by no
-authored character**. `test_character` carries base stats, starting items and a
-starting weapon, and no abilities at all. So the whole "this character does
-something" path is built and unexercised, which in this repo has three times
-now turned out to mean something in it is quietly wrong.
+**A character is chosen in the LOBBY and injected, exactly as a device is.**
+`player_characters` sits beside `player_devices` on `main.tscn`, index-aligned,
+and a run the lobby did not compose keeps its authored `character_data` for
+every player the array does not name. Same fallback shape, same reason: the run
+is never half-described, and `main.tscn` stays independently launchable, which
+every capture command here depends on.
+
+**The rules of choosing live in `PlayerRoster`, next to the rules of joining.**
+Both are decided before a run and re-decided between runs, and both are
+testable headless only while nothing in that file touches Input or a Node. It
+is also what makes a restart keep the people AND their chassis - the lobby holds
+the roster, and the roster now holds both halves of the answer.
+
+**`selection_changed` is a SEPARATE signal from `changed`, and that is
+load-bearing rather than tidy.** The lobby rebuilds its `PlayerInput` list on
+`changed`, and it steps selections from inside a loop over that very list. One
+signal for both would mutate the array being iterated, sixty times a second, on
+the frame somebody nudges a stick.
+
+**Duplicate picks are allowed; the DEFAULT avoids them.** A new player starts at
+their seat number and walks forward to the first chassis nobody is on, so four
+players and six characters means four different ones with nobody pressing
+anything - and two players who both want the tank may still have it. Forbidding
+duplicates means inventing answers for a catalogue smaller than the player
+count, and "we both want the tank" is not a problem worth code on a shared
+couch.
+
+**A seat panel lists what a chassis TRADES, not what it has.** Only stats that
+differ from `CharacterSet.baseline` appear, signed and coloured; an unchanged
+stat is not drawn at all. Characters are meant to converge on one shared frame -
+the same health, the same speed - so "tougher, slower, one weapon fewer" is the
+sentence, and six numbers of which four are identical on every chassis is noise
+the player reads past every time. Standard Unit therefore says *no trades*.
+
+The comparison is between the authored POOLS, deliberately not between effective
+stat values. A holder's PERCENT is applied to their WEAPONS, so Riveter's -15%
+RANGED_DAMAGE sits on a base of zero and would compare exactly equal to the
+baseline - the sign the player cares about would vanish. BASE and FLAT are
+summed (both add, both in the stat's unit) and PERCENT is kept apart (it
+scales), which is the same split `WeaponModel` makes.
+
+The baseline is a READING aid and nothing else: every character still carries a
+complete stat line and a run is built from that alone, so it can never change
+what anybody plays - only what the screen bothers to mention.
+
+*(This replaces an earlier rule that a BASE modifier draws as a bare value and
+the slot counts are shown "always, never only when unusual". That was right
+while there was no reference point, when hiding an ordinary value would have
+left the player unable to tell "no opinion" from "agrees with the default".
+A baseline IS that reference point, so the absence of a line now means
+something.)*
+
+**The rack is ONE shared grid with four cursors, not four private lists.** The
+interesting thing on a couch is seeing what everybody else is hovering, and
+duplicate picks are allowed - so cursors NEST, drawn one inside the other, with
+their player tabs walking sideways. Stacking them on one corner means the last
+one drawn hides the rest, which is exactly the case the tab exists for.
+
+**Confirming FREEZES a cursor, and that is why it is worth a flag.** Without it
+somebody locks one chassis, carries on browsing, and their seat panel shows a
+character they will not be playing. `START` then waits for everybody, which
+REVERSES the earlier "any joined player may start it" - that was right while
+joining was the only decision, and stopped being right the moment there was
+something to be halfway through. Who presses it is still a couch problem.
+
+**B means two things and the state says which**: back out of a lock to browsing,
+back out of browsing to leave. The layering lives in `PlayerRoster.back_out()`
+rather than in `DeviceJoiner`, so it can be tested without a device - the joiner
+watches buttons and knows nothing about what a press means.
+
+**`DeviceJoiner` owns ACCEPT for joined players too**, not just for joining. It
+is the only thing that can guarantee the press which joins somebody does not
+also confirm their default chassis on the same frame: it consumes the edge, and
+the next one needs a release first. The lobby's `PlayerInput` loop reads the
+same physical button and would see it go down on the join frame.
+
+**Scrolling is the RIGHT stick, and the panel scrolls by whole LINES.** A
+fractional offset would draw the top and bottom lines cut in half, and a single
+`Control` that draws every seat cannot clip per seat. Whole lines need no
+clipping at all - a line is either inside the window or it is not drawn.
+`PlayerInput.scroll_axis()` is deliberately not an `Action`: the four directions
+are discrete steps with a repeat, and reading wants a rate, not a staircase.
+
+**`CharacterData.description_key` is the ONE piece of authored player-facing
+prose in the game**, and it is deliberately not on `ShopEntryData` - that would
+give every item and weapon one, and "item text is DERIVED, never authored" is a
+rule with a reason. A chassis is an identity rather than a bundle: "pays for
+everything in blood" is a sentence no stat line can produce, and there are eight
+of these rather than hundreds. The numbers under it are still derived.
+
+It is the only prose in `content/locale/en.po` that could not have been
+generated from a key, and writing it is what finally made the panel's scroll do
+anything: with names alone nothing was ever long enough to overflow.
+
+**`CharacterData.slot_modifiers()` is where "a slot count IS a BASE modifier on
+its stat" lives.** That rule used to sit inside `EntityModel`, which meant any
+screen wanting to describe a chassis honestly had to know it a second time — and
+a chassis with five weapon slots would otherwise say nothing about the one trade
+that cannot be bought back cheaply. The model now applies exactly the list the
+data hands it, and the select screen compares the same list against the
+baseline, so Bulwark's fifth slot reads `-1` beside its armour.
+
+**The validator warns about a character nothing can reach** - no `CharacterSet`
+lists it and no scene names it. That is content which loads, validates and can
+never be played, which is the exact trap this screen exists to close. Scenes are
+read as TEXT rather than instantiated: the question is only "does anything
+mention this path", and instantiating a scene from a headless tool would drag in
+the whole node layer.
+
+`CharacterData.innate_effects` - the ability list, the same type as item
+effects - was **declared and used by no authored character**. `furnace` uses it
+now (+20% damage to burning targets, through the existing
+`EffectDamageVersusStatus`), so that path is finally walked end to end.
 
 **A device is polled ONCE per frame, guarded inside `PlayerInput`.** Two screens
 hold the same binding now — the pause menu reads every device in every phase, a
@@ -514,6 +639,27 @@ blood and one paying in max HP want completely different numbers. A stat can
 never be paid down to its `StatTypes.FLOORS` value — that would let a purchase
 kill the buyer, or divide by zero further along.
 
+`EffectPriceModifier` is what finally drives it from content: a price share, a
+kind filter (any / items / weapons) and an optional payment stat with its own
+rate. It knows nothing about characters — the same file works in an item, on a
+weapon or on a class threshold — and `blood_bank` is one `.tres` using it.
+
+**A REROLL is priced by the same pipeline as a purchase.** It used to be the one
+price on the screen decided by arithmetic alone, so a buyer who paid for
+everything in blood still paid MONEY to reroll. `quote_reroll()` sets
+`PriceEvent.is_reroll`, and a KIND filter deliberately does not match it: a
+reroll is not one of the kinds, so only "everything" covers it. The quote is
+cached on the manager in three plain fields, exactly as `ShopOffer` keeps them,
+because the screen reads it every frame and re-running a pipeline to draw one
+number would make every price effect a hot path.
+
+**Every price on the shop screen is an ICON plus a number**, the icon to the
+left, as the genre does it. Currency takes its texture from `ShopData`, a stat
+from its `StatMetadata` — both authored, so changing what money looks like never
+edits a scene. There is no art yet, so it draws a placeholder: a CIRCLE for
+money and a SQUARE for a stat. Two shapes rather than two colours, because the
+difference has to survive a player who cannot tell the colours apart.
+
 **A refund is not earnings.** `ShopManager.sell` adds to `CURRENCY` directly
 rather than calling `add_currency()`, which also credits `CURRENCY_EARNED`.
 Otherwise a buy-then-sell loop farms every "for each 500 earned" effect for the
@@ -732,10 +878,27 @@ restart and quit, and the same menu opens itself when the run ends, so a wipe no
 longer means closing the executable.
 
 The game starts in a LOBBY: up to four players join by pressing SPACE or A on
-the device they intend to play with, one player per device, and any joined
-player begins the run with START. It is deliberately a bare join screen - the
-solo/co-op toggle, character select and run rules it will grow are decisions
-taken before a run exists, and this is the place that has them.
+the device they intend to play with, one player per device. The solo/co-op
+toggle and the run rules it will still grow are decisions taken before a run
+exists, and this is the place that has them.
+
+CHARACTER SELECT IS IN IT, as a shared RACK with one cursor per player. Four
+seat panels sit along the top and every character in the roster sits in a grid
+below them, carrying a cursor per joined player in that player's own colour.
+The seat panel describes whatever its cursor is on - portrait, authored prose
+and the derived stat and ability lines - and scrolls on the right stick when
+there is more of it than fits. A confirms and FREEZES that player's cursor, B
+backs out (to browsing, then out of the lobby), and START begins the run only
+once every joined player has confirmed. The picks are injected into the run
+beside the devices - so a restart brings back both who was playing and what they
+were playing. EIGHT
+characters are authored from `docs/character_list.md`: standard_unit, riveter,
+bulwark, skirmisher, bloodletter, furnace, prospector and blood_bank. Six are
+stat lines and nothing else. `furnace` is the first character with an ability
+and needed no new effect class; `prospector` paid for wiring CURRENCY_GAIN; and
+`blood_bank` buys EVERYTHING — items, weapons and rerolls — with max HP at 0.3
+per unit of price, which is the content the shop's stat-payment path was built
+for and never given.
 
 Weapons carry CLASS TAGS, and holding several of a class grants authored stat
 bonuses at authored thresholds, cumulative and authored per count.
@@ -798,10 +961,15 @@ that makes polishing now a mistake.
 - `player_count` and `player_devices` on `main.tscn` are now INJECTED by the
   lobby and matter only when that scene is launched on its own. To test co-op,
   join in the lobby or pass `--capture-players=N`.
-- The test character carries eight `starting_items` purely to exercise bleed:
-  two barbed edges and six serrated rounds, which is +90% bleed chance on top of
-  each item's own base and therefore certain on every ranged hit. Strip them
-  before judging anything about balance.
+- `test_character` carries eight `starting_items` purely to exercise bleed: two
+  barbed edges and six serrated rounds, which is +90% bleed chance on top of
+  each item's own base and therefore certain on every ranged hit. It is NO
+  LONGER what anybody plays - it is main.tscn's own fallback and the rig
+  `_test_the_authored_character_bleeds_on_every_hit` asserts against, so
+  launching main.tscn directly is not launching the same character the lobby
+  starts. Strip the items before judging anything about balance, and note that
+  the roster no longer needs them: bloodletter and the serrated drill exercise
+  bleed as authored content now.
 - `death_rule` is an export on `main.tscn`. When challenge modes arrive it wants
   to live in a `RunRulesData.tres` alongside `revive_hp_fraction` and whatever
   else a challenge varies, so a mode is one authored resource.
@@ -815,18 +983,51 @@ art (everything is drawn as placeholder circles, ellipses and lines), and no
 buffs authored — the status machinery is valence-neutral and ready for them,
 but nothing positive exists yet.
 
-The effect library is **twelve classes**. It was four when the item list was
-written, and the eight added since each cover a FAMILY rather than an item:
-apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
-double-status-stacks, stat-per-world-count, and the three status kinds. That
-ratio is the point - sixteen of the twenty-four authored items needed no new
-code at all.
+The effect library is **thirteen classes**: `EffectPriceModifier` closed the
+last gap the character list found — nothing in content had ever driven
+`CALCULATE_PRICE`, so "items cost 20% less" and "you pay in blood" were
+unauthorable despite the machinery being finished and only two test doubles had
+ever exercised it.
 
-**Localisation is DEFERRED ON PURPOSE, and is not a gap.** `tr()` is already
-wrapped around every `display_key` and `description_key`, so the door is open
-and no content file will need touching. Until a translation is loaded, `tr()`
-returns the key unchanged, which is why the shop reads `ITEM_WHETSTONE` rather
-than a name. That looks like a placeholder and is not one.
+The effect library is **thirteen classes**. It was four when the item list was
+written, and the nine added since each cover a FAMILY rather than an item:
+apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
+double-status-stacks, stat-per-world-count, price-modifier, and the three status
+kinds. That ratio is the point - sixteen of the twenty-four authored items and
+six of the eight authored characters needed no new code at all.
+
+**The game reads in ENGLISH now.** `content/locale/en.po` translates all 189
+authored keys - every stat name and its description, every item, all 48 weapons,
+the classes, the enemies and the eight characters - and `project.godot` loads it
+directly by `res://` path. That last part is the reason it is a `.po` and not a
+CSV: a CSV imports into `.godot/imported/`, which is gitignored, so the project
+setting would point at a path that does not survive a move to another machine.
+A `.po` is referenced where it actually lives and re-imports itself like any
+other resource.
+
+This was deferred on purpose for a long time and stopped being the right call
+once there was content worth judging: the shop reading `WEAPON_BOLT_DRIVER_I`
+beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
+
+**Names are mechanical, prose is written.** A name comes straight from its key
+(`WEAPON_BOLT_DRIVER_I` -> "Bolt Driver I"), so a new weapon needs one obvious
+line. The 45 stat descriptions and the 8 character descriptions are hand-written
+and are the only authored player-facing prose in the game.
+
+**The validator fails a key with no English behind it.** A missing entry renders
+as the key itself and nothing errors - which is exactly how the whole game read
+until this existed, and exactly what adding the forty-ninth weapon would do. The
+check reads the `.po` as TEXT rather than through `TranslationServer`, so it
+reports on the file in the repo rather than on whatever the engine loaded for
+the current locale. It was verified by blanking one entry and watching it fire.
+
+**A sentence with a name inside it is translated where it is BUILT.**
+`WeaponData.detail_notes()` and `EffectPriceModifier.describe()` call `tr()`
+themselves, because a caller handed the whole string can only translate all of
+it or none of it - which is why the shop used to read "scales 50% with
+STAT_RANGED_DAMAGE". That does not break the layer rule: `tr()` is an `Object`
+method reading the engine's translation server, not a Node and not a project
+autoload.
 
 **Settled: the base resolution is 1920×1080 and stays there.** `stretch/aspect`
 is `"keep"` (16:9 fills, 21:9 letterboxes). **Pixel art is ruled out** — the user
@@ -904,13 +1105,19 @@ without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
 
-### Ten of the 45 stats do nothing, ON PURPOSE - and eleven more do nothing from a PLAYER
+### Five of the 45 stats do nothing, and every one of them needs a SYSTEM
 
 | state | stats |
 |---|---|
-| **read by something** | 39 of 45 |
-| **cheap to wire** | CURRENCY_GAIN — the last one left, and it is a single read in add_currency |
+| **read by something** | 40 of 45 |
 | **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
+
+There is no longer a "cheap to wire" row. CURRENCY_GAIN was the last entry in it
+and is wired now, in `add_currency` — the ONE door currency comes through, so no
+caller had to learn the stat exists and none of them can forget it. It scales
+what is EARNED and never what is spent (the same call takes a negative amount
+when the shop charges), and its floor of -1.0 lives in `StatTypes.FLOORS` rather
+than as a clamp, so the stat sheet shows the number the arithmetic uses.
 
 **Do not measure this with `grep "Stat.<NAME>"` alone.** That was the method
 here and it is now wrong: the eleven per-status axes plus `STATUS_CHANCE` and
