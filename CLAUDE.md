@@ -1255,6 +1255,19 @@ between a wiring mistake and a demo where money never appears.
 **Watch the import log, not just test results.** Parse errors can leave tests
 passing while silently skipping assertions.
 
+**THE CONSOLE BUILD DOES NOT PRINT ANALYZER WARNINGS - only the editor does.**
+Shadowed base-class properties, integer division, unused parameters and unused
+signals never appear in `--headless --import`, in a test run or in a capture, so
+none of the verification this file leans on can see them. They accumulate
+invisibly and are only noticed by whoever opens the project.
+
+That makes them worth clearing to ZERO rather than triaging, because a warning
+list nobody can see from the command line is one that only works while it is
+empty. Where the code is deliberately integral, say so at the site with
+`@warning_ignore("integer_division")` and a reason; where it shadows
+`scale`, `visible` or `name` on a Node, rename it - those are one typo away from
+moving, hiding or renaming the node instead of touching a local.
+
 **Never put comments in `project.godot`.** The editor rewrites the whole file
 on save and drops them, along with any setting that happens to equal its
 default. Explanations for project settings belong here instead.

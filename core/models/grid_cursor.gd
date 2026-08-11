@@ -24,6 +24,8 @@ static func row_count(total: int, columns: int) -> int:
 	return (total + width - 1) / width
 
 static func row_of(index: int, columns: int) -> int:
+	# A row number is whole by definition.
+	@warning_ignore("integer_division")
 	return index / maxi(1, columns)
 
 static func column_of(index: int, columns: int) -> int:

@@ -64,7 +64,7 @@ const AIM := &"charge_aim"
 @export_range(0.1, 1.0, 0.05) var dash_speed_share: float = 1.0
 
 func get_direction(
-	host: Variant, self_position: Vector2, target_position: Vector2, delta: float,
+	_host: Variant, self_position: Vector2, target_position: Vector2, delta: float,
 	state: MovementState
 ) -> Vector2:
 	if state == null:

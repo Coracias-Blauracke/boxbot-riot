@@ -76,39 +76,39 @@ func clamp_to_bounds(point: Vector2) -> Vector2:
 				clampf(point.y, -extents.y, extents.y)
 			)
 
-func random_point_inside(rng: RunRandom) -> Vector2:
+func random_point_inside(point_rng: RunRandom) -> Vector2:
 	var extents := get_extents()
 	match shape:
 		WorldTypes.MapShape.CIRCLE:
 			var radius := minf(extents.x, extents.y)
 			# sqrt keeps the distribution uniform over the disc rather than
 			# clustering spawns near the centre.
-			var distance := sqrt(rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, 1.0)) * radius
-			var angle := rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, TAU)
+			var distance := sqrt(point_rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, 1.0)) * radius
+			var angle := point_rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, TAU)
 			return Vector2(cos(angle), sin(angle)) * distance
 		_:
 			return Vector2(
-				rng.randf_in(RunRandom.Stream.SPAWNS, -extents.x, extents.x),
-				rng.randf_in(RunRandom.Stream.SPAWNS, -extents.y, extents.y)
+				point_rng.randf_in(RunRandom.Stream.SPAWNS, -extents.x, extents.x),
+				point_rng.randf_in(RunRandom.Stream.SPAWNS, -extents.y, extents.y)
 			)
 
 ## Enemies spawn at the rim, so this is the one the wave system actually calls.
-func random_point_on_edge(rng: RunRandom) -> Vector2:
+func random_point_on_edge(point_rng: RunRandom) -> Vector2:
 	var extents := get_extents()
 	match shape:
 		WorldTypes.MapShape.CIRCLE:
-			var angle := rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, TAU)
+			var angle := point_rng.randf_in(RunRandom.Stream.SPAWNS, 0.0, TAU)
 			return Vector2(cos(angle), sin(angle)) * minf(extents.x, extents.y)
 		_:
 			var horizontal := rng.chance(RunRandom.Stream.SPAWNS, 0.5)
 			if horizontal:
 				return Vector2(
-					rng.randf_in(RunRandom.Stream.SPAWNS, -extents.x, extents.x),
+					point_rng.randf_in(RunRandom.Stream.SPAWNS, -extents.x, extents.x),
 					extents.y if rng.chance(RunRandom.Stream.SPAWNS, 0.5) else -extents.y
 				)
 			return Vector2(
 				extents.x if rng.chance(RunRandom.Stream.SPAWNS, 0.5) else -extents.x,
-				rng.randf_in(RunRandom.Stream.SPAWNS, -extents.y, extents.y)
+				point_rng.randf_in(RunRandom.Stream.SPAWNS, -extents.y, extents.y)
 			)
 
 func _on_map_stat_changed(stat: StatTypes.Stat) -> void:

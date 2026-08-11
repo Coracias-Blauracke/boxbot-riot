@@ -42,6 +42,8 @@ func crossings(counter: CounterTypes.Counter, step: int, added: int) -> int:
 		return 0
 	var now: int = _values[counter]
 	var before: int = now - added
+	# How many whole thresholds this change crossed. Integral on purpose.
+	@warning_ignore("integer_division")
 	return int(now / step) - int(before / step)
 
 ## For save games - counters are not rebuildable, they must be persisted.

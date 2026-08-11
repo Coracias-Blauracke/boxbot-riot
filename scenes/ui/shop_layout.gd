@@ -35,6 +35,7 @@ static func rect_for(index: int, count: int, viewport: Vector2) -> Rect2:
 
 	# index 0 -> top left, 1 -> top right, 2 -> bottom left, 3 -> bottom right.
 	var column := index % 2
+	@warning_ignore("integer_division")
 	var row := index / 2
 	return Rect2(Vector2(half.x * float(column), half.y * float(row)), half)
 
