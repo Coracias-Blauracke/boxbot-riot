@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 855 assertions across three suites, no editor, no game window
+# tests — 880 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -132,7 +132,10 @@ The state line carries several measurements that exist because a screenshot
 cannot show any of them. `enemies=T/A` splits the total from the ARMED, and
 `shots=T/I` splits every projectile from the INCOMING ones - one number for both
 was useless the first time somebody said the screen was full of acid, because a
-player circling a horde puts up dozens of its own. `gap=` is the smallest distance between any two enemies, which is the one number
+player circling a horde puts up dozens of its own. `spawns=N/M` is how many spawn requests were drained and how many entities they
+put down - a hive is otherwise indistinguishable from an ordinary wave arrival,
+because both simply make the enemy count climb. `gap=` is the smallest distance
+between any two enemies, which is the one number
 that says whether a crowd is a crowd or a blob. `gun=` is the distance to the
 nearest thing that shoots, which is a different question from the nearest thing
 at all: a melee player standing in a crowd reads 0 while the skirmisher actually
@@ -195,7 +198,8 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   models/    EntityModel, WorldModel, WeaponModel, RunModel, PlayerRoster,
              GridCursor (where a nudge lands in an M x N rack)
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
-  waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
+  waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup,
+             SpawnRequest (core/ asking the world for entities it cannot build)
   behaviors/ MovementBehavior, ChaseBehavior, OrbitBehavior
 scenes/      the view — nodes, physics, rendering
   lobby.gd   the scene the game STARTS on; owns the roster and builds the run
@@ -932,6 +936,46 @@ and the walls are `world.clamp_to_bounds()` in code. No body in the game
 collided with any other, and the only reason it showed on the Queen is that her
 collider is 26 against a chaser's 9.
 
+**CORE ASKS FOR ENTITIES; THE VIEW BUILDS THEM.** `EntityModel.request_spawn`
+fills a `SpawnRequest` and emits it, `main.gd` drains it into nodes. That is the
+exact mirror of `world_position` - the view writes where things are so `core/`
+can do geometry, and `core/` writes what should exist so the view can build it -
+and neither side gains a reference to the other.
+
+The request carries `EntityData` and no scene path at all, so the channel never
+learns what it is making: a splitter's children, a hive's brood and later a
+summoned turret or a pickup dropped by a corpse all arrive at one function whose
+only branch is on the data TYPE.
+
+**A request is placed by the same axis a wave is.** `SpawnContext.anchor` is the
+one field a wave never fills and a request always does, and `SpawnScatter` is
+the pattern that reads it. So "these children walk in from off screen instead"
+is one authored resource rather than a branch in the view - and the clearance
+rule is deliberately NOT applied, because a splitter bursting where it stood is
+a consequence the player earned rather than an ambush they had no answer to.
+
+**It is a SIGNAL, not a queue on the run, and the difference from
+`blast_resolved` is worth stating.** A blast has already happened and the signal
+only lets the view draw it; a spawn has NOT happened and cannot without a
+listener. Both keep `core/` runnable headless, but a scene that forgets to
+connect this loses the effect rather than its picture. An effect firing on a
+dying enemy cannot reach `RunModel` - it has no reference and must not be given
+one, RefCounted having no cycle collector - and it does not need one: the entity
+it fires on is already what the view listens to.
+
+**`SpawnRequest.requester` is WEAK.** The usual requester is a corpse, and a
+strong reference would keep a dead enemy's whole model - stats, effects,
+statuses - alive for as long as the request lives.
+
+**ON_TICK NOW FIRES ON ENEMIES TOO, and only where something listens.**
+`RunModel.advance_wave` raises it on every player once a frame; nothing did the
+same for the horde, so an enemy effect on a schedule had no heartbeat and a hive
+was unauthorable. It lives on `Enemy` rather than `Actor` because players
+already get theirs from the run, and doing it twice would double every player's
+regeneration. The `has_listeners` guard is not about the dispatch but about the
+PAYLOAD: seventy enemies would otherwise allocate a TickEvent every frame to
+hand it to nothing.
+
 **A MOVEMENT BEHAVIOUR STEERS *AND* THROTTLES.** The length of what
 `get_direction` returns is a speed share, capped at 1. It used to be documented
 as normalised and the view enforced that by normalising whatever came back, so a
@@ -1109,7 +1153,7 @@ the first enemy that attacks from outside contact range and therefore the first
 thing that gives the player's MOVEMENT_SPEED and RANGE something to do — until
 now every weapon in the game solved the same problem, something walking straight
 at you. It needed no new attack system: an enemy carries `WeaponData` on the
-same `WeaponModel`, aimed by the same `TargetSelector`. Five enemies authored of
+same `WeaponModel`, aimed by the same `TargetSelector`. Eight enemies authored of
 the twelve in `docs/enemy_list.md`, plus the first boss.
 
 BOSS WAVES HAPPEN. `spawn_boss` used to be rolled, stored, emitted and printed

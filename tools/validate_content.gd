@@ -695,6 +695,7 @@ func _validate_entity(path: String, entity: EntityData) -> void:
 	if entity is ProjectileData:
 		_validate_projectile_effects(path, entity as ProjectileData)
 
+
 ## A projectile runs its innate effects on IMPACT and only on impact.
 ##
 ## Projectile._run_projectile_effects calls execute() directly rather than going
@@ -714,6 +715,17 @@ func _validate_projectile_effects(path: String, projectile: ProjectileData) -> v
 				% [path, i]
 				+ " its effects on impact regardless - it would fire at the wrong time"
 			)
+
+## NO LOOP CHECK HERE, and that is a finding rather than an omission.
+##
+## A splitter bursting into splitters never ends, so this file grew a walk over
+## EffectSpawn.data looking for a cycle - and the walk can never fire. Godot
+## refuses to LOAD a .tres that references itself, directly or through an
+## intermediate, so authored content cannot express the loop at all; the attempt
+## was verified by building splitter -> swarmling -> splitter, which came back as
+## four "cannot be loaded" errors before any of this ran.
+##
+## A check that cannot fire is worse than no check, because it reads like cover.
 
 func _validate_modifiers(path: String, modifiers: Array) -> void:
 	var valid_stats := StatTypes.Stat.values()
@@ -747,6 +759,20 @@ func _validate_effects(path: String, effects: Array) -> void:
 
 		if effect is EffectBlast:
 			_validate_blast(path, "effect[%d]" % i, (effect as EffectBlast).blast)
+
+		var spawn := effect as EffectSpawn
+		if spawn != null:
+			if spawn.data == null:
+				_errors.append("%s : effect[%d] spawns nothing at all" % [path, i])
+			if spawn.count <= 0:
+				_errors.append(
+					"%s : effect[%d] spawns a count of %d" % [path, i, spawn.count]
+				)
+			if spawn.trigger == EffectSpawn.Trigger.ON_INTERVAL and spawn.interval <= 0.0:
+				_errors.append(
+					"%s : effect[%d] is on a timer of %.1fs, which never fires"
+					% [path, i, spawn.interval]
+				)
 
 ## An explosion that loads, prices, sells and goes off for nothing.
 ##

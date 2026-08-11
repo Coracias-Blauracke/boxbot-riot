@@ -24,6 +24,15 @@ signal hp_changed(current: float, maximum: float)
 ## does - which is what keeps a headless test and a running game the same code.
 signal blast_resolved(event: BlastEvent)
 
+## Entities this one is asking the world to create - see SpawnRequest.
+##
+## The counterpart of blast_resolved rather than a copy of it, and the difference
+## is worth being clear about: a blast has ALREADY happened and this signal only
+## lets the view draw it, whereas a spawn has not happened and cannot without
+## somebody listening. core/ still runs identically either way, but a scene that
+## forgets to connect this silently loses the effect rather than its picture.
+signal spawn_requested(request: SpawnRequest)
+
 var stats: StatsManager
 var counters: CounterManager
 var effects: EffectDispatcher
@@ -396,6 +405,43 @@ func apply_status(
 
 func tick_statuses(delta: float) -> void:
 	statuses.tick(self, delta)
+
+# --- asking the world for entities -----------------------------------------
+
+## Asks for `count` of `data` to be built at this entity's own position.
+##
+## THE ONE DOOR, exactly as detonate() is for explosions: a splitter bursting, a
+## hive on its clock and later a summoned turret all arrive here, so none of them
+## has to know how the world builds things and none of them can invent its own
+## way of asking.
+##
+## Returns the request even when nothing is listening, so a headless test can
+## assert what WOULD have been built - which is the only way this is testable at
+## all, the actual building being a scene concern.
+func request_spawn(
+	data: EntityData, count: int = 1, pattern: SpawnPattern = null
+) -> SpawnRequest:
+	if data == null or count <= 0:
+		return null
+
+	var request := SpawnRequest.new()
+	request.data = data
+	request.count = count
+	request.pattern = pattern
+	# Read off the model rather than taken as an argument: the position is
+	# already published there every frame by the view, and a caller passing its
+	# own would be a second answer to a question that has one.
+	request.origin = world_position
+	request.requester = weakref(self)
+
+	spawn_requested.emit(request)
+	return request
+
+## Whether raising `hook` on this entity would reach anything.
+##
+## For callers on a SCHEDULE - see EffectDispatcher.has_listeners.
+func listens_for(hook: Hooks.Hook) -> bool:
+	return effects.has_listeners(hook)
 
 # --- area attacks ----------------------------------------------------------
 

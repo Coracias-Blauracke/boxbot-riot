@@ -174,6 +174,11 @@ func _initialize() -> void:
 	_test_the_authored_popper_bursts_on_death()
 	_test_the_authored_mortar_explodes_where_it_lands()
 	_test_a_behaviour_can_ask_for_less_than_full_speed()
+	_test_a_dying_thing_can_ask_for_more_of_them()
+	_test_a_timer_asks_once_per_interval_and_keeps_the_remainder()
+	_test_two_holders_of_one_spawn_effect_keep_separate_clocks()
+	_test_a_request_places_itself_around_whoever_asked()
+	_test_the_authored_splitter_and_hive_ask_for_swarmlings()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -3418,6 +3423,148 @@ func _test_a_behaviour_can_ask_for_less_than_full_speed() -> void:
 		orbit.get_direction(null, Vector2(60.0, 0.0), target, 0.1).length(),
 		1.0
 	)
+
+# --- spawn requests ---------------------------------------------------------
+#
+# core/ cannot build anything, so what is asserted here is the REQUEST: what
+# would be created, how many, and where. The building is a scene concern and is
+# measured by a capture run instead.
+
+## Records every request an entity makes. A plain Array of the requests
+## themselves is safe where a BlastEvent was not: a SpawnRequest holds its
+## requester WEAKLY, precisely so keeping one cannot keep a corpse alive.
+func _collect_requests(entity: EntityModel) -> Array[SpawnRequest]:
+	var seen: Array[SpawnRequest] = []
+	entity.spawn_requested.connect(func(request: SpawnRequest) -> void: seen.append(request))
+	return seen
+
+func _make_spawn_effect(what: EntityData, how_many: int, every: float = 0.0) -> EffectSpawn:
+	var effect := EffectSpawn.new()
+	effect.data = what
+	effect.count = how_many
+	effect.interval = every
+	effect.trigger = (
+		EffectSpawn.Trigger.ON_INTERVAL if every > 0.0 else EffectSpawn.Trigger.ON_DEATH
+	)
+	return effect
+
+func _tick(entity: EntityModel, delta: float) -> void:
+	var event := TickEvent.new()
+	event.delta = delta
+	entity.notify(Hooks.Hook.ON_TICK, event)
+
+func _test_a_dying_thing_can_ask_for_more_of_them() -> void:
+	print("
+-- spawn requests --")
+	var child := EnemyData.new()
+	child.display_key = "TEST_CHILD"
+
+	var parent := _at(Vector2(120.0, -40.0), 10.0)
+	var seen := _collect_requests(parent)
+	parent.effects.register(EffectInstance.new(_make_spawn_effect(child, 2), &"splitter"))
+
+	_check_int("nothing asked for while it lives", seen.size(), 0)
+	_hit(parent, 50.0)
+
+	_check_int("one request on death", seen.size(), 1)
+	_check_int("for two of them", seen[0].count, 2)
+	_check_bool("of the authored kind", seen[0].data == child, true)
+	# Read off the model rather than passed in, so it is the position the view
+	# published - which is still correct on a corpse.
+	_check("where it died, x", seen[0].origin.x, 120.0)
+	_check("where it died, y", seen[0].origin.y, -40.0)
+
+func _test_a_timer_asks_once_per_interval_and_keeps_the_remainder() -> void:
+	var brood := EnemyData.new()
+	brood.display_key = "TEST_BROOD"
+
+	var hive := _at(Vector2.ZERO)
+	var seen := _collect_requests(hive)
+	hive.effects.register(EffectInstance.new(_make_spawn_effect(brood, 3, 2.0), &"hive"))
+
+	_tick(hive, 1.9)
+	_check_int("not yet", seen.size(), 0)
+	_tick(hive, 0.2)
+	_check_int("once the interval is crossed", seen.size(), 1)
+	_check_int("three of them", seen[0].count, 3)
+
+	# ONE brood per crossing, never a loop draining the debt: a frame that ran
+	# long would otherwise put several intervals of them down at once.
+	_tick(hive, 10.0)
+	_check_int("a long frame still asks once", seen.size(), 2)
+
+	# The remainder carries, so the clock does not drift later every time.
+	_tick(hive, 1.9)
+	_check_int("and the leftover 0.1 counted", seen.size(), 3)
+
+func _test_two_holders_of_one_spawn_effect_keep_separate_clocks() -> void:
+	var brood := EnemyData.new()
+	brood.display_key = "TEST_BROOD"
+
+	# ONE resource, two holders - which is the trap EffectInstance exists for.
+	# A timer kept on the .tres would have every hive in the wave counting the
+	# same seconds and releasing together.
+	var shared := _make_spawn_effect(brood, 1, 2.0)
+
+	var first := _at(Vector2.ZERO)
+	var second := _at(Vector2(500.0, 0.0))
+	var first_seen := _collect_requests(first)
+	var second_seen := _collect_requests(second)
+	first.effects.register(EffectInstance.new(shared, &"hive"))
+	second.effects.register(EffectInstance.new(shared, &"hive"))
+
+	_tick(first, 1.5)
+	_tick(second, 0.2)
+	_tick(first, 0.6)
+
+	_check_int("the one that has waited releases", first_seen.size(), 1)
+	_check_int("the other has not", second_seen.size(), 0)
+
+func _test_a_request_places_itself_around_whoever_asked() -> void:
+	var context := SpawnContext.new()
+	context.anchor = Vector2(300.0, 200.0)
+
+	var scatter := SpawnScatter.new()
+	scatter.radius = 40.0
+	var points := scatter.positions(context, 3, RunRandom.new(7))
+
+	_check_int("one point per member", points.size(), 3)
+	# The first member sits exactly on the anchor, so a request for one lands
+	# precisely where it was asked for rather than jittered off it.
+	_check("the first is the anchor, x", points[0].x, 300.0)
+	_check("the first is the anchor, y", points[0].y, 200.0)
+
+	var furthest := 0.0
+	for point in points:
+		furthest = maxf(furthest, point.distance_to(context.anchor))
+	_check_bool("and the rest are inside the radius", furthest <= 40.0001, true)
+
+func _test_the_authored_splitter_and_hive_ask_for_swarmlings() -> void:
+	var splitter_data := load("res://content/enemies/splitter.tres") as EnemyData
+	var hive_data := load("res://content/enemies/hive.tres") as EnemyData
+	var swarmling := load("res://content/enemies/swarmling.tres") as EnemyData
+	_check_bool("all three load", splitter_data != null and hive_data != null, true)
+
+	var splitter := EntityModel.new(splitter_data)
+	splitter.world_position = Vector2(10.0, 10.0)
+	var split_seen := _collect_requests(splitter)
+	_hit(splitter, 500.0)
+	_check_int("the splitter asks once", split_seen.size(), 1)
+	_check_int("for the authored two", split_seen[0].count, 2)
+	_check_bool("and they are swarmlings", split_seen[0].data == swarmling, true)
+
+	var hive := EntityModel.new(hive_data)
+	var hive_seen := _collect_requests(hive)
+	# The hive is authored at one brood every 5 seconds; nothing releases early.
+	_tick(hive, 4.9)
+	_check_int("nothing yet", hive_seen.size(), 0)
+	_tick(hive, 0.2)
+	_check_int("then a brood", hive_seen.size(), 1)
+	_check_bool("of swarmlings", hive_seen[0].data == swarmling, true)
+
+	# It never moves, and says so by carrying no movement behaviour at all
+	# rather than by a speed of zero - one statement of a fact, not two.
+	_check_bool("the hive has no movement resource", hive_data.movement == null, true)
 
 func _test_neutral_is_nobody_s_ally_and_nobody_s_enemy() -> void:
 	var players := WorldTypes.Faction.PLAYERS

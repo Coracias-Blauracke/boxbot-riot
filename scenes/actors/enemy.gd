@@ -167,10 +167,35 @@ func _separation_direction() -> Vector2:
 
 	return push
 
+## Enemies get ON_TICK too, and only when something is actually listening.
+##
+## RunModel.advance_wave raises it on every PLAYER once a frame, which is where
+## regeneration and "for each burning enemy" live. Nothing ever did the same for
+## the horde, so an enemy effect on a SCHEDULE - a hive's clock - had no
+## heartbeat to hang on at all and could not have been authored.
+##
+## It lives on Enemy rather than on Actor deliberately: players already get
+## theirs from the run, and doing it here as well would tick every player's
+## regeneration twice - the same trap Actor.tick_statuses documents.
+##
+## The guard is not an optimisation of the dispatch, it is an optimisation of the
+## PAYLOAD: seventy enemies would otherwise allocate a TickEvent every frame to
+## hand it to nothing.
+func _tick_effects(delta: float) -> void:
+	if model == null or not model.listens_for(Hooks.Hook.ON_TICK):
+		return
+
+	var tick := TickEvent.new()
+	tick.delta = delta
+	tick.census = model.get_census()
+	model.notify(Hooks.Hook.ON_TICK, tick)
+
 func _physics_process(delta: float) -> void:
 	super(delta)
 	if model == null or not model.is_alive:
 		return
+
+	_tick_effects(delta)
 
 	_contact_timer -= delta
 	if _contact_timer <= 0.0 and not _touching.is_empty():

@@ -80,6 +80,9 @@ msgstr "Brute"
 msgid "ENEMY_CHASER"
 msgstr "Chaser"
 
+msgid "ENEMY_HIVE"
+msgstr "Hive"
+
 msgid "ENEMY_POPPER"
 msgstr "Popper"
 
@@ -88,6 +91,9 @@ msgstr "Queen"
 
 msgid "ENEMY_SPITTER"
 msgstr "Spitter"
+
+msgid "ENEMY_SPLITTER"
+msgstr "Splitter"
 
 msgid "ENEMY_SWARMLING"
 msgstr "Swarmling"

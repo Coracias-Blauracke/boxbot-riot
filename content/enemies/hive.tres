@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://core/data/enemy_data.gd" id="1_enemy"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/effects/library/effect_spawn.gd" id="3_spawn"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="4_base"]
+[ext_resource type="Resource" path="res://content/enemies/swarmling.tres" id="5_brood"]
+
+[sub_resource type="Resource" id="hp"]
+script = ExtResource("2_mod")
+stat = 0
+modifier_type = 0
+value = 90.0
+
+[sub_resource type="Resource" id="melee"]
+script = ExtResource("2_mod")
+stat = 5
+modifier_type = 0
+value = 4.0
+
+[sub_resource type="Resource" id="brood"]
+script = ExtResource("3_spawn")
+priority = 0
+scope = 0
+data = ExtResource("5_brood")
+count = 2
+trigger = 1
+interval = 5.0
+
+[resource]
+script = ExtResource("1_enemy")
+display_key = "ENEMY_HIVE"
+collider_radius = 18.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("melee")])
+innate_effects = Array[ExtResource("4_base")]([SubResource("brood")])
+separation_radius_scale = 1.6
+separation_weight = 0.2
+contact_damage_interval = 0.8
+collides_with_enemies = false
+currency_reward = 8

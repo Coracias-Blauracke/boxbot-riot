@@ -22,5 +22,15 @@ var player_positions: PackedVector2Array = PackedVector2Array()
 var view_centre: Vector2 = Vector2.ZERO
 var view_size: Vector2 = Vector2.ZERO
 
+## Where the thing that ASKED for this spawn was standing.
+##
+## Only anchored patterns read it, and only spawn REQUESTS fill it: a wave
+## arrives from off screen and has nobody to be anchored to, while a splitter
+## bursting into two children has exactly one place they can sensibly appear.
+## Same context type either way, because a pattern must not care which of the two
+## called it - that is what lets a request be placed on a ring or an ambush later
+## with no new code.
+var anchor: Vector2 = Vector2.ZERO
+
 ## For bounds clamping. WorldModel is core, so this costs nothing.
 var world: WorldModel = null
