@@ -113,7 +113,8 @@ clearing power, the other wants burst and a dodge.
 
 ## What this list exposes as missing in the engine
 
-Six of the twelve need no code. The other six need these, worst first:
+Six of the twelve need no code. The other six need these, worst first - and a
+seventh gap turned up later, from asking what a real boss fight is made of:
 
 1. **A weapon always shoots the `enemies` group.** `&"enemies"` is hardcoded in
    three places - `weapon.gd`'s targeting, `weapon.gd`'s melee sweep and
@@ -148,6 +149,44 @@ Six of the twelve need no code. The other six need these, worst first:
    there is no way to show one - no animation, no flash, no sound. The wind-up
    itself belongs to the behaviour and can exist before the art does, but until
    something DRAWS it the enemy is unfair rather than hard.
+
+7. **Nothing CHOOSES between an enemy's weapons.** `EnemyData.weapons` is an
+   array and every entry fires on its own clock, always, at once. That covers "a
+   boss with three attacks happening together" and cannot express "three attacks
+   taken in turn" or "one picked at random", which is what a boss fight is made
+   of.
+
+   This is its own axis and belongs beside `movement` rather than inside
+   `FiringPattern`: a pattern answers WHEN THIS WEAPON fires, and the question
+   here is WHICH WEAPON MAY. Folding the second into the first would make every
+   pattern in the game - the ones players use included - carry a concept only
+   bosses need. An authored resource that gates the rack, in order or at random,
+   with its own state kept off the `.tres`.
+
+### What the boss questions turned out NOT to need
+
+Written down because the answers were verified in the code rather than guessed,
+and because the expensive mistake here is building machinery that already
+exists:
+
+- **Ten shots in a stream** is `FiringBurst(shots_per_burst = 10)`. Once a burst
+  starts it finishes, which is what makes it read as one attack.
+- **Ten shots in an even ring** is `SpreadFan(count = 10)` with the weapon's
+  `SPREAD_ANGLE` at 162. The fan spreads evenly from -angle to +angle, so a full
+  ring of N is exactly `180 - 180/N` degrees - 120 for three, 162 for ten - and
+  the gap that closes the circle at the back comes out the same size as the
+  rest.
+- **Several attacks at once** is already what an array of weapons does.
+- **Changing MOVEMENT with health** needs one new `MovementBehavior` and nothing
+  else: `get_direction` is handed the enemy's own `EntityModel` as its host, so
+  a phase behaviour can read `current_hp` against `get_max_hp()` and delegate to
+  a sub-behaviour. **Changing WEAPONS with health** needs one effect on
+  `TAKE_DAMAGE`, because the rack is a view of `EntityModel.weapons` and
+  re-syncs live the moment that list changes.
+
+  Both carry the trap gap 5 already names: the phase is STATE and a `.tres` is
+  shared by every enemy holding it, so it cannot live on the resource - the same
+  rule that keeps effect state in `EffectInstance`.
 
 ## Open questions
 
