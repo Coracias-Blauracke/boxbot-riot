@@ -42,6 +42,7 @@ preferred_distance = 300.0
 tolerance = 60.0
 strafe_weight = 0.8
 clockwise = true
+retreat_speed_share = 0.5
 
 [resource]
 script = ExtResource("1_enemy")

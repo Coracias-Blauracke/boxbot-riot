@@ -126,6 +126,11 @@ var _blast_victims: int = 0
 static var _restarts: int = 0
 
 var _circling: Array[Character] = []
+
+## Players driven straight at the nearest enemy by --capture-chase. Kept apart
+## from _circling because the two are different questions: one is "does the
+## swarm hold together", the other is "can this be caught at all".
+var _chasing: Array[Character] = []
 var _elapsed: float = 0.0
 
 ## Radians per second the circling players turn at. Speed divided by this is the
@@ -554,6 +559,14 @@ func _maybe_start_capture() -> void:
 		for index in players.size():
 			var away := Vector2.RIGHT.rotated(TAU * float(index) / float(players.size()) + 0.6)
 			players[index].motion = MotionSource.Scripted.new(away)
+	elif args.has("--capture-chase"):
+		# Walks straight at whatever is nearest, which is the ONE thing a melee
+		# player does and the one thing no scripted mode could express. Every
+		# other mode runs a fixed shape, so a skirmisher that backs away is never
+		# actually pursued and "melee cannot catch it" cannot be measured at all.
+		for entry in players:
+			entry.motion = MotionSource.Scripted.new(Vector2.RIGHT)
+			_chasing.append(entry)
 	elif args.has("--capture-downed"):
 		# Player 0 stands still and is killed; everyone else circles nearby and
 		# lives. The only way to photograph ONE player down while the run carries
@@ -592,6 +605,8 @@ func _maybe_start_capture() -> void:
 	capture.start()
 
 func _process(delta: float) -> void:
+	_drive_chasers()
+
 	if _circling.is_empty():
 		return
 	_elapsed += delta
@@ -604,10 +619,88 @@ func _process(delta: float) -> void:
 				_elapsed * _circle_rate + TAU * float(index) / float(_circling.size())
 			)
 
+## Re-aimed every frame rather than every quarter second like the enemy does its
+## own retargeting: a pursuer that keeps walking at where something WAS is
+## measuring its own lag, not whether the thing can be caught.
+func _drive_chasers() -> void:
+	for entry in _chasing:
+		var scripted := entry.motion as MotionSource.Scripted
+		if scripted == null or not is_instance_valid(entry):
+			continue
+		var prey := _nearest_enemy_node(entry.global_position, true)
+		scripted.direction = (
+			Vector2.ZERO
+			if prey == null
+			else (prey.global_position - entry.global_position).normalized()
+		)
+
+## `prefer_armed` goes for whatever is SHOOTING, falling back to the nearest
+## thing when nothing is. That is what a player harassed by a skirmisher actually
+## does, and a mode that simply walks at the closest swarmling would measure the
+## swarmling instead - which is not the enemy anybody is complaining about.
+func _nearest_enemy_node(from: Vector2, prefer_armed: bool = false) -> Node2D:
+	var best: Node2D = null
+	var best_distance := INF
+	var best_armed: Node2D = null
+	var best_armed_distance := INF
+
+	for child in _actors.get_children():
+		var enemy := child as Enemy
+		if enemy == null or enemy.model == null or not enemy.model.is_alive:
+			continue
+		var distance := from.distance_squared_to(enemy.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = enemy
+		if not enemy.model.weapons.is_empty() and distance < best_armed_distance:
+			best_armed_distance = distance
+			best_armed = enemy
+
+	if prefer_armed and best_armed != null:
+		return best_armed
+	return best
+
+## Distance to the nearest thing that SHOOTS, which is a different question from
+## the nearest thing at all: a melee player standing in a crowd reads near=0
+## while the skirmisher that is actually killing them sits 200 units away.
+func _nearest_armed_distance() -> float:
+	if player == null or not is_instance_valid(player):
+		return INF
+	var armed := _nearest_enemy_node(player.global_position, true)
+	if armed == null or (armed as Enemy).model.weapons.is_empty():
+		return INF
+	return player.global_position.distance_to(armed.global_position)
+
 func _count_projectiles() -> int:
 	var total := 0
 	for child in _actors.get_children():
 		if child is Projectile:
+			total += 1
+	return total
+
+## How many of them are INCOMING - the only half of the count that can be a
+## bullet hell.
+##
+## One number for both was useless the first time somebody complained that the
+## screen was full of acid: a player circling a horde with a fast weapon puts
+## dozens of its own projectiles up, so the total says nothing about how much is
+## being shot AT them. Told apart by the side the shot is hostile to, which is
+## the same fact Actor.hostile_group answers for everything else.
+func _count_incoming_projectiles() -> int:
+	var total := 0
+	for child in _actors.get_children():
+		var shot := child as Projectile
+		if shot != null and shot.hostile_group == &"players":
+			total += 1
+	return total
+
+## How many of the things on screen are ranged, because a ranged enemy is the
+## only kind whose COUNT decides whether the screen fills up.
+func _count_armed_enemies() -> int:
+	var total := 0
+	for child in _actors.get_children():
+		var enemy := child as Enemy
+		if enemy != null and enemy.model != null and not enemy.model.weapons.is_empty():
 			total += 1
 	return total
 
@@ -646,8 +739,8 @@ func _describe_state() -> String:
 		]
 
 	return (
-		"w%d %s t-%.0fs alive=%d/%d enemies=%d drift=%.0f blasts=%d/%d bleed=%d burn=%d"
-		+ " shots=%d zoom=%.2f%s"
+		"w%d %s t-%.0fs alive=%d/%d enemies=%d/%d gun=%.0f drift=%.0f blasts=%d/%d"
+		+ " bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
 	) % [
 		run.wave_number,
 		_phase_name(),
@@ -655,6 +748,8 @@ func _describe_state() -> String:
 		run.living_player_count(),
 		players.size(),
 		_count_enemies(),
+		_count_armed_enemies(),
+		_nearest_armed_distance(),
 		_max_position_drift(),
 		_blasts,
 		_blast_victims,
@@ -663,6 +758,7 @@ func _describe_state() -> String:
 		run.census.count_with_status(&"bleed"),
 		run.census.count_with_status(&"burn"),
 		_count_projectiles(),
+		_count_incoming_projectiles(),
 		_camera.zoom.x,
 		per_player,
 	]

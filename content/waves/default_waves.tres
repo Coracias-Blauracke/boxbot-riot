@@ -39,7 +39,7 @@ enemy = ExtResource("9_spitter")
 min_wave = 1
 max_wave = 0
 weight = 2.0
-cost = 3.0
+cost = 4.5
 group_size = 2
 pattern = ExtResource("5_ring")
 

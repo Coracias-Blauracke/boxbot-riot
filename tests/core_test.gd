@@ -173,6 +173,7 @@ func _initialize() -> void:
 	_test_a_chain_does_not_spend_its_targets_on_corpses()
 	_test_the_authored_popper_bursts_on_death()
 	_test_the_authored_mortar_explodes_where_it_lands()
+	_test_a_behaviour_can_ask_for_less_than_full_speed()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -3383,6 +3384,40 @@ func _test_the_authored_mortar_explodes_where_it_lands() -> void:
 	# explodes for its own 52 with not one number authored twice.
 	_check("the explosion landed on the bug", bug.current_hp, 100.0 - 8.4)
 	_check_int("nothing died", census.count_alive(), 2)
+
+func _test_a_behaviour_can_ask_for_less_than_full_speed() -> void:
+	print("
+-- backing off --")
+	var orbit := OrbitBehavior.new()
+	orbit.preferred_distance = 200.0
+	orbit.tolerance = 20.0
+	orbit.strafe_weight = 1.0
+	orbit.retreat_speed_share = 0.5
+
+	var target := Vector2.ZERO
+	var closing := orbit.get_direction(null, Vector2(400.0, 0.0), target, 0.1)
+	var circling := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.1)
+	var backing := orbit.get_direction(null, Vector2(60.0, 0.0), target, 0.1)
+
+	# The LENGTH is the speed share - see MovementBehavior. Full speed to close,
+	# full speed to circle, and only the retreat gives ground.
+	_check("closes at full speed", closing.length(), 1.0)
+	_check("circles at full speed", circling.length(), 1.0)
+	_check("and backs off at half", backing.length(), 0.5)
+
+	# Direction is unchanged by the share: it still goes AWAY, it simply gives
+	# ground more slowly. The enemy stands at +60 and the target at the origin,
+	# so retreating is FURTHER along +x.
+	_check_bool("still retreating", backing.x > 0.0, true)
+
+	# 1.0 is what it did before this was expressible, so the old behaviour is
+	# still authorable rather than merely remembered.
+	orbit.retreat_speed_share = 1.0
+	_check(
+		"the old behaviour is one authored number",
+		orbit.get_direction(null, Vector2(60.0, 0.0), target, 0.1).length(),
+		1.0
+	)
 
 func _test_neutral_is_nobody_s_ally_and_nobody_s_enemy() -> void:
 	var players := WorldTypes.Faction.PLAYERS

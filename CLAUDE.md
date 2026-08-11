@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 850 assertions across three suites, no editor, no game window
+# tests — 855 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -86,6 +86,7 @@ accident:
 | `--capture-roster=N` | builds N throwaway characters, so the rack can be photographed at fifty before fifty are authored |
 | `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
 | `--capture-shop-tile=N` | parks it on the Nth owned tile, so an ITEM can be read and not only the first weapon |
+| `--capture-chase` | walks every player straight at the nearest ARMED enemy - the one thing a melee player does, and the only way to ask whether a skirmisher can be caught |
 | `--capture-item=res://...` | hands every player that item before the first wave, so an item's BEHAVIOUR can be observed at all |
 | `--capture-wave=N` | starts the run at wave N, with wave N's budget, curve and roster |
 
@@ -120,8 +121,21 @@ both were added because area damage could not otherwise be photographed at all:
   to play for minutes, with nobody at the controls. `--capture-wave=N` sets
   `run.wave_number` before the first `start_wave()`, so the run BEGINS at N.
 
-The state line carries two measurements that exist because a screenshot cannot
-show either. `drift` is the largest gap between where an actor is and where its
+`--capture-chase` prefers whatever is SHOOTING over whatever is closest, which
+is what a player harassed by a skirmisher actually does; walking at the nearest
+swarmling would measure the swarmling. Note what it CANNOT measure: it re-aims
+every frame and ignores incoming fire, so it sticks to its prey whatever the
+prey's retreat speed is. It answers "is this catchable at all", not "does the
+chase feel fair".
+
+The state line carries several measurements that exist because a screenshot
+cannot show any of them. `enemies=T/A` splits the total from the ARMED, and
+`shots=T/I` splits every projectile from the INCOMING ones - one number for both
+was useless the first time somebody said the screen was full of acid, because a
+player circling a horde puts up dozens of its own. `gun=` is the distance to the
+nearest thing that shoots, which is a different question from the nearest thing
+at all: a melee player standing in a crowd reads 0 while the skirmisher actually
+killing them sits 200 units away. `drift` is the largest gap between where an actor is and where its
 model says it is — see `world_position`, which nothing wrote for five branches.
 `blasts=N/M` is how many explosions have gone off and how many things they
 caught between them: an explosion lasts a third of a second, so a frame taken
@@ -889,6 +903,23 @@ so the moment anything other than a gun rolled a crit it read the entity's own
 CRIT_MULTIPLIER, found the neutral 1.0, and crit for nothing. The neutral cannot
 simply BE 2.0 - `combined_stat` shares only a holder's deviation from neutral,
 so that would compound to x4 on every weapon.
+
+**A MOVEMENT BEHAVIOUR STEERS *AND* THROTTLES.** The length of what
+`get_direction` returns is a speed share, capped at 1. It used to be documented
+as normalised and the view enforced that by normalising whatever came back, so a
+behaviour could only ever point - which meant a skirmisher retreated exactly as
+fast as it advanced, and no amount of authoring could say otherwise. That was not
+a tuning choice; it was the only expressible thing.
+
+`OrbitBehavior.retreat_speed_share` is what that unlocks, and the Charger's
+wind-up in `docs/enemy_list.md` needs the same knob. A behaviour returning ZERO
+still gets moved by crowd separation at full speed, or an enemy that decides to
+stand still could never be pushed out of a pile.
+
+**Lowering MOVEMENT_SPEED would NOT have been the same fix.** That stat is read
+for closing, circling and retreating alike, so a spitter slow enough to catch is
+also a spitter too slow to skirmish - it stops being the enemy it was authored
+as. The complaint was about one of the three, so the knob belongs on the one.
 
 **AREA DAMAGE IS A SHAPE PLUS AN OCCASION, and neither knows about the other.**
 `BlastData` says how far, how hard and whose side; `EffectBlast` says when. They

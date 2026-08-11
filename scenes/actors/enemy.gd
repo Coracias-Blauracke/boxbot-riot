@@ -90,7 +90,21 @@ func _get_move_direction(delta: float) -> Vector2:
 
 	var steer := behavior.get_direction(model, global_position, target.global_position, delta)
 	var combined := steer + _separation_direction() * _separation_weight
-	return combined.normalized() if combined.length() > 0.001 else Vector2.ZERO
+	if combined.length() <= 0.001:
+		return Vector2.ZERO
+
+	# The behaviour's LENGTH is how much of its speed it is asking for - see
+	# MovementBehavior. Normalising it away, which is what this line used to do,
+	# meant every enemy moved flat out in whatever direction it was pointed: a
+	# skirmisher backed off exactly as fast as it closed in, and no amount of
+	# authoring could say otherwise.
+	#
+	# A behaviour asking for nothing at all still gets moved by crowd separation,
+	# at full speed, exactly as before - otherwise an enemy that decides to stand
+	# still could never be pushed out of a pile.
+	var steer_length := steer.length()
+	var share := 1.0 if steer_length <= 0.001 else minf(1.0, steer_length)
+	return combined.normalized() * share
 
 ## Nearest LIVING player. A dead one must stop attracting the horde, or in co-op
 ## the swarm would pile onto a corpse while the survivors are ignored.
