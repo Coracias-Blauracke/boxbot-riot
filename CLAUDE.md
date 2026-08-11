@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 778 assertions across three suites, no editor, no game window
+# tests — 850 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -85,6 +85,9 @@ accident:
 | `--capture-grid=CxR` | overrides the rack's columns and visible rows, so M x N is A/B-able one variable at a time |
 | `--capture-roster=N` | builds N throwaway characters, so the rack can be photographed at fifty before fifty are authored |
 | `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
+| `--capture-shop-tile=N` | parks it on the Nth owned tile, so an ITEM can be read and not only the first weapon |
+| `--capture-item=res://...` | hands every player that item before the first wave, so an item's BEHAVIOUR can be observed at all |
+| `--capture-wave=N` | starts the run at wave N, with wave N's budget, curve and roster |
 
 `--capture-select` STEPS the selection one nudge at a time rather than assigning
 it, for the same reason `--capture-pause` calls `request_toggle()`: a capture
@@ -104,6 +107,25 @@ owned strip. The second one exists because **a UI state that needs input cannot
 otherwise be photographed at all**, which is a real hole in how this repo
 verifies the scene layer — every selected, hovered or focused state is invisible
 to a capture run until something can put the cursor there.
+
+`--capture-item` and `--capture-wave` close the same hole one layer down, and
+both were added because area damage could not otherwise be photographed at all:
+
+- Twenty-six items are authored and NOT ONE of their behaviours was observable
+  in a run, because the only way to hold an item is to buy it and a scripted
+  player never presses anything. `--capture-item` grants it through
+  `model.add_item`, the same door the shop uses, so what is photographed is an
+  item being held rather than a special case pretending to be one.
+- Everything authored past wave 3 was equally unreachable: a capture would have
+  to play for minutes, with nobody at the controls. `--capture-wave=N` sets
+  `run.wave_number` before the first `start_wave()`, so the run BEGINS at N.
+
+The state line carries two measurements that exist because a screenshot cannot
+show either. `drift` is the largest gap between where an actor is and where its
+model says it is — see `world_position`, which nothing wrote for five branches.
+`blasts=N/M` is how many explosions have gone off and how many things they
+caught between them: an explosion lasts a third of a second, so a frame taken
+between two of them is indistinguishable from a build where nothing explodes.
 
 `--capture-pause=N` asks for the pause menu N seconds in, and `--capture-restart=N`
 restarts the run at N seconds. Both close that same hole for the pause screen.
@@ -141,8 +163,10 @@ stay inside the horde and die before the wave can end. Nothing is then observed.
 
 ```
 core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencies
-  enums/     StatTypes, CounterTypes, Hooks, WorldTypes, RunTypes (APPEND-ONLY)
-  data/      .tres schemas: ShopEntryData (the base every purchasable shares),
+  enums/     StatTypes, CounterTypes, Hooks, WorldTypes (shape, phase, FACTION),
+             RunTypes (APPEND-ONLY)
+  data/      .tres schemas: BlastData (one area attack: how far, how hard,
+             whose side), ShopEntryData (the base every purchasable shares),
              EntityData, CharacterData, CharacterSet (the roster a lobby offers),
              EnemyData, WeaponData, ItemData,
              StatScaling (which stat feeds a weapon, and how much),
@@ -164,9 +188,11 @@ scenes/      the view — nodes, physics, rendering
              PauseScreen, JoinView
   input/     PlayerInput (device binding, movement + menus),
              DeviceJoiner (watches devices that have NOT joined)
+  effects/   BlastFlash - what an explosion is DRAWN as, and the only view-side
+             thing that knows a blast happened
 content/     authored .tres: characters/ (six + the set that lists them,
              plus test_character, which is main.tscn's own fallback),
-             enemies, weapons/ (12 families x 4
+             enemies, weapons/ (13 families x 4
              tiers, + classes/), items, projectiles,
              waves, worlds, spawn/ (patterns), shop/ (pool and rules),
              locale/en.po (every authored key, loaded by project.godot),
@@ -838,8 +864,86 @@ one respect.
 answer "what is within 90 units of this corpse" without ever seeing a Node -
 the same trick `SpawnContext` uses. `core/` never writes it.
 
+`Actor._publish_position()` is that write and the ONLY one. It ran nowhere at
+all until the area-damage work needed it: the field was declared, documented,
+read by `WorldCensus` and written exclusively by a unit test, so in the running
+game every entity sat at the origin. "Within 90 units" was therefore true of the
+whole arena, and burn spread off a corpse to three arbitrary enemies at any
+distance. Measured as `drift` in the capture state line - 1146-1241 units before,
+0 after, same seed, same run.
+
+That the suite was green throughout is the lesson, not the bug: `core_test`
+assigns `world_position` itself, which is exactly the shape CLAUDE.md already
+warns about under readiness - **a test that follows the correct path cannot
+catch a caller that never walks it at all.** The guard is the capture line, so
+the number is in front of a person on every run.
+
 **Crit is rolled ONCE per shot** into a shared `ShotSnapshot`, so all shotgun
 pellets crit together and a piercing shot keeps critting through every enemy.
+
+The roll itself lives on `ShotSnapshot.roll_crit`, not in `WeaponModel`, because
+a blast has to make exactly the same one - and two copies of five lines is how a
+fix lands in one of them. The x2 default moved with it, to
+`StatTypes.DEFAULT_CRIT_MULTIPLIER`: it was a bare `+1.0` inside `WeaponModel`,
+so the moment anything other than a gun rolled a crit it read the entity's own
+CRIT_MULTIPLIER, found the neutral 1.0, and crit for nothing. The neutral cannot
+simply BE 2.0 - `combined_stat` shares only a holder's deviation from neutral,
+so that would compound to x4 on every weapon.
+
+**AREA DAMAGE IS A SHAPE PLUS AN OCCASION, and neither knows about the other.**
+`BlastData` says how far, how hard and whose side; `EffectBlast` says when. They
+multiply rather than add: one blast resource covers every occasion and one effect
+covers every shape, so a bug that bursts on death, an item that detonates
+whatever you kill and a projectile that goes off where it lands are three
+authored files and ONE class. The rule for where it goes off is stated once -
+WHERE THE EVENT HAPPENED - and `EffectBlast` branches on its authored trigger
+rather than on the payload's type, because reading the type would couple it to
+whatever some other system happens to pass.
+
+**A BLAST IS A SHOT.** It fills a `ShotSnapshot`, runs `CALCULATE_DAMAGE` on the
+weapon and then the source, and rolls one crit for the whole explosion - so
+everything caught crits together, exactly as eight shotgun pellets do. Damage
+lands through `apply_damage`, which is what gives a blast armor, dodge,
+lifesteal, status-on-hit items and kill credit with nothing written for any of
+them. The distance taper cost nothing either: it is the `retained` argument
+`to_damage_event` already took.
+
+An explosion set off by a bullet INHERITS that bullet's crit rather than rolling
+again (`ShotSnapshot.inherit_crit`), because it is part of the same attack. An
+explosion triggered by a KILL rolls its own, because that is a second attack.
+The difference is one authored trigger apart and worth being deliberate about:
+rolling twice would quietly make CRIT_CHANCE worth more on explosive weapons.
+
+**WHOSE SIDE is one fact now.** `WorldTypes.Faction` is the only word `core/` has
+for it, `EntityModel.faction` carries it, and the view writes it exactly as it
+writes `world_position`. `Actor._join_faction` is the ONE declaration from which
+the group an actor joins, the group its weapons hunt, its attack layers and its
+model's faction all derive - four facts that used to be set one at a time in two
+subclasses, which is four chances to say "players" and mean "enemies".
+
+NEUTRAL is deliberately not the negation of hostile: two neutrals are not
+comrades, they are simply not in the fight. Without that, every future explosion
+levels the scenery by default.
+
+**Friendly fire is a FIELD, not a decision.** `BlastData.reach` is HOSTILE,
+ALLIED or EVERYTHING, so "does a Popper hurt other bugs" is one line in a `.tres`
+rather than an argument. It ships on HOSTILE - a horde that partly kills itself
+is a real design lever and an unmeasurable one, and turning it on later costs
+nothing.
+
+**The view learns about explosions from ONE signal.** `EntityModel.detonate` is
+the only door in, and it emits `blast_resolved`; `main.gd` connects it where it
+already pairs models with nodes, so `Actor` knows nothing about explosions and
+`BlastFlash` knows about a `BlastEvent` and nothing else. `core/` behaves
+identically when nothing is listening, which is what keeps the headless suite and
+the running game the same code.
+
+**A chain of explosions happens inside ONE frame, and the census is cached for
+the frame.** `BlastData._targets` therefore re-checks `is_alive` rather than
+trusting the census answer. The damage was never wrong - `apply_damage` refuses a
+corpse - but a capped blast spent its three targets on things already gone.
+Measured: nine explosions reporting fifty victims, twenty-nine after the fix,
+with the explosion count unchanged.
 
 **One scene per ROLE, not per variant.** `character.tscn` serves every playable
 character; `enemy.tscn` every enemy and boss. Identity comes from `.tres`. Scene
@@ -939,7 +1043,7 @@ that ends in victory or defeat, a spawn system with swappable placement
 patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
 per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
 rerolling, stat payment and ready-up — and a status system whose four statuses
-differ only by authored numbers. Twenty-four items authored.
+differ only by authored numbers. Twenty-six items authored.
 
 ENEMIES CAN SHOOT BACK. `spitter` orbits at 210 units and spits acid, which is
 the first enemy that attacks from outside contact range and therefore the first
@@ -994,12 +1098,27 @@ for and never given.
 Weapons carry CLASS TAGS, and holding several of a class grants authored stat
 bonuses at authored thresholds, cumulative and authored per count.
 
-TWELVE WEAPON FAMILIES are authored, four tiers each, 48 files in all, drawn
+THIRTEEN WEAPON FAMILIES are authored, four tiers each, 52 files in all, drawn
 from `docs/weapon_list.md` and generated against its tier convention (damage
 x1.55, price x2.2 per step, every axis identical). Five classes exist - gun,
 blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
 `rapid` grants something at every count from one to six, `bouncy` nothing until
 three. Not one of the twelve needed a new effect class.
+
+AREA DAMAGE IS IN, and it is the first thing authored on both sides of the game
+at once. `BlastData` (how far, how hard, whose side) plus `EffectBlast` (on
+death, on a kill, on impact) covers every family either prose list asked for:
+**Popper** bursts when it dies and is the ninth authored enemy, **Chain
+Detonator** detonates whatever you kill, **Shaped Charge** is +30% AREA_SIZE and
++4 elemental damage with no code at all, and the **Slag Mortar** is the
+thirteenth weapon family - a lobbed charge whose explosion is 60% of the gun's
+own damage, so all four tiers scale with one authored number.
+
+Measured in a capture run, same seed, one player, --capture-circle: without the
+detonator `blasts=0/0` and the wave goes 13 -> 4 enemies in six seconds; with it
+`blasts=18/57` and the field is empty at four. Poppers photographed at
+`--capture-wave=4`: four explosions, the standing player 100 -> 87 -> 55 -> 41 ->
+9 -> DOWN.
 
 WEAPONS MERGE. Two carried copies of the same tier combine into one of the next
 through a MERGE / SELL / CLOSE menu on the owned tile, which is also where
@@ -1069,26 +1188,33 @@ that makes polishing now a mistake.
 values with no implementation, GUARDED now rather than merely absent: the
 validator refuses a weapon using one and `Weapon` reports it once by name, so
 the failure is loud instead of a weapon that loads, sells and never fires -
-no explosion/puddle effects on `ON_IMPACT`, no save system, no item icons, no
-art (everything is drawn as placeholder circles, ellipses and lines), and no
-buffs authored — the status machinery is valence-neutral and ready for them,
-but nothing positive exists yet.
+no LINGERING areas (an explosion is an instant; a puddle that keeps hurting
+whatever stands in it is a duration and needs its own state), no save system, no
+item icons, no art (everything is drawn as placeholder circles, ellipses and
+lines), and no buffs authored — the status machinery is valence-neutral and
+ready for them, but nothing positive exists yet.
 
-The effect library is **thirteen classes**: `EffectPriceModifier` closed the
-last gap the character list found — nothing in content had ever driven
-`CALCULATE_PRICE`, so "items cost 20% less" and "you pay in blood" were
-unauthorable despite the machinery being finished and only two test doubles had
-ever exercised it.
+*(Explosions on `ON_IMPACT` were the head of this list and are done - see AREA
+DAMAGE under Current state. The puddle half of that old entry is what is left,
+and it is a different mechanic rather than the rest of the same one.)*
 
-The effect library is **thirteen classes**. It was four when the item list was
-written, and the nine added since each cover a FAMILY rather than an item:
+The effect library is **fourteen classes**. It was four when the item list was
+written, and the ten added since each cover a FAMILY rather than an item:
 apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
-double-status-stacks, stat-per-world-count, price-modifier, and the three status
-kinds. That ratio is the point - sixteen of the twenty-four authored items and
-six of the eight authored characters needed no new code at all.
+double-status-stacks, stat-per-world-count, price-modifier, blast, and the three
+status kinds. That ratio is the point - sixteen of the twenty-six authored items
+and six of the eight authored characters needed no new code at all.
 
-**The game reads in ENGLISH now.** `content/locale/en.po` translates all 189
-authored keys - every stat name and its description, every item, all 48 weapons,
+`EffectPriceModifier` closed the last gap the character list found — nothing in
+content had ever driven `CALCULATE_PRICE`, so "items cost 20% less" and "you pay
+in blood" were unauthorable despite the machinery being finished and only two
+test doubles had ever exercised it. `EffectBlast` is the newest, and covers
+three families with one class because the only thing separating them is where
+the centre is: a bug that bursts when it dies, an item that detonates whatever
+you kill, and a projectile that goes off where it lands.
+
+**The game reads in ENGLISH now.** `content/locale/en.po` translates all 204
+authored keys - every stat name and its description, every item, all 52 weapons,
 the classes, the enemies and the eight characters - and `project.godot` loads it
 directly by `res://` path. That last part is the reason it is a `.po` and not a
 CSV: a CSV imports into `.godot/imported/`, which is gitignored, so the project
@@ -1104,6 +1230,15 @@ beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
 (`WEAPON_BOLT_DRIVER_I` -> "Bolt Driver I"), so a new weapon needs one obvious
 line. The 45 stat descriptions and the 8 character descriptions are hand-written
 and are the only authored player-facing prose in the game.
+
+**The validator refuses an explosion that cannot work**: a blast with no radius
+reaches nobody and a blast with no damage catches everybody and does nothing to
+them, and neither logs a thing at runtime. It also refuses an effect on a
+PROJECTILE that does not declare `ON_IMPACT` - `Projectile._run_projectile_effects`
+calls `execute()` directly rather than through a dispatcher, so it never consults
+`get_hooks()` and an effect authored for any other occasion would simply fire at
+the wrong moment for ever. Verified by breaking `slag_charge.tres` on purpose and
+watching it fire.
 
 **The validator fails a key with no English behind it.** A missing entry renders
 as the key itself and nothing errors - which is exactly how the whole game read
@@ -1212,12 +1347,17 @@ without a line of GDScript. `EffectStatPerCounter` already covers every "for
 every N of something, gain X" — when writing the list, mark which behaviours are
 that same pattern with different numbers.
 
-### Five of the 45 stats do nothing, and every one of them needs a SYSTEM
+### Four of the 46 stats do nothing, and every one of them needs a SYSTEM
 
 | state | stats |
 |---|---|
-| **read by something** | 40 of 45 |
-| **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING, ELEMENTAL_DAMAGE — no pickups, no luck rolls, no harvesting, no turrets, no elemental delivery |
+| **read by something** | 42 of 46 |
+| **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING — no pickups, no luck rolls, no harvesting, no turrets |
+
+ELEMENTAL_DAMAGE left that list with area damage, and it cost nothing to wire:
+`BlastData.damage_scaling` follows the rule `WeaponData` already had, where an
+empty table means "all of my own damage type" - and a blast's own type is
+ELEMENTAL by default. AREA_SIZE is the 46th stat and arrived wired.
 
 There is no longer a "cheap to wire" row. CURRENCY_GAIN was the last entry in it
 and is wired now, in `add_currency` — the ONE door currency comes through, so no

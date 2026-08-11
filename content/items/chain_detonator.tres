@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://core/data/item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="2_base"]
+[ext_resource type="Script" path="res://core/effects/library/effect_blast.gd" id="3_effect"]
+[ext_resource type="Script" path="res://core/data/blast_data.gd" id="4_blast"]
+
+[sub_resource type="Resource" id="burst"]
+script = ExtResource("4_blast")
+radius = 70.0
+edge_damage_share = 0.5
+max_targets = 0
+base_damage = 10.0
+damage_type = 2
+reach = 0
+flash_color = Color(0.98, 0.85, 0.45, 1)
+
+[sub_resource type="Resource" id="e_kill"]
+script = ExtResource("3_effect")
+priority = 0
+scope = 0
+blast = SubResource("burst")
+trigger = 1
+
+[resource]
+script = ExtResource("1_item")
+display_key = "ITEM_CHAIN_DETONATOR"
+tier = 3
+base_price = 46
+dynamic_effects = Array[ExtResource("2_base")]([SubResource("e_kill")])

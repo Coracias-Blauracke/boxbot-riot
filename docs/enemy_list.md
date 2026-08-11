@@ -66,12 +66,12 @@ Damage and health are rough and get tuned against play. `group` is the
 
 ### Middle (waves 5-14)
 
-| # | enemy | movement | attack | spawn | group |
-|---|---|---|---|---|---|
-| 4 | **Spitter** | orbit at ~220 | RANGED weapon | edge | 2 |
-| 5 | **Charger** | charge: pause, telegraph, dash | contact on the dash | ring | 2 |
-| 6 | **Popper** | chase | contact, and explodes on death | near-player | 4 |
-| 7 | **Lurker** | chase, fast | contact, high burst | near-player | 3 |
+| # | enemy | movement | attack | spawn | group | |
+|---|---|---|---|---|---|---|
+| 4 | **Spitter** | orbit at ~220 | RANGED weapon | edge | 2 | **AUTHORED** |
+| 5 | **Charger** | charge: pause, telegraph, dash | contact on the dash | ring | 2 | |
+| 6 | **Popper** | chase | contact, and explodes on death | near-player | 4 | **AUTHORED** |
+| 7 | **Lurker** | chase, fast | contact, high burst | near-player | 3 | |
 
 - **Spitter** is the whole reason the engine has to change at all. It is the
   first enemy that attacks from outside contact range, which is what makes
@@ -135,9 +135,14 @@ seventh gap turned up later, from asking what a real boss fight is made of:
    the run, and the scene layer drains it the same frame - the mirror of
    `EntityModel.world_position`, which the view writes and core reads.
 
-4. **No area damage.** Popper explodes, Colossus lands, and neither is
-   expressible. Already on the known-gaps list as "no explosion/puddle effects
-   on `ON_IMPACT`"; this is the content that pays for it.
+4. ~~**No area damage.**~~ **DONE.** `BlastData` says how far, how hard and
+   whose side; `EffectBlast` says on what occasion. Popper is authored and bursts
+   when it dies. Colossus still needs its charge, but its landing is now one more
+   `.tres` rather than a system.
+
+   The half of the old known-gap entry that remains is the PUDDLE: something that
+   keeps hurting whatever stands in it is a duration with its own state, not a
+   bigger explosion.
 
 5. **Only one `MovementBehavior`.** Orbit, charge and drift are one resource
    each, around twenty lines, with no new machinery - the axis was built for
@@ -190,9 +195,15 @@ exists:
 
 ## Open questions
 
-**1. Does a Popper hurt other bugs when it explodes?** Friendly fire between
-enemies is a real design lever - it makes crowding them together valuable - but
-it also makes a horde partly kill itself, which is very hard to balance blind.
+**1. Does a Popper hurt other bugs when it explodes?** ANSWERED, by making it
+stop being a question: `BlastData.reach` is HOSTILE, ALLIED or EVERYTHING, so
+friendly fire is one field in a `.tres` rather than a decision in code. Popper
+ships on HOSTILE and hurts players only.
+
+The reasoning stands unchanged - friendly fire is a real design lever, because it
+makes crowding the horde together valuable, and it is also very hard to balance
+blind. Turning it on is now cheap enough to try the moment somebody wants to
+measure it, which is the right shape for a question nobody can answer yet.
 
 **2. Is Warden's toughness ARMOR or just health?** Armour makes fast weak
 weapons bad against it specifically, which is the interesting version; raw

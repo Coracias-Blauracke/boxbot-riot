@@ -74,6 +74,14 @@ enum Stat {
 	SLOW_POWER,
 	BURN_SPREAD_RADIUS,
 	SLOW_DURATION,
+	## How big an area attack is - a multiplier on every authored blast radius.
+	##
+	## A STAT for the same reason SHOP_SLOTS is one: "+25% explosion size" is then
+	## an ordinary modifier that any item, character or class threshold can apply,
+	## and BlastData never learns that such a thing exists. Read through
+	## WeaponModel.combined_stat when a weapon set the blast off, so a weapon can
+	## withhold it like any other stat.
+	AREA_SIZE,
 }
 
 ## get_stat() computes: (base + flat) * (1.0 + percent) * mult
@@ -126,6 +134,7 @@ const NEUTRALS: Dictionary = {
 	Stat.ATTACK_SPEED: 1.0,
 	Stat.PROJECTILE_SPEED: 1.0,
 	Stat.CRIT_MULTIPLIER: 1.0,
+	Stat.AREA_SIZE: 1.0,
 }
 
 static func neutral_of(stat: Stat) -> float:
@@ -158,6 +167,19 @@ const CAPS: Dictionary = {
 ## worth buying, while the reduction itself approaches 1.0 without reaching it -
 ## something always gets through, and effects that hang on taking damage cannot
 ## be switched off by stacking.
+## What a crit is worth when nothing says otherwise.
+##
+## A property of the GAME rather than of a weapon, which is why it lives here
+## beside the other stat rules. It used to be a bare +1.0 inside WeaponModel, and
+## the moment something other than a weapon needed to roll a crit - a blast set
+## off by an item or by a dying bug - that second caller read the entity's own
+## CRIT_MULTIPLIER, found the neutral 1.0, and "crit" for exactly nothing.
+##
+## Note it is applied as a BASE on top of the neutral rather than replacing it:
+## the neutral has to stay 1.0 or WeaponModel.combined_stat, which shares only a
+## holder's DEVIATION from neutral, would compound it into x4.
+const DEFAULT_CRIT_MULTIPLIER := 2.0
+
 const ARMOR_HALF_POINT := 15.0
 
 static func armor_reduction(armor: float) -> float:
@@ -177,6 +199,9 @@ const FLOORS: Dictionary = {
 	## A multiplier, so it must be allowed below 1.0 for "slow projectiles"
 	## effects - only prevented from reaching zero or going negative.
 	Stat.PROJECTILE_SPEED: 0.1,
+	## A multiplier like the one above, so "smaller explosions" is authorable -
+	## only never a blast that turns inside out at zero radius.
+	Stat.AREA_SIZE: 0.1,
 	Stat.HEAT_CAPACITY: 1.0,
 	Stat.HEAT_DISSIPATION: 0.0,
 	Stat.RECOIL: 0.0,

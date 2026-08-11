@@ -1,0 +1,60 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://core/data/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/weapons/firing_instant.gd" id="3_instant"]
+[ext_resource type="Script" path="res://core/weapons/spread_single.gd" id="4_single"]
+[ext_resource type="Script" path="res://core/weapons/target_nearest.gd" id="5_nearest"]
+[ext_resource type="Resource" path="res://content/projectiles/slag_charge.tres" id="6_charge"]
+[ext_resource type="Resource" path="res://content/weapons/slag_mortar_4.tres" id="7_next"]
+
+[sub_resource type="Resource" id="mod_6"]
+script = ExtResource("2_mod")
+stat = 6
+modifier_type = 0
+value = 34
+
+[sub_resource type="Resource" id="mod_11"]
+script = ExtResource("2_mod")
+stat = 11
+modifier_type = 0
+value = 340
+
+[sub_resource type="Resource" id="mod_9"]
+script = ExtResource("2_mod")
+stat = 9
+modifier_type = 0
+value = 0.05
+
+[sub_resource type="Resource" id="mod_26"]
+script = ExtResource("2_mod")
+stat = 26
+modifier_type = 0
+value = 4
+
+[sub_resource type="Resource" id="fire"]
+script = ExtResource("3_instant")
+base_interval = 1.3
+
+[sub_resource type="Resource" id="spread"]
+script = ExtResource("4_single")
+
+[sub_resource type="Resource" id="target"]
+script = ExtResource("5_nearest")
+
+[resource]
+script = ExtResource("1_weapon")
+display_key = "WEAPON_SLAG_MORTAR_III"
+tier = 3
+base_price = 145
+collider_radius = 7.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("mod_6"), SubResource("mod_11"), SubResource("mod_9"), SubResource("mod_26")])
+tags = Array[StringName]([&"gun"])
+upgrades_into = ExtResource("7_next")
+firing = SubResource("fire")
+spread = SubResource("spread")
+targeting = SubResource("target")
+delivery = 0
+projectile = ExtResource("6_charge")
+heat_per_shot = 0
+falloff_multiplier = 1.0

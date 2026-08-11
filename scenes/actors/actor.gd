@@ -26,10 +26,15 @@ var world: WorldModel
 ## sweep and a projectile's collision. That single constant is what stopped an
 ## enemy from ever holding a weapon, since it would have shot the other bugs.
 ##
-## Set by the subclass: a Character shoots enemies, an Enemy shoots players.
-## Anything that carries a weapon and forgets to say hits nothing, which is a
-## great deal louder than hitting its own side.
+## Derived from the faction the subclass joins: a Character shoots enemies, an
+## Enemy shoots players. Anything that carries a weapon and forgets to join a
+## faction hits nothing, which is a great deal louder than hitting its own side.
 var hostile_group: StringName = &""
+
+## Which side this actor is on, in the vocabulary core/ understands. The other
+## three - the group it joins, the group it hunts, the layers its attacks use -
+## are all derived from this one line by _join_faction.
+var faction: WorldTypes.Faction = WorldTypes.Faction.NEUTRAL
 
 ## The physics layers named in project.godot, spelled once.
 ##
@@ -47,6 +52,56 @@ const LAYER_ENEMY_HITBOX := 64
 ## split as hostile_group, for the half of the engine that speaks in layers.
 var attack_layer: int = LAYER_PLAYER_HITBOX
 var attack_mask: int = LAYER_ENEMY_HURTBOX
+
+## The three vocabularies of "whose side", keyed by the one that decides them.
+## Tables rather than a match, so adding a third faction is three entries and no
+## new branches anywhere.
+const GROUP_FOR: Dictionary = {
+	WorldTypes.Faction.PLAYERS: &"players",
+	WorldTypes.Faction.ENEMIES: &"enemies",
+}
+const HITBOX_LAYER_FOR: Dictionary = {
+	WorldTypes.Faction.PLAYERS: LAYER_PLAYER_HITBOX,
+	WorldTypes.Faction.ENEMIES: LAYER_ENEMY_HITBOX,
+}
+const HURTBOX_LAYER_FOR: Dictionary = {
+	WorldTypes.Faction.PLAYERS: LAYER_PLAYER_HURTBOX,
+	WorldTypes.Faction.ENEMIES: LAYER_ENEMY_HURTBOX,
+}
+
+## ONE declaration of whose side this is, from which everything else follows:
+## the group enemies search, the group this side's weapons hunt, the layers its
+## attacks live on and look for, and the faction its MODEL carries so that core/
+## can reason about sides with no nodes in sight.
+##
+## They used to be set one at a time in each subclass. Four facts saying the same
+## thing in four places is four chances for them to disagree, and the way they
+## disagree is a bug that hits its own side.
+func _join_faction(p_faction: WorldTypes.Faction) -> void:
+	faction = p_faction
+	if model != null:
+		model.faction = p_faction
+	if not GROUP_FOR.has(p_faction):
+		return
+
+	var opponent := (
+		WorldTypes.Faction.ENEMIES
+		if p_faction == WorldTypes.Faction.PLAYERS
+		else WorldTypes.Faction.PLAYERS
+	)
+
+	# Typed locals rather than assigning a Dictionary read straight into a typed
+	# field: that read is a Variant, and the warning it raises is treated as an
+	# error, which skips the whole file rather than failing one line.
+	var own_group: StringName = GROUP_FOR[p_faction]
+	var enemy_group: StringName = GROUP_FOR[opponent]
+	var layer: int = HITBOX_LAYER_FOR[p_faction]
+	var mask: int = HURTBOX_LAYER_FOR[opponent]
+
+	add_to_group(own_group)
+	hostile_group = enemy_group
+	attack_layer = layer
+	attack_mask = mask
 
 var placeholder_color: Color = Color.WHITE
 
@@ -72,9 +127,24 @@ func _ready() -> void:
 		var circle := CircleShape2D.new()
 		circle.radius = data.collider_radius
 		_shape.shape = circle
+	# Before the first frame, because a spawner sets `position` before add_child
+	# and something can already ask where this is on the frame it appears.
+	_publish_position()
 	queue_redraw()
 
+## THE ONE WRITE of the model's position, and the whole reason core/ can answer
+## "what is within 90 units of here" without ever seeing a node.
+##
+## It is written from OUTSIDE the alive check on purpose: a corpse still has a
+## place in the world, and an explosion centred on whatever was just killed reads
+## the position off the model rather than off a node that may already be freed.
+func _publish_position() -> void:
+	if model != null:
+		model.world_position = global_position
+
 func _physics_process(delta: float) -> void:
+	_publish_position()
+
 	if model == null or not model.is_alive:
 		return
 
@@ -87,6 +157,11 @@ func _physics_process(delta: float) -> void:
 
 	if world != null:
 		global_position = world.clamp_to_bounds(global_position)
+
+	# Again, AFTER the move. The call at the top is what keeps a corpse honest;
+	# this one is what keeps a runner honest, and statuses tick below it - a
+	# status reaching outwards must not measure from where its carrier was.
+	_publish_position()
 
 	# Each actor advances its own statuses. RunModel.tick() exists for headless
 	# tests; calling both would tick players twice.

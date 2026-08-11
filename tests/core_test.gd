@@ -156,6 +156,23 @@ func _initialize() -> void:
 	_test_the_rack_scrolls_only_when_the_cursor_would_leave_it()
 	_test_an_orbiting_enemy_keeps_its_distance()
 	_test_an_armed_enemy_gets_a_rack_to_put_it_in()
+	_test_neutral_is_nobody_s_ally_and_nobody_s_enemy()
+	_test_a_blast_reaches_the_other_side_and_spares_its_own()
+	_test_blast_damage_tapers_towards_the_rim()
+	_test_a_capped_blast_takes_the_nearest()
+	_test_area_size_scales_the_radius()
+	_test_a_blast_rolls_one_crit_for_everything_it_catches()
+	_test_an_explosion_inherits_the_crit_of_the_shot_that_set_it_off()
+	_test_a_blast_announces_itself_to_whoever_is_listening()
+	_test_a_blast_with_nowhere_to_look_hurts_nobody()
+	_test_a_blast_goes_through_the_targets_own_defences()
+	_test_elemental_damage_finally_feeds_something()
+	_test_a_bug_that_bursts_hurts_the_players_and_not_the_swarm()
+	_test_an_exploding_kill_goes_off_where_the_victim_was()
+	_test_a_second_copy_of_an_exploding_item_hits_harder()
+	_test_a_chain_does_not_spend_its_targets_on_corpses()
+	_test_the_authored_popper_bursts_on_death()
+	_test_the_authored_mortar_explodes_where_it_lands()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -2971,6 +2988,415 @@ func _test_weapon_and_item_purchases_are_tallied_apart() -> void:
 		"the item landed in its own",
 		buyer.counters.get_value(CounterTypes.Counter.ITEMS_BOUGHT), 1
 	)
+
+# --- area damage ------------------------------------------------------------
+#
+# Everything here rests on EntityModel.world_position, which is written by the
+# view. These tests write it themselves, exactly as the census tests do, and are
+# therefore blind to a view that never writes it at all - which is what happened.
+# The guard for that is the `drift` figure in the capture state line, not this
+# file, and the distinction is worth remembering before trusting a green suite.
+
+func _sided(
+	position: Vector2, side: WorldTypes.Faction, maximum: float = 100.0
+) -> EntityModel:
+	var entity := _at(position, maximum)
+	entity.faction = side
+	return entity
+
+## Registers everything with one census and hands it back, so the caller keeps it
+## alive - the entities only hold a weakref to it.
+func _census_of(entities: Array) -> WorldCensus:
+	var census := WorldCensus.new()
+	for entity in entities:
+		census.register(entity as EntityModel)
+	return census
+
+## Flat by default: most of these tests are about WHO is caught, and a taper
+## would make every expected number a lerp.
+func _make_blast(damage: float, size: float = 100.0) -> BlastData:
+	var blast := BlastData.new()
+	blast.base_damage = damage
+	blast.radius = size
+	blast.edge_damage_share = 1.0
+	return blast
+
+func _test_a_blast_reaches_the_other_side_and_spares_its_own() -> void:
+	print("\n-- area damage --")
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var player := _sided(Vector2(40.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var swarm_mate := _sided(Vector2(40.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var crate := _sided(Vector2(40.0, 0.0), WorldTypes.Faction.NEUTRAL)
+	var census := _census_of([bug, player, swarm_mate, crate])
+
+	var event := bug.detonate(_make_blast(20.0), bug.world_position)
+
+	_check("the other side took it", player.current_hp, 80.0)
+	_check("its own side did not", swarm_mate.current_hp, 100.0)
+	# NEUTRAL is not the enemy of anybody. A crate that every explosion in the
+	# game hurts by default is how friendly fire arrives without being decided.
+	_check("and neither did the furniture", crate.current_hp, 100.0)
+	_check_int("one victim", event.victims.size(), 1)
+	_check("and the total says so", event.damage_dealt, 20.0)
+
+	# The same blast with the filter opened up, which is the ONE field that
+	# answers "does a Popper hurt other bugs" - no second code path.
+	var friendly_fire := _make_blast(20.0)
+	friendly_fire.reach = BlastData.Reach.EVERYTHING
+	bug.detonate(friendly_fire, bug.world_position)
+	_check("friendly fire is a field", swarm_mate.current_hp, 80.0)
+	_check("and it does not spare the crate either", crate.current_hp, 80.0)
+	_check_int("the census is still the one built here", census.count_alive(), 4)
+
+func _test_blast_damage_tapers_towards_the_rim() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var hugging := _sided(Vector2.ZERO, WorldTypes.Faction.PLAYERS)
+	var halfway := _sided(Vector2(50.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var at_the_rim := _sided(Vector2(100.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var census := _census_of([bug, hugging, halfway, at_the_rim])
+
+	var blast := _make_blast(40.0)
+	blast.edge_damage_share = 0.5
+	bug.detonate(blast, Vector2.ZERO)
+
+	# Standing at the edge has to be worth something, or the only decision an
+	# explosion poses is whether you are inside it.
+	_check("full damage at the centre", hugging.current_hp, 60.0)
+	_check("three quarters halfway out", halfway.current_hp, 70.0)
+	_check("half of it at the rim", at_the_rim.current_hp, 80.0)
+	_check_int("all three were caught", census.count_alive(), 4)
+
+func _test_a_capped_blast_takes_the_nearest() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var far := _sided(Vector2(90.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var near := _sided(Vector2(10.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var middle := _sided(Vector2(50.0, 0.0), WorldTypes.Faction.PLAYERS)
+	# Registered furthest first on purpose: an uncapped blast hits the same set
+	# whatever order it walks, so only a cap can expose an unsorted one.
+	var census := _census_of([bug, far, near, middle])
+
+	var blast := _make_blast(30.0)
+	blast.max_targets = 2
+	var event := bug.detonate(blast, Vector2.ZERO)
+
+	_check_int("exactly two", event.victims.size(), 2)
+	_check("the nearest was caught", near.current_hp, 70.0)
+	_check("and the second nearest", middle.current_hp, 70.0)
+	_check("the far one was not", far.current_hp, 100.0)
+	_check_int("nothing was freed", census.count_alive(), 4)
+
+func _test_area_size_scales_the_radius() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var outside := _sided(Vector2(120.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var census := _census_of([bug, outside])
+
+	var blast := _make_blast(10.0)
+	var missed := bug.detonate(blast, Vector2.ZERO)
+	_check("out of reach", outside.current_hp, 100.0)
+	_check("the authored radius", missed.radius, 100.0)
+
+	# An ordinary PERCENT modifier on an ordinary stat. BlastData never learns
+	# that "+50% explosion size" exists, which is the whole reason it is a stat.
+	bug.stats.add_modifier(
+		StatTypes.Stat.AREA_SIZE, StatTypes.Modifier.PERCENT, 0.5, &"bigger_bang"
+	)
+	var caught := bug.detonate(blast, Vector2.ZERO)
+	_check("half again as wide", caught.radius, 150.0)
+	_check("and it reaches now", outside.current_hp, 90.0)
+	_check_int("both still alive", census.count_alive(), 2)
+
+func _test_a_blast_rolls_one_crit_for_everything_it_catches() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var first := _sided(Vector2(10.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var second := _sided(Vector2(20.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var census := _census_of([bug, first, second])
+
+	var spy := SpyEffect.new()
+	spy.watched = Hooks.Hook.ON_CRIT
+	bug.effects.register(EffectInstance.new(spy, &"test"))
+
+	bug.stats.add_modifier(
+		StatTypes.Stat.CRIT_CHANCE, StatTypes.Modifier.BASE, 1.0, &"certain"
+	)
+	# Nothing authored about the MULTIPLIER on purpose: an entity's own reads the
+	# neutral 1.0, so a blast that took it literally would "crit" for nothing.
+	# StatTypes.DEFAULT_CRIT_MULTIPLIER is what a weapon already carried.
+	var event := bug.detonate(_make_blast(15.0), Vector2.ZERO)
+
+	# One explosion is ONE attack, exactly as a shotgun blast is: everybody
+	# inside it crits together or nobody does.
+	_check_bool("the explosion crit", event.is_crit, true)
+	_check("the first took double", first.current_hp, 70.0)
+	_check("and so did the second", second.current_hp, 70.0)
+	_check_int("one roll, not one per victim", spy.calls, 1)
+	_check_int("nothing died", census.count_alive(), 3)
+
+func _test_an_explosion_inherits_the_crit_of_the_shot_that_set_it_off() -> void:
+	var shooter := _sided(Vector2.ZERO, WorldTypes.Faction.PLAYERS)
+	var target := _sided(Vector2(10.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([shooter, target])
+
+	var spy := SpyEffect.new()
+	spy.watched = Hooks.Hook.ON_CRIT
+	shooter.effects.register(EffectInstance.new(spy, &"test"))
+
+	# The bullet already crit and already paid for it. Its explosion is part of
+	# the same attack, so it crits without rolling and without crediting twice.
+	var bullet := ShotSnapshot.new()
+	bullet.is_crit = true
+
+	var blast := _make_blast(20.0)
+	var event := shooter.detonate(blast, Vector2.ZERO, null, bullet)
+
+	_check_bool("the explosion crit with the bullet", event.is_crit, true)
+	_check("double damage, with crit chance at zero", target.current_hp, 60.0)
+	_check_int("and the crit was not tallied twice", spy.calls, 0)
+	_check_int("both still standing", census.count_alive(), 2)
+
+func _test_a_blast_announces_itself_to_whoever_is_listening() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var player := _sided(Vector2(30.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var census := _census_of([bug, player])
+
+	# An Array rather than a plain local: a lambda captures by VALUE, so assigning
+	# to an outer local inside one is silently lost.
+	#
+	# What goes into it is COPIED OUT of the event and never the event itself.
+	# Keeping one closes the cycle model -> signal -> lambda -> event -> model,
+	# which RefCounted cannot collect - measured here at 48 leaked objects before
+	# this line looked like it does now. BlastFlash.setup copies out for the same
+	# reason, and it is the same rule that stops an effect caching a payload.
+	var seen: Array[Dictionary] = []
+	bug.blast_resolved.connect(
+		func(event: BlastEvent) -> void:
+			seen.append({
+				&"centre": event.centre,
+				&"radius": event.radius,
+				&"victims": event.victims.size(),
+			})
+	)
+
+	bug.detonate(_make_blast(5.0, 70.0), Vector2(12.0, 0.0))
+
+	# This signal IS the view's only hook. Everything drawn for an explosion in
+	# the running game comes off it, so a blast that resolves silently is an
+	# explosion nobody can see.
+	var centre: Vector2 = seen[0][&"centre"] if not seen.is_empty() else Vector2.ZERO
+	var reported_radius: float = seen[0][&"radius"] if not seen.is_empty() else 0.0
+	var caught: int = seen[0][&"victims"] if not seen.is_empty() else -1
+
+	_check_int("the view was told once", seen.size(), 1)
+	_check("where it went off", centre.x, 12.0)
+	_check("how big it turned out", reported_radius, 70.0)
+	_check_int("and who it caught", caught, 1)
+	_check_int("census untouched", census.count_alive(), 2)
+
+func _test_a_blast_with_nowhere_to_look_hurts_nobody() -> void:
+	# No census: a model built for a test, or one whose run has gone away. It has
+	# to be a quiet no-op rather than a crash, because the caller is content and
+	# content cannot check.
+	var stray := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var event := stray.detonate(_make_blast(50.0), Vector2.ZERO)
+	_check_int("nobody was hurt", event.victims.size(), 0)
+	_check("and the flash still has a size to draw", event.radius, 100.0)
+
+func _test_a_bug_that_bursts_hurts_the_players_and_not_the_swarm() -> void:
+	print("\n-- exploding on death, on a kill and on impact --")
+	var popper := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES, 10.0)
+	var player := _sided(Vector2(30.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var swarm_mate := _sided(Vector2(30.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([popper, player, swarm_mate])
+
+	var effect := EffectBlast.new()
+	effect.trigger = EffectBlast.Trigger.ON_DEATH
+	effect.blast = _make_blast(25.0)
+	popper.effects.register(EffectInstance.new(effect, &"popper"))
+
+	_hit(popper, 50.0)
+
+	_check_bool("the bug died", popper.is_alive, false)
+	_check("and took the player with part of it", player.current_hp, 75.0)
+	_check("the swarm is untouched", swarm_mate.current_hp, 100.0)
+	_check_int("one of the three is gone", census.count_alive(), 2)
+
+func _test_an_exploding_kill_goes_off_where_the_victim_was() -> void:
+	var killer := _sided(Vector2.ZERO, WorldTypes.Faction.PLAYERS)
+	var victim := _sided(Vector2(400.0, 0.0), WorldTypes.Faction.ENEMIES, 10.0)
+	var bystander := _sided(Vector2(430.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([killer, victim, bystander])
+
+	var effect := EffectBlast.new()
+	effect.trigger = EffectBlast.Trigger.ON_KILL
+	effect.blast = _make_blast(20.0)
+	killer.effects.register(EffectInstance.new(effect, &"detonator"))
+
+	_hit(victim, 50.0, killer)
+
+	# The centre is WHERE THE EVENT HAPPENED, which for a kill is the corpse and
+	# not the killer standing four hundred units away.
+	_check("the neighbour caught it", bystander.current_hp, 80.0)
+	_check_int("and the killer is unharmed", roundi(killer.current_hp), 100)
+	_check_int("the victim is gone", census.count_alive(), 2)
+
+func _test_a_second_copy_of_an_exploding_item_hits_harder() -> void:
+	var killer := _sided(Vector2.ZERO, WorldTypes.Faction.PLAYERS)
+	var victim := _sided(Vector2(50.0, 0.0), WorldTypes.Faction.ENEMIES, 10.0)
+	var bystander := _sided(Vector2(60.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([killer, victim, bystander])
+
+	var effect := EffectBlast.new()
+	effect.trigger = EffectBlast.Trigger.ON_KILL
+	effect.blast = _make_blast(20.0)
+	# Two copies of the same item. Without the stack count reaching the blast, a
+	# second one would be worth exactly nothing and the shop would still sell it.
+	killer.effects.register(EffectInstance.new(effect, &"detonator", 2))
+
+	_hit(victim, 50.0, killer)
+
+	_check("twice the bang", bystander.current_hp, 60.0)
+	_check_int("the victim is gone", census.count_alive(), 2)
+
+func _test_elemental_damage_finally_feeds_something() -> void:
+	var thrower := _sided(Vector2.ZERO, WorldTypes.Faction.PLAYERS)
+	var target := _sided(Vector2(20.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([thrower, target])
+
+	thrower.stats.add_modifier(
+		StatTypes.Stat.ELEMENTAL_DAMAGE, StatTypes.Modifier.BASE, 12.0, &"hot"
+	)
+
+	# An empty scaling table means "all of my own damage type", the same rule
+	# WeaponData.damage_scaling follows - and for the default ELEMENTAL that is
+	# the first thing in the game to read the stat at all.
+	thrower.detonate(_make_blast(8.0), Vector2.ZERO)
+	_check("authored damage plus the stat", target.current_hp, 80.0)
+
+	# An authored table replaces the default rather than adding to it, so a blast
+	# that wants both says both.
+	var mixed := _make_blast(8.0)
+	var share := StatScaling.new()
+	share.stat = StatTypes.Stat.ELEMENTAL_DAMAGE
+	share.coefficient = 0.5
+	mixed.damage_scaling = [share] as Array[StatScaling]
+	thrower.detonate(mixed, Vector2.ZERO)
+	_check("half a share of it", target.current_hp, 66.0)
+	_check_int("nobody died", census.count_alive(), 2)
+
+func _test_a_blast_goes_through_the_targets_own_defences() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var armoured := _sided(Vector2(10.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var census := _census_of([bug, armoured])
+
+	armoured.stats.add_modifier(
+		StatTypes.Stat.ARMOR, StatTypes.Modifier.BASE, 15.0, &"plating"
+	)
+
+	# Straight through apply_damage, so armor, dodge, resistances, lifesteal and
+	# kill credit all apply to an explosion with nothing written for any of them.
+	var event := bug.detonate(_make_blast(40.0), Vector2.ZERO)
+	_check("armor halves it at the half point", armoured.current_hp, 80.0)
+	_check("and the event reports what LANDED", event.damage_dealt, 20.0)
+	_check_int("both alive", census.count_alive(), 2)
+
+func _test_a_chain_does_not_spend_its_targets_on_corpses() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var already_dead := _sided(Vector2(10.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var still_standing := _sided(Vector2(30.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var census := _census_of([bug, already_dead, still_standing])
+
+	# The cache is built HERE, while all three are alive - and then one dies
+	# without it being invalidated, which is exactly the state a chain reaction is
+	# in. The census holds its answer for the whole frame, so every explosion
+	# after the first one in that frame is asking a stale question. Measured in a
+	# capture run as nine explosions reporting fifty victims between them.
+	_check_int("all three counted while alive", census.count_alive(), 3)
+	_hit(already_dead, 500.0)
+	_check_int("and the cache still says so", census.count_alive(), 3)
+
+	var blast := _make_blast(20.0)
+	blast.max_targets = 1
+	var event := bug.detonate(blast, Vector2.ZERO)
+
+	_check_int("the one target was not wasted on the corpse", event.victims.size(), 1)
+	_check("it went to the one still standing", still_standing.current_hp, 80.0)
+
+	census.invalidate()
+	_check_int("the census catches up on the next frame", census.count_alive(), 2)
+
+func _test_the_authored_popper_bursts_on_death() -> void:
+	print("\n-- the authored content --")
+	var data := load("res://content/enemies/popper.tres") as EnemyData
+	_check_bool("the popper loads", data != null, true)
+
+	var popper := EntityModel.new(data)
+	popper.faction = WorldTypes.Faction.ENEMIES
+	popper.world_position = Vector2.ZERO
+
+	var close := _sided(Vector2(20.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var far := _sided(Vector2(200.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var swarm_mate := _sided(Vector2(20.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([popper, close, far, swarm_mate])
+
+	_hit(popper, 500.0)
+
+	# Asserted against the AUTHORED file rather than against numbers invented
+	# here: 12 damage at the centre, tapering to 45% at the authored 85 radius,
+	# so 12 * (1 - 0.55 * 20/85) twenty units out.
+	_check("the player next to it was hurt", close.current_hp, 100.0 - 10.4470588)
+	_check("the one across the arena was not", far.current_hp, 100.0)
+	_check("and the swarm is spared, as authored", swarm_mate.current_hp, 100.0)
+	_check_int("the popper is gone", census.count_alive(), 3)
+
+func _test_the_authored_mortar_explodes_where_it_lands() -> void:
+	var mortar := load("res://content/weapons/slag_mortar_1.tres") as WeaponData
+	var charge := load("res://content/projectiles/slag_charge.tres") as ProjectileData
+	_check_bool("the mortar and its charge load", mortar != null and charge != null, true)
+	_check_int("the charge carries exactly one effect", charge.innate_effects.size(), 1)
+
+	var gunner := _sided(Vector2.ZERO, WorldTypes.Faction.PLAYERS)
+	var bug := _sided(Vector2(300.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([gunner, bug])
+
+	var weapon := WeaponModel.new(mortar)
+	weapon.set_wielder(gunner)
+	weapon.rng = gunner.rng
+
+	# The mortar carries 5% crit of its own, and a crit doubles the explosion
+	# along with the shot - which is correct and would make this assertion flake
+	# one run in twenty. Crit has its own tests; this one is about the radius.
+	weapon.stats.add_modifier(
+		StatTypes.Stat.CRIT_CHANCE, StatTypes.Modifier.PERCENT, -1.0, &"test_no_crit"
+	)
+
+	# Exactly what Projectile._run_projectile_effects does on a hit: the effect
+	# is executed on the SHOOTER with the impact it was handed.
+	var impact := ImpactEvent.new()
+	impact.shooter = gunner
+	impact.position = bug.world_position
+	impact.snapshot = weapon.build_shot(mortar)
+
+	var effect := charge.innate_effects[0]
+	effect.execute(gunner, EffectInstance.new(effect, charge), impact)
+
+	# 60% of the weapon's 14 ranged damage, at the centre of an 80 radius. The
+	# tier scaling comes free: the share reads the WEAPON's damage, so tier IV
+	# explodes for its own 52 with not one number authored twice.
+	_check("the explosion landed on the bug", bug.current_hp, 100.0 - 8.4)
+	_check_int("nothing died", census.count_alive(), 2)
+
+func _test_neutral_is_nobody_s_ally_and_nobody_s_enemy() -> void:
+	var players := WorldTypes.Faction.PLAYERS
+	var enemies := WorldTypes.Faction.ENEMIES
+	var neutral := WorldTypes.Faction.NEUTRAL
+
+	_check_bool("the two sides are hostile", WorldTypes.are_hostile(players, enemies), true)
+	_check_bool("a side is not hostile to itself", WorldTypes.are_hostile(players, players), false)
+	_check_bool("a side is allied to itself", WorldTypes.are_allied(enemies, enemies), true)
+
+	# Deliberately not the negation of each other: two neutrals are not comrades,
+	# they are simply not in the fight.
+	_check_bool("neutral is nobody's enemy", WorldTypes.are_hostile(neutral, players), false)
+	_check_bool("neutral is nobody's ally", WorldTypes.are_allied(neutral, neutral), false)
 
 func _check_int(label: String, actual: int, expected: int) -> void:
 	if actual == expected:

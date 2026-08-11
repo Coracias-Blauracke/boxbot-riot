@@ -73,7 +73,7 @@ using sparingly and knowingly.
 
 ---
 
-## The twelve families
+## The thirteen families
 
 Damage and price shown for tier I. Firing intervals are seconds.
 
@@ -84,6 +84,7 @@ Damage and price shown for tier I. Firing intervals are seconds.
 | 1 | **Bolt Driver** | INSTANT 0.45 | projectile | single | nearest | gun | default | 12 / 12 |
 | 2 | **Scatter Vent** | INSTANT 0.90 | projectile | cone 6 | nearest | gun | default | 5 / 20 |
 | 3 | **Rail Spike** | WINDUP 1.6 | projectile | single | by_health HIGHEST | gun | 150% RANGED | 40 / 40 |
+| 13 | **Slag Mortar** | INSTANT 1.30 | projectile, EXPLODES | single | nearest | gun | default, + 60% RANGED as blast | 14 / 30 |
 
 - **Bolt Driver** is the existing pistol renamed, and the starting weapon.
 - **Scatter Vent** is the existing shotgun: six pellets, falloff 110 -> 280 at
@@ -91,6 +92,20 @@ Damage and price shown for tier I. Firing intervals are seconds.
 - **Rail Spike** spins up for 1.6s, carries PIERCING +3 and aims at the toughest
   thing on screen. Its 150% scaling is the counterweight to the rapid weapons: a
   slow weapon should reward flat damage items MORE, not less.
+- **Slag Mortar** was added after this list was written, once area damage
+  existed - it is the family the engine could not express when the other twelve
+  were chosen, which is why the list has thirteen entries and its numbering runs
+  to 13 out of order.
+
+  The charge it fires carries the explosion, not the weapon: `slag_charge.tres`
+  holds one `EffectBlast` on impact, and the blast is authored as 60% of the
+  WEAPON's ranged damage rather than a number of its own. All four tiers
+  therefore scale from the single damage figure in the tier table, and ONE
+  projectile file serves the whole family.
+
+  It is tagged `gun` rather than given a class of its own. A class needs
+  thresholds up to six and there is exactly one explosive family, so a `blast`
+  class would be one nobody could ever complete.
 
 ### rapid
 

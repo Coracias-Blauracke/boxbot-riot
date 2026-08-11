@@ -692,6 +692,29 @@ func _validate_entity(path: String, entity: EntityData) -> void:
 	_validate_modifiers(path, entity.base_stats)
 	_validate_effects(path, entity.innate_effects)
 
+	if entity is ProjectileData:
+		_validate_projectile_effects(path, entity as ProjectileData)
+
+## A projectile runs its innate effects on IMPACT and only on impact.
+##
+## Projectile._run_projectile_effects calls execute() directly rather than going
+## through a dispatcher, so it never looks at get_hooks() - which means an effect
+## authored here for any other occasion loads, validates against every other
+## check, and then fires at the wrong moment for the rest of the game. There is
+## no dispatcher on a projectile to catch it, because a projectile deliberately
+## has no EntityModel of its own.
+func _validate_projectile_effects(path: String, projectile: ProjectileData) -> void:
+	for i in projectile.innate_effects.size():
+		var effect: DynamicEffect = projectile.innate_effects[i]
+		if effect == null:
+			continue
+		if not effect.get_hooks().has(Hooks.Hook.ON_IMPACT):
+			_errors.append(
+				"%s : effect[%d] does not declare ON_IMPACT, but a projectile runs"
+				% [path, i]
+				+ " its effects on impact regardless - it would fire at the wrong time"
+			)
+
 func _validate_modifiers(path: String, modifiers: Array) -> void:
 	var valid_stats := StatTypes.Stat.values()
 	var valid_types := StatTypes.Modifier.values()
@@ -721,3 +744,39 @@ func _validate_effects(path: String, effects: Array) -> void:
 		for hook in hooks:
 			if not Hooks.KINDS.has(hook):
 				_errors.append("%s : effect[%d] declares an unknown hook (%d)" % [path, i, hook])
+
+		if effect is EffectBlast:
+			_validate_blast(path, "effect[%d]" % i, (effect as EffectBlast).blast)
+
+## An explosion that loads, prices, sells and goes off for nothing.
+##
+## Every failure here is silent at runtime: a blast with no radius catches
+## nobody, and a blast with no damage catches everybody and does nothing to them.
+## Neither logs anything, and both read as "the explosion is not working" long
+## after whoever authored it has moved on.
+func _validate_blast(path: String, label: String, blast: BlastData) -> void:
+	if blast == null:
+		_errors.append("%s : %s explodes with no BlastData at all" % [path, label])
+		return
+
+	if blast.radius <= 0.0:
+		_errors.append("%s : %s has a blast radius of %.1f, which reaches nobody"
+			% [path, label, blast.radius])
+
+	# An empty scaling table means "all of my own damage type", which is a real
+	# number for a player carrying elemental items and exactly zero for every
+	# authored enemy. Base damage of nothing on top of it is a blast that only
+	# works for half the things that can hold it.
+	if blast.base_damage <= 0.0 and blast.damage_scaling.is_empty():
+		_warnings.append(
+			"%s : %s has no base damage and no scaling, so it deals only whatever"
+			% [path, label]
+			+ " its source's own damage type happens to be"
+		)
+
+	for scaling in blast.damage_scaling:
+		if scaling == null:
+			_errors.append("%s : %s has a null entry in damage_scaling" % [path, label])
+		elif not StatTypes.Stat.values().has(scaling.stat):
+			_errors.append("%s : %s scales off a stat outside the enum (%d)"
+				% [path, label, scaling.stat])

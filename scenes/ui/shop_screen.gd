@@ -46,12 +46,18 @@ func _on_ready_requested(index: int, value: bool) -> void:
 ## Deferred to the moment the shop OPENS. Doing it at startup bought nothing,
 ## silently, because offers do not exist until the first wave ends - which is
 ## exactly the sort of thing a capture is supposed to catch.
+## Which tile in the strip. 0 is the first weapon; the items sit after them, so
+## anything that wants to photograph an ITEM's derived description has to be able
+## to say which one - item text is DERIVED from stats and effects, and derived
+## text that nobody ever looks at is exactly the kind that drifts.
 var _park_on_owned: bool = false
 var _park_open_menu: bool = false
+var _park_tile: int = 0
 
-func park_cursor_on_owned(open_menu: bool = false) -> void:
+func park_cursor_on_owned(open_menu: bool = false, tile: int = 0) -> void:
 	_park_on_owned = true
 	_park_open_menu = open_menu
+	_park_tile = maxi(0, tile)
 
 func _park_now() -> void:
 	for index in _panels.size():
@@ -61,7 +67,7 @@ func _park_now() -> void:
 		run.shop_for(index).buy(run.players[index], 0)
 		_panels[index]._on_offers_changed()
 		_panels[index].zone = ShopPanel.Zone.OWNED
-		_panels[index].cursor = 0
+		_panels[index].cursor = _park_tile
 		# The tile menu opens on a button, so a capture run cannot reach it at
 		# all - the same hole parking the cursor exists to close.
 		if not _park_open_menu:

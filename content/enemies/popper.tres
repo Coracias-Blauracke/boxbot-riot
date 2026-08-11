@@ -1,0 +1,59 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://core/data/enemy_data.gd" id="1_enemy"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/behaviors/chase_behavior.gd" id="3_chase"]
+[ext_resource type="Script" path="res://core/data/blast_data.gd" id="4_blast"]
+[ext_resource type="Script" path="res://core/effects/library/effect_blast.gd" id="5_effect"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="6_base"]
+
+[sub_resource type="Resource" id="hp"]
+script = ExtResource("2_mod")
+stat = 0
+modifier_type = 0
+value = 14.0
+
+[sub_resource type="Resource" id="speed"]
+script = ExtResource("2_mod")
+stat = 14
+modifier_type = 0
+value = 140.0
+
+[sub_resource type="Resource" id="melee"]
+script = ExtResource("2_mod")
+stat = 5
+modifier_type = 0
+value = 2.0
+
+[sub_resource type="Resource" id="chase"]
+script = ExtResource("3_chase")
+stop_distance = 0.0
+
+[sub_resource type="Resource" id="burst"]
+script = ExtResource("4_blast")
+radius = 85.0
+edge_damage_share = 0.45
+max_targets = 0
+base_damage = 12.0
+damage_type = 2
+reach = 0
+flash_color = Color(1, 0.72, 0.3, 1)
+
+[sub_resource type="Resource" id="on_death"]
+script = ExtResource("5_effect")
+priority = 0
+scope = 0
+blast = SubResource("burst")
+trigger = 0
+
+[resource]
+script = ExtResource("1_enemy")
+display_key = "ENEMY_POPPER"
+collider_radius = 9.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("melee")])
+innate_effects = Array[ExtResource("6_base")]([SubResource("on_death")])
+movement = SubResource("chase")
+separation_radius_scale = 2.4
+separation_weight = 0.8
+contact_damage_interval = 0.7
+currency_reward = 2

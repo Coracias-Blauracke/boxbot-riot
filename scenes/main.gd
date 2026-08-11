@@ -98,6 +98,7 @@ var _fallback_pattern: SpawnPattern = SpawnRing.new()
 var _forced_intermission: float = 0.0
 var _capture_shop_owned: bool = false
 var _capture_shop_menu: bool = false
+var _capture_shop_tile: int = 0
 
 ## Capture only, in seconds from startup.
 ##
@@ -108,6 +109,16 @@ var _capture_pause_at: Array[float] = []
 
 ## Capture only, seconds from startup. 0 is off.
 var _capture_restart_at: float = 0.0
+
+## Capture only. Items handed to every player before the first wave, by res://
+## path, so an item's behaviour can be observed at all. 1 is the ordinary start.
+var _capture_items: PackedStringArray = []
+var _capture_start_wave: int = 1
+
+## Running tallies for the capture state line: how many explosions have gone off
+## and how many things they caught between them.
+var _blasts: int = 0
+var _blast_victims: int = 0
 
 ## How many times this process has restarted. STATIC because the whole point of
 ## a restart is that everything else is thrown away - an instance variable would
@@ -151,6 +162,12 @@ func _ready() -> void:
 			# Parks the cursor AND opens the tile menu on it.
 			_capture_shop_owned = true
 			_capture_shop_menu = true
+		elif arg.begins_with("--capture-shop-tile="):
+			# Which tile in the owned strip to park on. Without it only the FIRST
+			# one is ever photographed, and the first one is always a weapon - so
+			# no item's derived description has ever been looked at on screen.
+			_capture_shop_owned = true
+			_capture_shop_tile = maxi(0, int(arg.substr("--capture-shop-tile=".length())))
 		elif arg == "--capture-shop-owned":
 			# A UI state that needs input cannot otherwise be photographed at
 			# all, which is a real hole in how this repo verifies the scene
@@ -168,6 +185,17 @@ func _ready() -> void:
 			_capture_pause_at.append(float(arg.substr("--capture-pause=".length())))
 		elif arg.begins_with("--capture-restart="):
 			_capture_restart_at = float(arg.substr("--capture-restart=".length()))
+		elif arg.begins_with("--capture-item="):
+			# The same hole as --capture-shop-owned, one layer down: an item's
+			# BEHAVIOUR cannot be photographed at all, because the only way to
+			# hold one is to buy it and a scripted player never presses anything.
+			# Twenty-six authored items and not one of them observable in a run.
+			_capture_items.append(arg.substr("--capture-item=".length()))
+		elif arg.begins_with("--capture-wave="):
+			# Everything authored past wave 3 is unreachable in a capture: the
+			# run would have to be played for minutes, by nobody. This starts it
+			# at wave N with wave N's budget, curve and roster.
+			_capture_start_wave = maxi(1, int(arg.substr("--capture-wave=".length())))
 
 	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
@@ -196,7 +224,7 @@ func _ready() -> void:
 	_hud.bind(run, models)
 	_shop_screen.bind(run, players, stat_sheet)
 	if _capture_shop_owned:
-		_shop_screen.park_cursor_on_owned(_capture_shop_menu)
+		_shop_screen.park_cursor_on_owned(_capture_shop_menu, _capture_shop_tile)
 
 	# Every device, because the pause menu is one menu for the whole couch - see
 	# PauseScreen for why it is not owned by whoever opened it.
@@ -206,6 +234,12 @@ func _ready() -> void:
 	_pause_screen.bind(run, inputs)
 	_pause_screen.restart_requested.connect(_restart)
 	_pause_screen.quit_requested.connect(_quit)
+
+	# Straight onto the model, because start_wave() increments it: the run then
+	# begins at wave N with wave N's budget, duration and entry list, rather than
+	# playing four minutes of wave 1 to reach anything authored later.
+	if _capture_start_wave > 1:
+		run.wave_number = _capture_start_wave - 1
 
 	run.start_wave()
 	print("wave %d started, boss=%s, duration=%.0fs, restarts=%d" % [
@@ -293,6 +327,8 @@ func _spawn_player(index: int) -> Character:
 	model.weapon_classes = weapon_classes
 	run.add_player(model)
 
+	_draw_blasts_of(model)
+
 	var node := CHARACTER_SCENE.instantiate() as Character
 	# bind() before add_child(): _ready() sizes the colliders from the data.
 	node.bind(model, character, run.world)
@@ -314,6 +350,15 @@ func _spawn_player(index: int) -> Character:
 	for item in character.starting_items:
 		if item != null:
 			model.add_item(item)
+
+	# And whatever a capture run asked for, through the same door - so what is
+	# photographed is an item being HELD, not a special case pretending to be one.
+	for path in _capture_items:
+		var granted := load(path) as ItemData
+		if granted == null:
+			push_error("--capture-item: %s is not an ItemData" % path)
+			continue
+		model.add_item(granted)
 
 	# Same for the loadout, and from the CHARACTER rather than from an export on
 	# this scene. The rack in the hands follows the model, so nothing here has to
@@ -383,6 +428,7 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	# Registered where it is created. There is no unregister and there cannot be
 	# one forgotten: the census holds weakrefs and prunes itself.
 	run.census.register(model)
+	_draw_blasts_of(model)
 
 	var node := ENEMY_SCENE.instantiate() as Enemy
 	# No target assigned: the enemy picks the nearest living player itself, and
@@ -396,6 +442,51 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	node.position = at
 	_actors.add_child(node)
 	return node
+
+## Gives one model's explosions somewhere to be seen.
+##
+## Wired HERE rather than inside Actor, because this file is already the only
+## place that knows how a model is paired with a node - and an actor that has to
+## know what an explosion looks like is an actor that has to be taught again for
+## every new kind of area effect. It listens to the model, so an explosion whose
+## owner has already been freed still draws.
+func _draw_blasts_of(model: EntityModel) -> void:
+	model.blast_resolved.connect(_on_blast_resolved)
+
+## Parented to the actor layer rather than to whoever set it off: a flash must
+## outlive the bug that burst, and a bug that bursts is freed the same frame.
+func _on_blast_resolved(event: BlastEvent) -> void:
+	if event == null or event.radius <= 0.0:
+		return
+
+	# Counted for the capture state line. An explosion is over in a third of a
+	# second, so a screenshot taken between two of them is indistinguishable from
+	# a build where nothing explodes at all - and both look completely fine.
+	_blasts += 1
+	_blast_victims += event.victims.size()
+
+	var flash := BlastFlash.new()
+	flash.setup(event)
+	_actors.add_child(flash)
+
+## Largest gap between where an actor IS and where its model says it is.
+##
+## The number that says whether core/ can do geometry at all. Everything spatial
+## in core/ - the census, a status spreading off a corpse, an explosion - reads
+## EntityModel.world_position, and nothing in the running game wrote it: every
+## entity sat at the origin, so "within 90 units" was true of the whole arena and
+## burn spread to three arbitrary enemies at any distance. A screenshot cannot
+## show that and neither can a count, because both look exactly right.
+##
+## 0 means the view is publishing. Anything else is the old bug returning.
+func _max_position_drift() -> float:
+	var worst := 0.0
+	for child in _actors.get_children():
+		var actor := child as Actor
+		if actor == null or actor.model == null:
+			continue
+		worst = maxf(worst, actor.global_position.distance_to(actor.model.world_position))
+	return worst
 
 func _count_enemies() -> int:
 	var total := 0
@@ -554,13 +645,19 @@ func _describe_state() -> String:
 			entry.get_weapons().size(),
 		]
 
-	return "w%d %s t-%.0fs alive=%d/%d enemies=%d bleed=%d burn=%d shots=%d zoom=%.2f%s" % [
+	return (
+		"w%d %s t-%.0fs alive=%d/%d enemies=%d drift=%.0f blasts=%d/%d bleed=%d burn=%d"
+		+ " shots=%d zoom=%.2f%s"
+	) % [
 		run.wave_number,
 		_phase_name(),
 		run.wave_time_remaining(),
 		run.living_player_count(),
 		players.size(),
 		_count_enemies(),
+		_max_position_drift(),
+		_blasts,
+		_blast_victims,
 		# Straight off the census, so a status that is not landing is visible in
 		# the numbers rather than only in a screenshot.
 		run.census.count_with_status(&"bleed"),
