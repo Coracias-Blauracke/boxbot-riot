@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 907 assertions across three suites, no editor, no game window
+# tests — 912 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -1296,10 +1296,11 @@ now every weapon in the game solved the same problem, something walking straight
 at you. It needed no new attack system: an enemy carries `WeaponData` on the
 same `WeaponModel`, aimed by the same `TargetSelector`.
 
-**EIGHT of the TEN ordinary enemies are authored, and one of the two bosses** -
-Lurker, Warden and Colossus are what is left. Stated in two numbers rather than
-one because the list numbers its bosses 11 and 12, so "of the twelve" has meant
-both "including the bosses" and "not counting them" in this file already.
+**ALL TEN ordinary enemies are authored, and one of the two bosses.** Only
+Colossus is left, and after the Charger it is content rather than code. Stated
+in two numbers rather than one because the list numbers its bosses 11 and 12, so
+"of the twelve" has meant both "including the bosses" and "not counting them" in
+this file already.
 
 BOSS WAVES HAPPEN. `spawn_boss` used to be rolled, stored, emitted and printed
 with nothing reading it, so a boss wave was announced and then played out
@@ -1352,6 +1353,26 @@ x1.55, price x2.2 per step, every axis identical). Five classes exist - gun,
 blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
 `rapid` grants something at every count from one to six, `bouncy` nothing until
 three. Not one of the twelve needed a new effect class.
+
+THE ORDINARY ROSTER IS COMPLETE. **Lurker** materialises beside you in threes
+and takes a 20-damage bite before you have turned round - the one enemy answered
+by watching your own back, and what `SpawnNearPlayer` was written for. **Warden**
+walks in from the arena wall alone and slowly, and is the first enemy that a
+particular KIND of weapon struggles with rather than simply taking longer.
+
+**THE WARDEN IS TOUGH, NOT SELECTIVE, AND THAT IS THE DECISION.** It carries 15
+`ARMOR`, which is exactly half by `armor / (armor + 15)`, so everything that
+reaches it is worth half - a 5-damage hit and a 40-damage hit alike.
+
+Worth writing down because the design note in `docs/enemy_list.md` describes it
+as "a wall a fast weak weapon cannot chew", and ARMOR cannot express that: it is
+a SHARE, so eight small hits are worth exactly one heavy hit of the same total.
+Making a weapon KIND struggle needs a flat absorb per hit, which is a different
+mechanic. It was built, measured and then deliberately dropped - the Warden is a
+thing that takes twice as long to kill, and nothing about which gun you brought.
+
+`apply_damage` still takes armor as a share of what REMAINS after absorption, so
+the door for a flat absorber stays open if that enemy is ever wanted.
 
 SOMETHING HAS TO BE DODGED NOW. **Charger** closes, stops dead for 0.7s, and
 throws itself in a straight line it commits to before it starts - the ninth
@@ -1616,7 +1637,7 @@ and extend it rather than starting a new one:
 |---|---|
 | `docs/weapon_list.md` | 12 families x 4 tiers, all authored |
 | `docs/character_list.md` | 8 chassis, all authored |
-| `docs/enemy_list.md` | 10 ordinary + 2 bosses designed, **8 and 1 authored** - Lurker, Warden and Colossus left |
+| `docs/enemy_list.md` | 10 ordinary + 2 bosses designed, **ALL TEN and 1 authored** - only Colossus left |
 
 Each ends with a section naming what it could NOT express, and those sections
 are the real backlog - every one of them has turned into a commit. The enemy

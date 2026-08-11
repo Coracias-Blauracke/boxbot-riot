@@ -177,6 +177,7 @@ func _initialize() -> void:
 	_test_a_charge_stops_before_it_commits()
 	_test_a_dash_does_not_follow_you()
 	_test_two_chargers_keep_separate_clocks()
+	_test_the_authored_warden_halves_what_reaches_it()
 	_test_a_dying_thing_can_ask_for_more_of_them()
 	_test_a_timer_asks_once_per_interval_and_keeps_the_remainder()
 	_test_two_holders_of_one_spawn_effect_keep_separate_clocks()
@@ -3669,6 +3670,30 @@ func _test_two_chargers_keep_separate_clocks() -> void:
 	# because an enemy standing still for ever reads as broken.
 	var stateless := shared.get_direction(null, Vector2(400.0, 0.0), target, 0.1, null)
 	_check("no state means it just walks", stateless.length(), 0.4)
+
+# --- the armoured enemy -----------------------------------------------------
+
+func _test_the_authored_warden_halves_what_reaches_it() -> void:
+	print("
+-- the warden --")
+	var data := load("res://content/enemies/warden.tres") as EnemyData
+	_check_bool("the warden loads", data != null, true)
+
+	var warden := EntityModel.new(data)
+
+	# Authored at 15 ARMOR, and armor / (armor + 15) is exactly 0.5 there. The
+	# stat is a SHARE, so it takes the same half off every hit whatever the size.
+	_check("a heavy hit is halved", _hit(warden, 40.0), 20.0)
+	_check("and so is a light one", _hit(warden, 5.0), 2.5)
+
+	# Worth asserting rather than assuming, because it is the property that
+	# decides what the Warden is: it is tough against EVERYTHING equally, so it
+	# takes longer to kill and does not care what is shooting it.
+	var eight_small := 0.0
+	for i in 8:
+		eight_small += _hit(warden, 5.0)
+	_check("eight small hits are worth exactly one heavy one", eight_small, 20.0)
+	_check_bool("and it is still standing", warden.is_alive, true)
 
 func _test_neutral_is_nobody_s_ally_and_nobody_s_enemy() -> void:
 	var players := WorldTypes.Faction.PLAYERS

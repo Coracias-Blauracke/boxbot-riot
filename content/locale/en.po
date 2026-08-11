@@ -86,6 +86,9 @@ msgstr "Chaser"
 msgid "ENEMY_HIVE"
 msgstr "Hive"
 
+msgid "ENEMY_LURKER"
+msgstr "Lurker"
+
 msgid "ENEMY_POPPER"
 msgstr "Popper"
 
@@ -100,6 +103,9 @@ msgstr "Splitter"
 
 msgid "ENEMY_SWARMLING"
 msgstr "Swarmling"
+
+msgid "ENEMY_WARDEN"
+msgstr "Warden"
 
 msgid "ITEM_BARBED_EDGE"
 msgstr "Barbed Edge"
