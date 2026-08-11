@@ -12,18 +12,32 @@ are.
 
 ## Why this list exists
 
-The player's half of the game is deep and the horde's half is two files:
+WRITTEN WHEN THE TWO HALVES LOOKED LIKE THIS, and kept because the argument is
+what the list was for - not because the numbers are still true:
 
-| player side | horde side |
+| player side, then | horde side, then |
 |---|---|
 | 8 characters, 48 weapons, 24 items, 5 classes, 4 statuses, a shop | 2 enemies, 1 arena, 1 wave table |
 
-Every balance judgement about the deep half is currently made against one
-behaviour. `ChaseBehavior` is the only movement in the game and contact damage
-is the only attack, so **every weapon in the game solves the same problem**:
-something is walking straight at you. Piercing wants a queue, bouncing wants a
+The argument was that every balance judgement about the deep half was being made
+against ONE behaviour. `ChaseBehavior` was the only movement and contact damage
+the only attack, so **every weapon in the game solved the same problem**:
+something walking straight at you. Piercing wants a queue, bouncing wants a
 cluster, range wants something that outranges you, and armour wants something
-that hits hard and rarely. None of those situations exists yet.
+that hits hard and rarely - and none of those situations existed.
+
+**MOST OF THAT IS PAID OFF NOW**, which is the point of writing it down rather
+than deleting it:
+
+| player side, today | horde side, today |
+|---|---|
+| 8 characters, 52 weapons, 26 items, 5 classes, 4 statuses, a shop, drops | 8 ordinary enemies + 1 boss, 3 movements, contact / ranged / area damage |
+
+Swarmlings are the cluster, the spitter is the thing that outranges you, the
+brute and the charger both hit hard and rarely, and the charger is the first
+that has to be dodged rather than out-walked. What is left is Lurker, Warden and
+Colossus - and the reason to finish them is no longer "the horde is one file",
+it is that a roster is only worth balancing once it is complete.
 
 ---
 
