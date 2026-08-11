@@ -31,6 +31,10 @@ func _ready() -> void:
 
 	# Weapons find their targets through this group.
 	add_to_group(&"enemies")
+	# And a bug that carries one shoots the other way - see Actor.hostile_group.
+	hostile_group = &"players"
+	attack_layer = LAYER_ENEMY_HITBOX
+	attack_mask = LAYER_PLAYER_HURTBOX
 
 	var radius: float = data.collider_radius if data != null else 8.0
 	var enemy_data := data as EnemyData
@@ -55,6 +59,28 @@ func _ready() -> void:
 
 	_hitbox.area_entered.connect(_on_hitbox_area_entered)
 	_hitbox.area_exited.connect(_on_hitbox_area_exited)
+
+	# A bug spits out of itself: no visible weapon, and the mount collapsed onto
+	# the body so the shot leaves the creature rather than a barrel beside it.
+	# The weapon still fires - hiding a node does not stop it processing, which
+	# is the same thing character.gd relies on for a downed player.
+	var mount := $WeaponMount as WeaponMount
+	if enemy_data != null and not enemy_data.weapons_visible:
+		mount.radius = 0.0
+		mount.visible = false
+
+	# The same view-of-the-model the players use. An armed bug gets its weapons
+	# from EnemyData.weapons through EntityModel, so nothing here knows whether
+	# it is holding one.
+	if model != null:
+		model.weapons_changed.connect(_on_weapons_changed)
+		_on_weapons_changed()
+
+func _on_weapons_changed() -> void:
+	($WeaponMount as WeaponMount).sync(self)
+
+func get_weapons() -> Array[Weapon]:
+	return ($WeaponMount as WeaponMount).get_weapons()
 
 func _get_move_direction(delta: float) -> Vector2:
 	_retarget_timer -= delta

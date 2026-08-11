@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 752 assertions across three suites, no editor, no game window
+# tests — 778 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -157,7 +157,7 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
              GridCursor (where a nudge lands in an M x N rack)
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup
-  behaviors/ MovementBehavior, ChaseBehavior
+  behaviors/ MovementBehavior, ChaseBehavior, OrbitBehavior
 scenes/      the view — nodes, physics, rendering
   lobby.gd   the scene the game STARTS on; owns the roster and builds the run
   ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout,
@@ -174,8 +174,8 @@ content/     authored .tres: characters/ (six + the set that lists them,
              statuses/ (bleed, poison, burn, slow)
 tests/       headless suites
 tools/       validate_content.gd, debug_capture.gd
-docs/        weapon_list.md, character_list.md - the prose lists the .tres files
-             were built from, including what each exposed as missing
+docs/        weapon_list.md, character_list.md, enemy_list.md - the prose lists
+             the .tres files were built from, and what each exposed as missing
 ```
 
 **`core/` must never import a Node or touch an autoload.** That constraint is
@@ -799,6 +799,40 @@ An effect driven by it must be IDEMPOTENT - strip its whole contribution and
 reapply - because a live count goes DOWN as well as up. `EffectStatPerCounter`
 can be additive since a tally only grows; `EffectStatPerWorldCount` cannot.
 
+**WHO A WEAPON IS HOSTILE TO IS A PROPERTY OF THE WIELDER.** `&"enemies"` used
+to be hardcoded in three places — `weapon.gd`'s targeting, its melee sweep and
+`projectile.gd`'s ricochet — and that single constant was the only thing
+stopping an enemy from ever holding a weapon, since it would have shot the other
+bugs. `Actor.hostile_group` answers it now: a `Character` shoots `enemies`, an
+`Enemy` shoots `players`, and everything below the actor stayed as it was.
+`EntityModel` and `WeaponModel` were already side-agnostic.
+
+The question has to be answered TWICE, in two vocabularies, and both answers
+live on `Actor` so they cannot drift: a projectile is an `Area2D` and finds what
+it hits through physics LAYERS, not groups, so `attack_layer` and `attack_mask`
+sit beside `hostile_group`. The layer numbers named in `project.godot` are
+spelled once, as consts there, rather than as a bare `32` in a scene file.
+
+**An enemy's weapons come from `EnemyData.weapons`, through the model, exactly
+as a character's do.** The rack in the mandibles is a `WeaponMount` syncing off
+`EntityModel.weapons`, which is the same view the hands use. One trap was real
+enough to earn a test: `add_weapon` asks `WEAPON_SLOTS` for a bug as much as for
+a player, so an enemy is seeded with a capacity equal to what it was authored
+with — without it a spitter would be refused its own gun, silently, because
+`add_weapon` returns false and nothing looks. Exactly what it carries and no
+more: a bug never buys, sells or merges, so a spare slot is capacity nobody can
+ever use.
+
+**Whether an armament SHOWS is a property of the creature.**
+`EnemyData.weapons_visible` is FALSE by default, because the default enemy is a
+bug: a biter spits a glob out of itself, and a beetle holding a pistol is a
+different game. Off, the mount is invisible and collapsed onto the body, so the
+shot leaves the creature rather than a rifle floating beside it — hiding a node
+does not stop it processing, which is the same thing `character.gd` relies on
+for a downed player. A flag rather than two kinds of enemy, because a turret, a
+mech and a boss with a visible cannon all differ from a spitter in exactly this
+one respect.
+
 **`EntityModel.world_position` is written by the view, read by core.** A bare
 `Vector2` handed down once per frame from `Actor`, which is what lets `core/`
 answer "what is within 90 units of this corpse" without ever seeing a Node -
@@ -906,6 +940,25 @@ patterns, group arrivals, co-op scaling and authored per-wave modifiers, and a
 per-player shop — rolling by tier weight, pipeline pricing, buying, selling,
 rerolling, stat payment and ready-up — and a status system whose four statuses
 differ only by authored numbers. Twenty-four items authored.
+
+ENEMIES CAN SHOOT BACK. `spitter` orbits at 210 units and spits acid, which is
+the first enemy that attacks from outside contact range and therefore the first
+thing that gives the player's MOVEMENT_SPEED and RANGE something to do — until
+now every weapon in the game solved the same problem, something walking straight
+at you. It needed no new attack system: an enemy carries `WeaponData` on the
+same `WeaponModel`, aimed by the same `TargetSelector`. Five enemies authored of
+the twelve in `docs/enemy_list.md`, plus the first boss.
+
+BOSS WAVES HAPPEN. `spawn_boss` used to be rolled, stored, emitted and printed
+with nothing reading it, so a boss wave was announced and then played out
+identically to any other. `WaveTable.boss_entries` says what a boss wave puts
+down and `boss_every` says how often one comes - on the TABLE, because the only
+thing that ever set the flag was an effect no authored content used, which made
+a boss unreachable in a real run whatever the director did. The run seeds the
+cadence BEFORE `CALCULATE_WAVE`, so an effect can still only ever add a boss to
+a wave that was not going to have one. The boss arrives on the FIRST frame of
+its wave and costs no budget: a boss wave should be harder than the wave it
+replaces, and charging the budget for it would quietly empty the rest.
 
 A run can be PAUSED and RESTARTED: any device opens one shared menu with resume,
 restart and quit, and the same menu opens itself when the run ends, so a wipe no
@@ -1129,6 +1182,22 @@ rescaling `.tres` files.
 classes are derived from it, never invented ahead of it.** Ten effects thought
 up in advance are ten solutions looking for a problem; a hundred items written
 down first group themselves, and the repeats are the classes worth writing.
+
+**THREE OF THESE LISTS ALREADY EXIST AND ARE LIVE DOCUMENTS**, not a record of
+work already done. Read the relevant one before authoring anything of that kind
+and extend it rather than starting a new one:
+
+| list | state |
+|---|---|
+| `docs/weapon_list.md` | 12 families x 4 tiers, all authored |
+| `docs/character_list.md` | 8 chassis, all authored |
+| `docs/enemy_list.md` | 12 enemies + 2 bosses designed, **5 authored** |
+
+Each ends with a section naming what it could NOT express, and those sections
+are the real backlog - every one of them has turned into a commit. The enemy
+list's is the one with entries still open, and it also records what turned out
+NOT to be needed, which is the more valuable half: the expensive mistake at this
+point is building machinery that already exists.
 
 For each item, note the name, tier, rough price and then EITHER its stat lines
 OR its behaviour in one sentence. That split is the whole point:

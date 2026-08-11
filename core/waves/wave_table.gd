@@ -9,6 +9,42 @@ extends Resource
 
 @export var entries: Array[WaveEntry] = []
 
+## What a BOSS wave puts on the floor, gated by the same min_wave/max_wave the
+## ordinary entries use - so "the queen appears from wave 10" is authored rather
+## than coded, and a run can grow a second boss without anything learning about
+## it.
+##
+## Extra, and deliberately NOT paid for out of the wave budget. A boss wave is
+## meant to be harder than the wave it replaces; charging the budget for it
+## would quietly make the rest of that wave emptier, which is the opposite.
+@export var boss_entries: Array[WaveEntry] = []
+
+## Every Nth wave is a boss wave. 0 never is.
+##
+## On the TABLE rather than only in an effect, because otherwise a boss is
+## unreachable: the only thing that ever set spawn_boss was
+## EffectBossChancePerWave, which no authored content uses, so the flag could be
+## true only if somebody wrote an item for it. A boss cadence is part of the
+## escalation curve, exactly like the budget and the duration, and belongs where
+## the rest of the curve is authored.
+##
+## The effect still composes on top: the run seeds this answer BEFORE
+## CALCULATE_WAVE, and the effect only ever turns a false into a true.
+@export var boss_every: int = 0
+
+func is_boss_wave(wave_number: int) -> bool:
+	return boss_every > 0 and wave_number % boss_every == 0
+
+## Every boss this wave could produce. Empty means a boss was rolled and there
+## is nothing to be - which is content missing rather than an error, so the wave
+## simply runs as an ordinary one.
+func boss_entries_for(wave_number: int) -> Array[WaveEntry]:
+	var result: Array[WaveEntry] = []
+	for entry in boss_entries:
+		if entry != null and entry.enemy != null and entry.is_available(wave_number):
+			result.append(entry)
+	return result
+
 ## How many waves a run lasts. Lives here rather than on RunModel because the
 ## escalation curve is what knows when it has run out of road - a table tuned
 ## across twenty waves and one tuned across fifty are different content, not the

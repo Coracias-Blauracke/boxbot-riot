@@ -388,6 +388,11 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	# No target assigned: the enemy picks the nearest living player itself, and
 	# keeps re-picking as they move apart.
 	node.bind(model, enemy_data, run.world)
+	# Through the model, exactly as a character's loadout is, so the rack in the
+	# mandibles follows the same path the rack in the hands does.
+	for weapon_data in enemy_data.weapons:
+		if weapon_data != null:
+			model.add_weapon(weapon_data)
 	node.position = at
 	_actors.add_child(node)
 	return node

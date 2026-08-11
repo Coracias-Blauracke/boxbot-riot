@@ -21,5 +21,30 @@ extends EntityData
 ## the two stay in contact.
 @export var contact_damage_interval: float = 0.6
 
+@export_group("Armament")
+## What this bug attacks WITH, beyond simply touching you.
+##
+## The same WeaponData a player carries, on the same WeaponModel, aimed by the
+## same TargetSelector - the whole weapon stack was already side-agnostic, and
+## the one thing that was not is now Actor.hostile_group. A spitter is therefore
+## an ordinary enemy with a weapon in the list, not a second attack system.
+##
+## Named `weapons` rather than `starting_weapons`: a bug never buys, sells or
+## merges one, so there is no "starting" to distinguish from "later".
+@export var weapons: Array[WeaponData] = []
+
+## Whether the armament is DRAWN, and where the shot leaves from.
+##
+## False by default, because the default enemy is a BUG: a biter spits a glob
+## out of itself, and a beetle holding a pistol is a different game. Off, the
+## mount is invisible and sits at the body's centre, so the projectile leaves
+## the creature rather than a rifle floating beside it.
+##
+## Kept as a flag rather than as two kinds of enemy, because a turret, a mech
+## and a boss with a visible cannon are all things this roster will want, and
+## they differ from a spitter in exactly this one respect. Whether an armament
+## SHOWS is a property of the creature, not of the weapon.
+@export var weapons_visible: bool = false
+
 @export_group("Rewards")
 @export var currency_reward: int = 1

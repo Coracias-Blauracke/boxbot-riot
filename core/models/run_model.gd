@@ -183,6 +183,12 @@ func start_wave() -> void:
 	for player in players:
 		player.counters.reset_scope(CounterTypes.Scope.WAVE)
 
+	# The authored cadence first, so an effect that adds a chance of a boss can
+	# only ever ADD one - see WaveTable.boss_every and EffectBossChancePerWave,
+	# which returns early when the flag is already set.
+	if director.table != null:
+		event.spawn_boss = director.table.is_boss_wave(wave_number)
+
 	# Pipeline first, so effects can influence how the wave is built. Two
 	# players each carrying "10% chance of a boss" roll independently - this is
 	# a probability, not a discrete override, so it never goes through
@@ -193,7 +199,7 @@ func start_wave() -> void:
 	spawn_boss_this_wave = event.spawn_boss
 	# The player count is what scales the wave: more players means a bigger
 	# budget AND more frequent arrivals, not the same wave shared out.
-	director.begin(wave_number, players.size())
+	director.begin(wave_number, players.size(), spawn_boss_this_wave)
 
 	for player in players:
 		player.notify(Hooks.Hook.ON_WAVE_STARTED, event)

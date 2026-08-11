@@ -116,6 +116,17 @@ func setup_from_data(data: EntityData) -> void:
 			continue
 		effects.register(EffectInstance.new(effect, data))
 
+	# An enemy's rack is exactly what it was authored with. It never buys, sells
+	# or merges, so its capacity is not a decision anybody makes at runtime -
+	# but it still has to EXIST, because add_weapon asks WEAPON_SLOTS like it
+	# does for everybody and would otherwise refuse a bug its own gun.
+	if data is EnemyData:
+		var armed := (data as EnemyData).weapons.size()
+		if armed > 0:
+			stats.add_modifier(
+				StatTypes.Stat.WEAPON_SLOTS, StatTypes.Modifier.BASE, float(armed), data
+			)
+
 	# Asked of the DATA rather than derived here. The rule that a slot count is a
 	# BASE modifier on its stat belongs beside the fields, or every screen that
 	# wants to describe a chassis has to know it too - see slot_modifiers().

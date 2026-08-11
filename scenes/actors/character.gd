@@ -25,6 +25,8 @@ func _ready() -> void:
 
 	# What enemies search when picking whom to chase.
 	add_to_group(&"players")
+	# What this side shoots at - see Actor.hostile_group.
+	hostile_group = &"enemies"
 
 	# The hurtbox is what enemy hitboxes look for; it mirrors the body radius.
 	var circle := CircleShape2D.new()

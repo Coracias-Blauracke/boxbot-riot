@@ -13,6 +13,10 @@ var snapshot: ShotSnapshot
 var shooter: EntityModel
 var world: WorldModel
 
+## Which group this shot may seek when it bounces. Set by launch() from the
+## wielder, so an enemy ricochet chases players rather than other bugs.
+var hostile_group: StringName = &"enemies"
+
 var direction: Vector2 = Vector2.RIGHT
 var speed: float = 420.0
 
@@ -33,7 +37,10 @@ func launch(
 	p_pierce: int,
 	p_bounce: int,
 	speed_multiplier: float,
-	p_world: WorldModel = null
+	p_world: WorldModel = null,
+	p_hostile_group: StringName = &"enemies",
+	p_layer: int = Actor.LAYER_PLAYER_HITBOX,
+	p_mask: int = Actor.LAYER_ENEMY_HURTBOX
 ) -> void:
 	data = p_data
 	snapshot = p_snapshot
@@ -44,6 +51,12 @@ func launch(
 	bounce_left = p_bounce
 	speed = p_data.speed * p_data.speed_scale * speed_multiplier
 	_lifetime = p_data.lifetime
+
+	# Whose side this shot is on, in both vocabularies: layers for what it can
+	# collide with, and a group for what it may seek when it bounces.
+	hostile_group = p_hostile_group
+	collision_layer = p_layer
+	collision_mask = p_mask
 
 func _ready() -> void:
 	var circle := CircleShape2D.new()
@@ -124,7 +137,7 @@ func _hit(target: EntityModel) -> void:
 func _bounce() -> void:
 	var best: Node2D = null
 	var best_distance := INF
-	for node in get_tree().get_nodes_in_group(&"enemies"):
+	for node in get_tree().get_nodes_in_group(hostile_group):
 		var enemy := node as Actor
 		if enemy == null or enemy.model == null or _already_hit.has(enemy.model):
 			continue
