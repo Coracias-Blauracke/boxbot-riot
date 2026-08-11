@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 893 assertions across three suites, no editor, no game window
+# tests — 907 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -137,7 +137,10 @@ over - the number that says whether the loop works, because scrap nobody collect
 is currency the run silently never paid out. `spawns=N/M` is how many spawn
 requests were drained and how many entities they
 put down - a hive is otherwise indistinguishable from an ordinary wave arrival,
-because both simply make the enemy count climb. `gap=` is the smallest distance
+because both simply make the enemy count climb. `windup=` is how many enemies
+are mid-telegraph, which a frame taken between two wind-ups cannot show and which
+is the only proof the phase machine runs in the GAME rather than only in the
+suite - MovementState is created by the view. `gap=` is the smallest distance
 between any two enemies, which is the one number
 that says whether a crowd is a crowd or a blob. `gun=` is the distance to the
 nearest thing that shoots, which is a different question from the nearest thing
@@ -204,7 +207,8 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup,
              SpawnRequest (core/ asking the world for entities it cannot build)
-  behaviors/ MovementBehavior, ChaseBehavior, OrbitBehavior
+  behaviors/ MovementBehavior, ChaseBehavior, OrbitBehavior, ChargeBehavior,
+             MovementState (a behaviour's per-holder phase and clock)
 scenes/      the view — nodes, physics, rendering
   lobby.gd   the scene the game STARTS on; owns the roster and builds the run
   ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout,
@@ -214,6 +218,7 @@ scenes/      the view — nodes, physics, rendering
   effects/   BlastFlash - what an explosion is DRAWN as, and the only view-side
              thing that knows a blast happened
   pickups/   Pickup - scrap lying on the floor, magnetised by PICKUP_RANGE
+  actors/    ActorTint - what "something is happening to this body" LOOKS like
 content/     authored .tres: characters/ (six + the set that lists them,
              plus test_character, which is main.tscn's own fallback),
              enemies, weapons/ (13 families x 4
@@ -500,13 +505,15 @@ who were playing stay who they were and nobody re-joins after every death.
 `main.gd` falls back to `reload_current_scene()` when nothing is connected,
 which is what keeps `main.tscn` independently launchable. That fallback is only
 honest because nothing stateful outlives the scene: every model hangs off the
-`RunModel` built in `_ready`, and the single autoload (`EventBus`) holds signals
-and no state — nothing emits or connects to it today.
+`RunModel` built in `_ready`, and THERE ARE NO AUTOLOADS.
 
-(An earlier version of this section said "no autoloads". There is one. It has
-been declared since before the run model existed and three files mention it only
-to say they deliberately do not use it, so the conclusion held while the reason
-given for it did not.)
+(This has now been true, then false, then true again, so it is worth saying how.
+An `EventBus` autoload was declared before the run model existed, and nothing
+ever emitted or connected to a single one of its ten signals - three files
+mentioned it only to say they deliberately did not use it. It was deleted rather
+than kept warm on the chance: `RunModel` emits its own signals for what genuinely
+belongs to the whole run, the scene layer listens to those directly, and a bus
+gets built the day something needs one.)
 
 `get_tree().paused` is the one flag that survives either path, because it lives
 on the TREE rather than the scene, so a restart clears it first or the fresh run
@@ -1012,6 +1019,52 @@ regeneration. The `has_listeners` guard is not about the dispatch but about the
 PAYLOAD: seventy enemies would otherwise allocate a TickEvent every frame to
 hand it to nothing.
 
+**A CHARGE IS DODGED, NOT OUT-WALKED, AND THE WIND-UP IS WHAT MAKES IT ONE.**
+Every other enemy is answered by moving AWAY - it walks at you, keeps its
+distance or stands still. A charge is answered by moving ASIDE, and only if you
+saw it coming, which makes the telegraph the mechanic rather than its decoration.
+Without it something crosses 300 units in half a second with no warning and
+there was never a decision to make.
+
+THE STOP IS THE TELEGRAPH, and it needs no art: a thing that was moving and is
+suddenly not is the loudest signal a top-down game has. `ChargeBehavior` does it
+by returning nothing during the wind-up, which the speed-share rule above already
+made expressible. Everything the view adds only makes it louder.
+
+The dash is deliberately NOT re-aimed. A dash that tracks is a fast chase, and
+stepping aside would do nothing - which is the entire question this enemy asks.
+The aim is committed at the END of the wind-up, so it is what the player had the
+whole telegraph to read. `recover_time` is the punish window: a charge that can
+be repeated instantly is one you can only run from.
+
+MOVEMENT_SPEED is the DASH speed and the approach is a fraction of it, because a
+speed share is capped at 1 - a behaviour may never ask for more than its
+holder's stat. Authoring it the other way round would need a cap that lets a
+behaviour exceed its own speed, and a slow status would stop meaning what it says.
+
+**`MovementState` is to a behaviour what `EffectInstance` is to an effect.** A
+`MovementBehavior` is a `.tres` and Godot caches those globally, so a phase kept
+on the resource would have every charger in the wave winding up on one clock. The
+state is owned by the ENEMY, handed in per call, so a behaviour that keeps
+nothing costs nothing to give one to.
+
+**`ActorTint` is the one mechanism for "you should be able to see this".** The
+DRIVER sets `sustain` from whatever fact it has - a wind-up today, a boss phase
+or a status later - and the tint decides only what that looks like. The fact
+stays where it can be tested without a screen and the picture stays where it can
+be changed without touching the fact. It survives the art pass unchanged: the
+same number that lerps a drawn colour becomes a `modulate` on a sprite.
+
+There is no one-shot flash on it yet. "Flash white when hit" is the obvious next
+member and has no caller, and this repo has been bitten by machinery invented
+ahead of the content that needs it.
+
+**A TELEGRAPH MUST CONTRAST WITH THE BODY, NOT WITH THE BACKGROUND.** The accent
+started red, because red is what "about to hurt you" obviously means - and it was
+invisible, because the enemy placeholder is ALREADY red. The state line read
+`windup=2` and the screenshot showed nothing at all. Near-white now. That is the
+whole argument for reading the PNGs as well as the numbers, in one bug.
+
 **A MOVEMENT BEHAVIOUR STEERS *AND* THROTTLES.** The length of what
 `get_direction` returns is a speed share, capped at 1. It used to be documented
 as normalised and the view enforced that by normalising whatever came back, so a
@@ -1204,6 +1257,19 @@ between a wiring mistake and a demo where money never appears.
 **Watch the import log, not just test results.** Parse errors can leave tests
 passing while silently skipping assertions.
 
+**THE CONSOLE BUILD DOES NOT PRINT ANALYZER WARNINGS - only the editor does.**
+Shadowed base-class properties, integer division, unused parameters and unused
+signals never appear in `--headless --import`, in a test run or in a capture, so
+none of the verification this file leans on can see them. They accumulate
+invisibly and are only noticed by whoever opens the project.
+
+That makes them worth clearing to ZERO rather than triaging, because a warning
+list nobody can see from the command line is one that only works while it is
+empty. Where the code is deliberately integral, say so at the site with
+`@warning_ignore("integer_division")` and a reason; where it shadows
+`scale`, `visible` or `name` on a Node, rename it - those are one typo away from
+moving, hiding or renaming the node instead of touching a local.
+
 **Never put comments in `project.godot`.** The editor rewrites the whole file
 on save and drops them, along with any setting that happens to equal its
 default. Explanations for project settings belong here instead.
@@ -1228,8 +1294,12 @@ the first enemy that attacks from outside contact range and therefore the first
 thing that gives the player's MOVEMENT_SPEED and RANGE something to do — until
 now every weapon in the game solved the same problem, something walking straight
 at you. It needed no new attack system: an enemy carries `WeaponData` on the
-same `WeaponModel`, aimed by the same `TargetSelector`. Eight enemies authored of
-the twelve in `docs/enemy_list.md`, plus the first boss.
+same `WeaponModel`, aimed by the same `TargetSelector`.
+
+**EIGHT of the TEN ordinary enemies are authored, and one of the two bosses** -
+Lurker, Warden and Colossus are what is left. Stated in two numbers rather than
+one because the list numbers its bosses 11 and 12, so "of the twelve" has meant
+both "including the bosses" and "not counting them" in this file already.
 
 BOSS WAVES HAPPEN. `spawn_boss` used to be rolled, stored, emitted and printed
 with nothing reading it, so a boss wave was announced and then played out
@@ -1283,6 +1353,16 @@ blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
 `rapid` grants something at every count from one to six, `bouncy` nothing until
 three. Not one of the twelve needed a new effect class.
 
+SOMETHING HAS TO BE DODGED NOW. **Charger** closes, stops dead for 0.7s, and
+throws itself in a straight line it commits to before it starts - the ninth
+authored enemy and the first that is answered by stepping aside rather than by
+walking away. `ChargeBehavior` is the third movement resource and the first with
+STATE, which is what `MovementState` exists for.
+
+Measured at `--capture-wave=6 --capture-still`: `windup=` goes 0 -> 1 -> 2 -> 0
+as two of them commit and launch, and the pale bodies are visible in the frame
+against ordinary red ones.
+
 MONEY LIES ON THE FLOOR NOW. Killing something no longer pays anybody: it drops
 scrap through the spawn channel, and somebody has to walk out and collect it
 before the wave ends or it is gone. Three tiers are authored, PICKUP_RANGE is
@@ -1297,7 +1377,7 @@ THE HORDE CAN MAKE MORE OF ITSELF. `EffectSpawn` (on death, or on a clock) plus
 `SpawnRequest` is the channel `core/` uses to ask for entities it cannot build,
 and it closed the third gap in `docs/enemy_list.md`. **Splitter** bursts into two
 swarmlings when killed and **Hive** releases two every five seconds while
-standing perfectly still - eight enemies authored of the twelve. The Queen's
+standing perfectly still. The Queen's
 other half, which the list has always described as "ranged spit AND spawns
 swarmlings", is now one authored effect away.
 
@@ -1308,7 +1388,7 @@ entities per request exactly as authored.
 AREA DAMAGE IS IN, and it is the first thing authored on both sides of the game
 at once. `BlastData` (how far, how hard, whose side) plus `EffectBlast` (on
 death, on a kill, on impact) covers every family either prose list asked for:
-**Popper** bursts when it dies and is the ninth authored enemy, **Chain
+**Popper** bursts when it dies, **Chain
 Detonator** detonates whatever you kill, **Shaped Charge** is +30% AREA_SIZE and
 +4 elemental damage with no code at all, and the **Slag Mortar** is the
 thirteenth weapon family - a lobbed charge whose explosion is 60% of the gun's
@@ -1431,6 +1511,11 @@ beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
 line. The 45 stat descriptions and the 8 character descriptions are hand-written
 and are the only authored player-facing prose in the game.
 
+**The validator refuses a charge that cannot be seen coming.** A `windup_time`
+of 0 loads, runs, and turns the one enemy that is answered by stepping aside
+into a cheap shot - and nothing at runtime would ever say so. Verified by
+setting it to 0 and watching it fail.
+
 **The validator refuses a pickup that pays nothing** and warns about one that
 attracts from further than it can travel. Both load fine and both are invisible
 at runtime: a value of 0 is a node that costs frames and credits nobody, and a
@@ -1531,7 +1616,7 @@ and extend it rather than starting a new one:
 |---|---|
 | `docs/weapon_list.md` | 12 families x 4 tiers, all authored |
 | `docs/character_list.md` | 8 chassis, all authored |
-| `docs/enemy_list.md` | 12 enemies + 2 bosses designed, **5 authored** |
+| `docs/enemy_list.md` | 10 ordinary + 2 bosses designed, **8 and 1 authored** - Lurker, Warden and Colossus left |
 
 Each ends with a section naming what it could NOT express, and those sections
 are the real backlog - every one of them has turned into a commit. The enemy

@@ -21,9 +21,15 @@ static func row_count(total: int, columns: int) -> int:
 	if total <= 0:
 		return 0
 	var width := maxi(1, columns)
+	# Ceiling division, spelled the integral way: fifty entries eight wide is
+	# seven rows, and the seventh is ragged. A float here would round the wrong
+	# way at exactly one full row.
+	@warning_ignore("integer_division")
 	return (total + width - 1) / width
 
 static func row_of(index: int, columns: int) -> int:
+	# A row number is whole by definition.
+	@warning_ignore("integer_division")
 	return index / maxi(1, columns)
 
 static func column_of(index: int, columns: int) -> int:
@@ -44,6 +50,8 @@ static func column_length(column: int, total: int, columns: int) -> int:
 	var width := maxi(1, columns)
 	if column < 0 or column >= width or column >= total:
 		return 0
+	# Ceiling division again, for how many rows reach this column.
+	@warning_ignore("integer_division")
 	return (total - column + width - 1) / width
 
 static func step_horizontal(index: int, total: int, columns: int, delta: int) -> int:

@@ -27,6 +27,8 @@ func get_hooks() -> Array:
 
 func execute(host: Variant, inst: EffectInstance, _event: EventPayload) -> void:
 	var total: int = host.counters.get_value(counter)
+	# Whole steps only: "for every 500 earned" pays at 500, not at 499.9.
+	@warning_ignore("integer_division")
 	var reached: int = int(total / step) if step > 0 else 0
 
 	if reached == inst.get_state(&"applied", 0):

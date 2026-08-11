@@ -6,8 +6,13 @@ extends RefCounted
 ## The alternative (one global bus for everything) loses on two counts: every
 ## effect would have to open with boilerplate asking "does this event concern
 ## me?", and with 200 enemies on screen every poison application would wake up
-## every listener in the game. The global EventBus stays, but only for events
-## that genuinely belong to the whole run.
+## every listener in the game.
+##
+## There is no global bus at all now. One was declared for years, emitted by
+## nothing and connected to by nothing; RunModel emits its own signals for the
+## things that genuinely belong to the whole run, and the scene layer listens to
+## those directly. If a bus is ever wanted, it gets built when something needs
+## it rather than kept warm on the chance.
 ##
 ## NOTE on reference cycles: the dispatcher deliberately does NOT keep a
 ## reference to its owner - `host` arrives as a call argument instead. Godot's

@@ -12,18 +12,32 @@ are.
 
 ## Why this list exists
 
-The player's half of the game is deep and the horde's half is two files:
+WRITTEN WHEN THE TWO HALVES LOOKED LIKE THIS, and kept because the argument is
+what the list was for - not because the numbers are still true:
 
-| player side | horde side |
+| player side, then | horde side, then |
 |---|---|
 | 8 characters, 48 weapons, 24 items, 5 classes, 4 statuses, a shop | 2 enemies, 1 arena, 1 wave table |
 
-Every balance judgement about the deep half is currently made against one
-behaviour. `ChaseBehavior` is the only movement in the game and contact damage
-is the only attack, so **every weapon in the game solves the same problem**:
-something is walking straight at you. Piercing wants a queue, bouncing wants a
+The argument was that every balance judgement about the deep half was being made
+against ONE behaviour. `ChaseBehavior` was the only movement and contact damage
+the only attack, so **every weapon in the game solved the same problem**:
+something walking straight at you. Piercing wants a queue, bouncing wants a
 cluster, range wants something that outranges you, and armour wants something
-that hits hard and rarely. None of those situations exists yet.
+that hits hard and rarely - and none of those situations existed.
+
+**MOST OF THAT IS PAID OFF NOW**, which is the point of writing it down rather
+than deleting it:
+
+| player side, today | horde side, today |
+|---|---|
+| 8 characters, 52 weapons, 26 items, 5 classes, 4 statuses, a shop, drops | 8 ordinary enemies + 1 boss, 3 movements, contact / ranged / area damage |
+
+Swarmlings are the cluster, the spitter is the thing that outranges you, the
+brute and the charger both hit hard and rarely, and the charger is the first
+that has to be dodged rather than out-walked. What is left is Lurker, Warden and
+Colossus - and the reason to finish them is no longer "the horde is one file",
+it is that a roster is only worth balancing once it is complete.
 
 ---
 
@@ -69,7 +83,7 @@ Damage and health are rough and get tuned against play. `group` is the
 | # | enemy | movement | attack | spawn | group | |
 |---|---|---|---|---|---|---|
 | 4 | **Spitter** | orbit at ~220 | RANGED weapon | edge | 2 | **AUTHORED** |
-| 5 | **Charger** | charge: pause, telegraph, dash | contact on the dash | ring | 2 | |
+| 5 | **Charger** | charge: pause, telegraph, dash | contact on the dash | ring | 2 | **AUTHORED** |
 | 6 | **Popper** | chase | contact, and explodes on death | near-player | 4 | **AUTHORED** |
 | 7 | **Lurker** | chase, fast | contact, high burst | near-player | 3 | |
 
@@ -153,16 +167,29 @@ seventh gap turned up later, from asking what a real boss fight is made of:
    keeps hurting whatever stands in it is a duration with its own state, not a
    bigger explosion.
 
-5. **Only one `MovementBehavior`.** Orbit, charge and drift are one resource
-   each, around twenty lines, with no new machinery - the axis was built for
-   exactly this. Charge additionally needs a place to keep its own phase, which
-   is the first behaviour with STATE. It cannot live on the resource, for the
-   same reason effect state cannot: a `.tres` is shared by every holder of it.
+5. ~~**Only one `MovementBehavior`.**~~ **MOSTLY DONE.** Orbit and charge are
+   authored. The phase problem this entry predicted is solved by `MovementState`,
+   owned by the enemy and handed to the behaviour per call - the same split
+   `EffectInstance` exists for, and now available to every behaviour that needs
+   to remember anything.
 
-6. **No telegraph.** A charger that dashes with no wind-up is a cheap shot, and
-   there is no way to show one - no animation, no flash, no sound. The wind-up
-   itself belongs to the behaviour and can exist before the art does, but until
-   something DRAWS it the enemy is unfair rather than hard.
+   Drift is the one left, and it is only wanted for a wandering Hive; the Hive
+   that exists carries NO movement resource at all, which says "it does not move"
+   once instead of twice.
+
+6. ~~**No telegraph.**~~ **DONE**, and the entry was right that the wind-up
+   belongs to the behaviour and can exist before the art. It turned out the
+   wind-up alone is most of the signal: an enemy that was moving and suddenly is
+   not is readable with no art whatsoever.
+
+   `ActorTint` is the drawing half, and it is general - a driver sets `sustain`
+   from any fact it has and the tint decides what that looks like, so the next
+   enemy that wants to show something reuses it without either side learning
+   about the other.
+
+   One lesson worth keeping: the accent must contrast with the BODY, not the
+   background. Red was invisible on an already-red enemy while every number said
+   it was working.
 
 7. **Nothing CHOOSES between an enemy's weapons.** `EnemyData.weapons` is an
    array and every entry fires on its own clock, always, at once. That covers "a

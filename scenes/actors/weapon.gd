@@ -144,11 +144,11 @@ func _targeting_range() -> float:
 
 ## Furthest any swing in the combo can actually connect, hitbox included.
 func melee_reach() -> float:
-	var scale := _reach_scale()
+	var reach_scale := _reach_scale()
 	var furthest := 0.0
 	for swing in data.melee_combo:
 		if swing != null:
-			furthest = maxf(furthest, swing.reach * scale + swing.hitbox_radius)
+			furthest = maxf(furthest, swing.reach * reach_scale + swing.hitbox_radius)
 	return furthest
 
 ## For melee, RANGE acts as a multiplier on the authored reach, neutral at 100.

@@ -10,6 +10,7 @@
 [ext_resource type="Resource" path="res://content/enemies/popper.tres" id="12_popper"]
 [ext_resource type="Resource" path="res://content/enemies/splitter.tres" id="13_splitter"]
 [ext_resource type="Resource" path="res://content/enemies/hive.tres" id="14_hive"]
+[ext_resource type="Resource" path="res://content/enemies/charger.tres" id="16_charger"]
 [ext_resource type="Resource" path="res://content/spawn/in_view.tres" id="15_in_view"]
 [ext_resource type="Resource" path="res://content/spawn/ring.tres" id="5_ring"]
 [ext_resource type="Resource" path="res://content/spawn/ambush.tres" id="6_ambush"]
@@ -86,6 +87,16 @@ cost = 6.0
 group_size = 1
 pattern = ExtResource("15_in_view")
 
+[sub_resource type="Resource" id="Resource_chargers"]
+script = ExtResource("2_entry")
+enemy = ExtResource("16_charger")
+min_wave = 5
+max_wave = 0
+weight = 1.5
+cost = 3.0
+group_size = 2
+pattern = ExtResource("5_ring")
+
 [sub_resource type="Resource" id="Resource_queen"]
 script = ExtResource("2_entry")
 enemy = ExtResource("11_queen")
@@ -98,7 +109,7 @@ pattern = ExtResource("5_ring")
 
 [resource]
 script = ExtResource("1_table")
-entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes"), SubResource("Resource_spitters"), SubResource("Resource_swarm"), SubResource("Resource_poppers"), SubResource("Resource_splitters"), SubResource("Resource_hives")])
+entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes"), SubResource("Resource_spitters"), SubResource("Resource_swarm"), SubResource("Resource_poppers"), SubResource("Resource_splitters"), SubResource("Resource_hives"), SubResource("Resource_chargers")])
 boss_entries = Array[ExtResource("2_entry")]([SubResource("Resource_queen")])
 boss_every = 5
 total_waves = 20

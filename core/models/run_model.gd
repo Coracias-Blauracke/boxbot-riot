@@ -3,8 +3,8 @@ extends RefCounted
 
 ## One playthrough: the arena, the players, the wave loop and all randomness.
 ##
-## Deliberately emits its own signals rather than touching the EventBus autoload.
-## That keeps core/ runnable headless - the scene layer bridges these to the bus.
+## Emits its own signals, which is what keeps core/ runnable headless: the scene
+## layer connects to them directly and core/ reaches for nothing global.
 
 signal phase_changed(phase: WorldTypes.Phase)
 signal wave_started(wave_number: int, spawn_boss: bool)

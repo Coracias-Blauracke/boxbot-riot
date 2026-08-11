@@ -762,6 +762,8 @@ func _draw_owned(font: Font, top: float) -> void:
 func _draw_stats(font: Font, top: float) -> void:
 	var row_height := 24.0 if _compact else 28.0
 	var visible_rows := int((size.y - top - 80.0) / row_height)
+	# Centring on a row: half a row is not a place the cursor can be.
+	@warning_ignore("integer_division")
 	var first := maxi(0, mini(stat_cursor - visible_rows / 2, _stats.size() - visible_rows))
 	var y := top
 

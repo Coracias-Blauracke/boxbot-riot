@@ -149,6 +149,9 @@ func _process(_delta: float) -> void:
 
 func _clock(seconds: float) -> String:
 	var whole := maxi(0, ceili(seconds))
+	# Whole minutes, with the remainder printed beside them. There is no such
+	# thing as 1.5 in the left-hand half of a clock.
+	@warning_ignore("integer_division")
 	return "%d:%02d" % [whole / 60, whole % 60]
 
 ## The shop panels are the screen during their phase, and everything the HUD

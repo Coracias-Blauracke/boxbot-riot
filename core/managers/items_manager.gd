@@ -8,9 +8,9 @@ extends RefCounted
 ## reference cycle; Godot's RefCounted has no cycle collector, so neither object
 ## was ever freed (confirmed by leaked instances reported at shutdown).
 ##
-## It also does not subscribe to the global EventBus. Wave events are fanned out
-## by the run controller via host.notify(), so two player models (for example a
-## shop preview) can never trigger each other's effects.
+## It also subscribes to nothing global. Wave events are fanned out by the run
+## controller via host.notify(), so two player models (for example a shop
+## preview) can never trigger each other's effects.
 
 var _quantities: Dictionary = {}   # ItemData -> int
 var _handles: Dictionary = {}      # ItemData -> Array[Array[int]] (handles per copy)

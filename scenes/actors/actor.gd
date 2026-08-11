@@ -125,6 +125,11 @@ func _join_faction(p_faction: WorldTypes.Faction) -> void:
 
 var placeholder_color: Color = Color.WHITE
 
+## How this body is being tinted right now, and by anything that has something to
+## show - see ActorTint. Every actor has one; an actor that never drives it draws
+## exactly as it always did.
+var tint := ActorTint.new()
+
 ## Knockback and recoil arrive here rather than in `velocity`, which is
 ## overwritten from the stats every frame. Decays on its own.
 var impulse: Vector2 = Vector2.ZERO
@@ -222,8 +227,9 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 
-	draw_circle(Vector2.ZERO, radius, placeholder_color)
-	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 24, placeholder_color.darkened(0.5), 2.0)
+	var body := tint.apply(placeholder_color)
+	draw_circle(Vector2.ZERO, radius, body)
+	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 24, body.darkened(0.5), 2.0)
 
 	if model == null:
 		return

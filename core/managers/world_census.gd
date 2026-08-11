@@ -84,11 +84,11 @@ func _living() -> Array[EntityModel]:
 	_live = []
 	var surviving: Array[WeakRef] = []
 
-	for reference in _entities:
-		var entity := reference.get_ref() as EntityModel
+	for held in _entities:
+		var entity := held.get_ref() as EntityModel
 		if entity == null:
 			continue
-		surviving.append(reference)
+		surviving.append(held)
 		if entity.is_alive:
 			_live.append(entity)
 

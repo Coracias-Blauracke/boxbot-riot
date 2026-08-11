@@ -41,7 +41,10 @@ extends MovementBehavior
 ## it simply loses the argument when somebody commits to closing.
 @export_range(0.1, 1.0, 0.05) var retreat_speed_share: float = 0.6
 
-func get_direction(_host: Variant, self_position: Vector2, target_position: Vector2, _delta: float) -> Vector2:
+func get_direction(
+	_host: Variant, self_position: Vector2, target_position: Vector2, _delta: float,
+	_state: MovementState
+) -> Vector2:
 	var offset := target_position - self_position
 	var distance := offset.length()
 	if distance <= 0.001:

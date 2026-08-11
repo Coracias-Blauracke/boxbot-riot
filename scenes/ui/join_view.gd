@@ -233,11 +233,11 @@ func _draw_description(font: Font, rect: Rect2, index: int, character: Character
 	var top := rect.position.y + 156.0
 	var bottom := rect.position.y + SLOT_HEIGHT - 12.0
 	var step := LINE_HEIGHT
-	var visible := _visible_lines()
-	var offset := clampi(scroll_lines[index] if index < scroll_lines.size() else 0, 0, maxi(0, lines.size() - visible))
+	var shown := _visible_lines()
+	var offset := clampi(scroll_lines[index] if index < scroll_lines.size() else 0, 0, maxi(0, lines.size() - shown))
 
 	var y := top + 12.0
-	for row in range(offset, mini(offset + visible, lines.size())):
+	for row in range(offset, mini(offset + shown, lines.size())):
 		var line := lines[row]
 		draw_string(
 			font, Vector2(rect.position.x + 16.0 + line.indent, y), line.text,
@@ -250,7 +250,7 @@ func _draw_description(font: Font, rect: Rect2, index: int, character: Character
 			)
 		y += step
 
-	if lines.size() <= visible:
+	if lines.size() <= shown:
 		return
 
 	# The track, and a thumb sized by how much of the text is on screen.
@@ -258,9 +258,9 @@ func _draw_description(font: Font, rect: Rect2, index: int, character: Character
 		Vector2(rect.position.x + rect.size.x - 10.0, top), Vector2(4.0, bottom - top)
 	)
 	draw_rect(track, Color(0.16, 0.18, 0.22))
-	var share := float(visible) / float(lines.size())
+	var share := float(shown) / float(lines.size())
 	var thumb_height := maxf(18.0, track.size.y * share)
-	var travel := (track.size.y - thumb_height) * float(offset) / float(lines.size() - visible)
+	var travel := (track.size.y - thumb_height) * float(offset) / float(lines.size() - shown)
 	draw_rect(
 		Rect2(track.position + Vector2(0.0, travel), Vector2(4.0, thumb_height)),
 		Color(0.55, 0.6, 0.7)
@@ -299,8 +299,8 @@ func _description_lines(character: CharacterData) -> Array[Line]:
 	if not weapons.is_empty():
 		lines.append(Line.new(""))
 		lines.append(Line.new("STARTS WITH", "", Color(0.5, 0.54, 0.62), Color.WHITE, 12))
-		for name in weapons:
-			lines.append(Line.new(name, "", Color(0.66, 0.72, 0.82), Color.WHITE, 13, 10.0))
+		for weapon_name in weapons:
+			lines.append(Line.new(weapon_name, "", Color(0.66, 0.72, 0.82), Color.WHITE, 13, 10.0))
 
 	return lines
 
