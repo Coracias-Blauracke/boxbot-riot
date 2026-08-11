@@ -1183,6 +1183,22 @@ classes are derived from it, never invented ahead of it.** Ten effects thought
 up in advance are ten solutions looking for a problem; a hundred items written
 down first group themselves, and the repeats are the classes worth writing.
 
+**THREE OF THESE LISTS ALREADY EXIST AND ARE LIVE DOCUMENTS**, not a record of
+work already done. Read the relevant one before authoring anything of that kind
+and extend it rather than starting a new one:
+
+| list | state |
+|---|---|
+| `docs/weapon_list.md` | 12 families x 4 tiers, all authored |
+| `docs/character_list.md` | 8 chassis, all authored |
+| `docs/enemy_list.md` | 12 enemies + 2 bosses designed, **5 authored** |
+
+Each ends with a section naming what it could NOT express, and those sections
+are the real backlog - every one of them has turned into a commit. The enemy
+list's is the one with entries still open, and it also records what turned out
+NOT to be needed, which is the more valuable half: the expensive mistake at this
+point is building machinery that already exists.
+
 For each item, note the name, tier, rough price and then EITHER its stat lines
 OR its behaviour in one sentence. That split is the whole point:
 
