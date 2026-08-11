@@ -1162,6 +1162,45 @@ bug: every readiness test called the run's function — precisely the step the U
 was skipping. When a bug is "the caller went around the API", the test has to
 assert the difference between the two paths, not the behaviour of the right one.
 
+**A MODEL THE VIEW NEVER WIRES FAILS SILENTLY - AND WOULD FAIL IN A SHIPPED
+BUILD.** The one thing on this list that no test can catch and no crash will
+announce.
+
+`core/` asks the world for things through SIGNALS on `EntityModel`, because it
+must not hold a reference to a scene. Three ride that channel today:
+
+| signal | what is lost if nothing listens |
+|---|---|
+| `spawn_requested` | every drop and every hatched enemy - **the run's whole income** |
+| `blast_resolved` | the explosion's picture, though its damage still lands |
+
+`main.gd._watch(model)` is the ONE door that connects them, called from the
+player spawner and the enemy spawner. The realistic failure is not somebody
+unplugging it - that would be visible in a diff. It is a NEW way of putting
+something into the world that never calls it:
+
+- a second scene hosting a run — **a demo build, a tutorial, a single-wave
+  "try it" entry point, a boss rush**;
+- a save being restored into a fresh run;
+- an enemy placed by hand in a level instead of by the spawner.
+
+In every one of those the game still runs, nothing errors, and enemies simply
+stop dropping. A player would experience it as an economy that feels wrong,
+which is exactly the report nobody can act on. **`main.tscn` is not the only
+scene that will ever host a run, and the day there is a second one is the day
+this bites.**
+
+THE GUARD IS A NUMBER IN FRONT OF A PERSON, not a test: `scrap=N/M`,
+`spawns=N/M` and `blasts=N/M` in the capture state line. `core/` behaves
+identically whether anything is listening, so the headless suite asserts that
+the REQUEST was made and can never tell you that nobody built it. That is the
+same shape as `world_position`, which nothing wrote for five branches while
+every suite stayed green.
+
+Before cutting any build somebody else will play, run a capture and check those
+three read non-zero. It costs thirty seconds and it is the only thing standing
+between a wiring mistake and a demo where money never appears.
+
 **Watch the import log, not just test results.** Parse errors can leave tests
 passing while silently skipping assertions.
 
@@ -1716,6 +1755,7 @@ What goes stale fastest, and what to do about it:
 | finish a system | move it out of *Known gaps* into *Current state* |
 | add a debug knob | say so under *Current state* — and delete the note when reverted |
 | add a capture flag | the table and notes in *Verifying visual behaviour* |
+| add a signal `core/` emits for the view | the table under *A model the view never wires* — and wire it in `_watch` |
 | lose time to a non-obvious trap | *Rules that break things when violated* |
 | settle something open | replace it with the decision AND its reason |
 | add or remove tests | the assertion count in *How to run things* |
