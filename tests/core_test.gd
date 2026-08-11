@@ -174,6 +174,9 @@ func _initialize() -> void:
 	_test_the_authored_popper_bursts_on_death()
 	_test_the_authored_mortar_explodes_where_it_lands()
 	_test_a_behaviour_can_ask_for_less_than_full_speed()
+	_test_a_charge_stops_before_it_commits()
+	_test_a_dash_does_not_follow_you()
+	_test_two_chargers_keep_separate_clocks()
 	_test_a_dying_thing_can_ask_for_more_of_them()
 	_test_a_timer_asks_once_per_interval_and_keeps_the_remainder()
 	_test_two_holders_of_one_spawn_effect_keep_separate_clocks()
@@ -2715,35 +2718,35 @@ func _test_an_orbiting_enemy_keeps_its_distance() -> void:
 	var target := Vector2.ZERO
 
 	# Too far: close in, straight at the target.
-	var far := orbit.get_direction(null, Vector2(400.0, 0.0), target, 0.016)
+	var far := orbit.get_direction(null, Vector2(400.0, 0.0), target, 0.016, null)
 	_check("far away it walks in", far.x, -1.0)
 	_check("and does not veer", far.y, 0.0)
 
 	# Too near: back off. The retreat carries some of the circle, so a group of
 	# them does not collapse into a line reversing along one axis.
-	var near := orbit.get_direction(null, Vector2(80.0, 0.0), target, 0.016)
+	var near := orbit.get_direction(null, Vector2(80.0, 0.0), target, 0.016, null)
 	_check_bool("close in it backs away", near.x > 0.0, true)
 	_check_bool("while still curving", absf(near.y) > 0.0, true)
 
 	# THE BAND between them is what stops the enemy juddering in place at exactly
 	# the preferred distance, flipping between "too near" and "too far" every
 	# frame. Inside it there is no radial motion at all.
-	var banded := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016)
+	var banded := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016, null)
 	_check("in the band it does not close", banded.x, 0.0)
 	_check_bool("it circles instead", absf(banded.y) > 0.9, true)
 
 	# Which way round is authored, so two of them do not smear into a cloud.
 	orbit.clockwise = true
-	var other_way := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016)
+	var other_way := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016, null)
 	_check("clockwise circles the other way", other_way.y, -banded.y)
 
 	# A turret rather than a skirmisher, with one authored number.
 	orbit.strafe_weight = 0.0
-	var still := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016)
+	var still := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.016, null)
 	_check("no strafe weight stands still in the band", still.length(), 0.0)
 
 	# On top of the target there is no direction to be had, and no divide by zero.
-	_check("standing on it asks for nothing", orbit.get_direction(null, target, target, 0.016).length(), 0.0)
+	_check("standing on it asks for nothing", orbit.get_direction(null, target, target, 0.016, null).length(), 0.0)
 
 func _test_an_armed_enemy_gets_a_rack_to_put_it_in() -> void:
 	print("\n-- an armed bug --")
@@ -3400,9 +3403,9 @@ func _test_a_behaviour_can_ask_for_less_than_full_speed() -> void:
 	orbit.retreat_speed_share = 0.5
 
 	var target := Vector2.ZERO
-	var closing := orbit.get_direction(null, Vector2(400.0, 0.0), target, 0.1)
-	var circling := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.1)
-	var backing := orbit.get_direction(null, Vector2(60.0, 0.0), target, 0.1)
+	var closing := orbit.get_direction(null, Vector2(400.0, 0.0), target, 0.1, null)
+	var circling := orbit.get_direction(null, Vector2(200.0, 0.0), target, 0.1, null)
+	var backing := orbit.get_direction(null, Vector2(60.0, 0.0), target, 0.1, null)
 
 	# The LENGTH is the speed share - see MovementBehavior. Full speed to close,
 	# full speed to circle, and only the retreat gives ground.
@@ -3420,7 +3423,7 @@ func _test_a_behaviour_can_ask_for_less_than_full_speed() -> void:
 	orbit.retreat_speed_share = 1.0
 	_check(
 		"the old behaviour is one authored number",
-		orbit.get_direction(null, Vector2(60.0, 0.0), target, 0.1).length(),
+		orbit.get_direction(null, Vector2(60.0, 0.0), target, 0.1, null).length(),
 		1.0
 	)
 
@@ -3583,6 +3586,89 @@ func _test_the_authored_splitter_and_hive_ask_for_swarmlings() -> void:
 	# It never moves, and says so by carrying no movement behaviour at all
 	# rather than by a speed of zero - one statement of a fact, not two.
 	_check_bool("the hive has no movement resource", hive_data.movement == null, true)
+
+# --- charging ---------------------------------------------------------------
+
+func _make_charger() -> ChargeBehavior:
+	var charge := ChargeBehavior.new()
+	charge.trigger_distance = 200.0
+	charge.approach_speed_share = 0.4
+	charge.windup_time = 0.5
+	charge.dash_time = 0.4
+	charge.recover_time = 0.6
+	charge.dash_speed_share = 1.0
+	return charge
+
+func _test_a_charge_stops_before_it_commits() -> void:
+	print("
+-- charging --")
+	var charge := _make_charger()
+	var state := MovementState.new()
+	var target := Vector2.ZERO
+
+	# Out of range: walks in, at a fraction of its speed, because MOVEMENT_SPEED
+	# is the DASH speed and the approach is the slow part.
+	var far := charge.get_direction(null, Vector2(400.0, 0.0), target, 0.1, state)
+	_check("ambles in", far.length(), 0.4)
+	_check("towards the target", far.x, -0.4)
+	_check("and telegraphs nothing", state.windup, 0.0)
+
+	# In range: stops DEAD. This is the mechanic, not the decoration - a thing
+	# that was moving and suddenly is not is readable with no art at all.
+	var near := Vector2(150.0, 0.0)
+	var committing := charge.get_direction(null, near, target, 0.1, state)
+	_check("stops the moment it commits", committing.length(), 0.0)
+
+	charge.get_direction(null, near, target, 0.25, state)
+	_check("and says how far through it is", state.windup, 0.5)
+
+	# The wind-up ends and it launches at full speed.
+	var launched := charge.get_direction(null, near, target, 0.3, state)
+	_check("then goes, flat out", launched.length(), 1.0)
+	_check("the telegraph is cleared with the phase", state.windup, 0.0)
+
+func _test_a_dash_does_not_follow_you() -> void:
+	var charge := _make_charger()
+	var state := MovementState.new()
+
+	# Wind-up, aimed at the origin.
+	charge.get_direction(null, Vector2(150.0, 0.0), Vector2.ZERO, 0.1, state)
+	var launched := charge.get_direction(null, Vector2(150.0, 0.0), Vector2.ZERO, 0.5, state)
+	_check("committed straight along -x", launched.x, -1.0)
+
+	# The player steps aside DURING the dash. It must not turn: a dash that
+	# tracks is a fast chase, and stepping aside would do nothing at all - which
+	# is the whole answer this enemy exists to ask for.
+	var mid := charge.get_direction(null, Vector2(100.0, 0.0), Vector2(0.0, 400.0), 0.1, state)
+	_check("still going the way it was pointed, x", mid.x, -1.0)
+	_check("and not turning towards them", mid.y, 0.0)
+
+	# Then it stands there, which is the punish window.
+	var recovering := charge.get_direction(null, Vector2(50.0, 0.0), Vector2(0.0, 400.0), 0.5, state)
+	_check("and stops afterwards", recovering.length(), 0.0)
+
+func _test_two_chargers_keep_separate_clocks() -> void:
+	# ONE resource, two holders, which is the trap MovementState exists for: a
+	# phase kept on the .tres would have every charger in the wave winding up
+	# together and dashing on the same frame.
+	var shared := _make_charger()
+	var first := MovementState.new()
+	var second := MovementState.new()
+	var target := Vector2.ZERO
+	var near := Vector2(150.0, 0.0)
+
+	shared.get_direction(null, near, target, 0.1, first)
+	shared.get_direction(null, near, target, 0.4, first)
+
+	shared.get_direction(null, near, target, 0.1, second)
+
+	_check("one is nearly committed", first.windup, 0.8)
+	_check("the other has only just started", second.windup, 0.0)
+
+	# And a behaviour handed no state at all still walks in rather than freezing,
+	# because an enemy standing still for ever reads as broken.
+	var stateless := shared.get_direction(null, Vector2(400.0, 0.0), target, 0.1, null)
+	_check("no state means it just walks", stateless.length(), 0.4)
 
 func _test_neutral_is_nobody_s_ally_and_nobody_s_enemy() -> void:
 	var players := WorldTypes.Faction.PLAYERS

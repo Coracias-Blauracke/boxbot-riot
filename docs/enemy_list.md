@@ -69,7 +69,7 @@ Damage and health are rough and get tuned against play. `group` is the
 | # | enemy | movement | attack | spawn | group | |
 |---|---|---|---|---|---|---|
 | 4 | **Spitter** | orbit at ~220 | RANGED weapon | edge | 2 | **AUTHORED** |
-| 5 | **Charger** | charge: pause, telegraph, dash | contact on the dash | ring | 2 | |
+| 5 | **Charger** | charge: pause, telegraph, dash | contact on the dash | ring | 2 | **AUTHORED** |
 | 6 | **Popper** | chase | contact, and explodes on death | near-player | 4 | **AUTHORED** |
 | 7 | **Lurker** | chase, fast | contact, high burst | near-player | 3 | |
 
@@ -153,16 +153,29 @@ seventh gap turned up later, from asking what a real boss fight is made of:
    keeps hurting whatever stands in it is a duration with its own state, not a
    bigger explosion.
 
-5. **Only one `MovementBehavior`.** Orbit, charge and drift are one resource
-   each, around twenty lines, with no new machinery - the axis was built for
-   exactly this. Charge additionally needs a place to keep its own phase, which
-   is the first behaviour with STATE. It cannot live on the resource, for the
-   same reason effect state cannot: a `.tres` is shared by every holder of it.
+5. ~~**Only one `MovementBehavior`.**~~ **MOSTLY DONE.** Orbit and charge are
+   authored. The phase problem this entry predicted is solved by `MovementState`,
+   owned by the enemy and handed to the behaviour per call - the same split
+   `EffectInstance` exists for, and now available to every behaviour that needs
+   to remember anything.
 
-6. **No telegraph.** A charger that dashes with no wind-up is a cheap shot, and
-   there is no way to show one - no animation, no flash, no sound. The wind-up
-   itself belongs to the behaviour and can exist before the art does, but until
-   something DRAWS it the enemy is unfair rather than hard.
+   Drift is the one left, and it is only wanted for a wandering Hive; the Hive
+   that exists carries NO movement resource at all, which says "it does not move"
+   once instead of twice.
+
+6. ~~**No telegraph.**~~ **DONE**, and the entry was right that the wind-up
+   belongs to the behaviour and can exist before the art. It turned out the
+   wind-up alone is most of the signal: an enemy that was moving and suddenly is
+   not is readable with no art whatsoever.
+
+   `ActorTint` is the drawing half, and it is general - a driver sets `sustain`
+   from any fact it has and the tint decides what that looks like, so the next
+   enemy that wants to show something reuses it without either side learning
+   about the other.
+
+   One lesson worth keeping: the accent must contrast with the BODY, not the
+   background. Red was invisible on an already-red enemy while every number said
+   it was working.
 
 7. **Nothing CHOOSES between an enemy's weapons.** `EnemyData.weapons` is an
    array and every entry fires on its own clock, always, at once. That covers "a

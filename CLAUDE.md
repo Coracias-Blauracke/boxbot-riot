@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 893 assertions across three suites, no editor, no game window
+# tests — 907 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -137,7 +137,10 @@ over - the number that says whether the loop works, because scrap nobody collect
 is currency the run silently never paid out. `spawns=N/M` is how many spawn
 requests were drained and how many entities they
 put down - a hive is otherwise indistinguishable from an ordinary wave arrival,
-because both simply make the enemy count climb. `gap=` is the smallest distance
+because both simply make the enemy count climb. `windup=` is how many enemies
+are mid-telegraph, which a frame taken between two wind-ups cannot show and which
+is the only proof the phase machine runs in the GAME rather than only in the
+suite - MovementState is created by the view. `gap=` is the smallest distance
 between any two enemies, which is the one number
 that says whether a crowd is a crowd or a blob. `gun=` is the distance to the
 nearest thing that shoots, which is a different question from the nearest thing
@@ -204,7 +207,8 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   weapons/   FiringPattern*, SpreadPattern*, TargetSelector*, SwingPattern
   waves/     WaveTable, WaveEntry, WaveModifier, SpawnPattern* + SpawnGroup,
              SpawnRequest (core/ asking the world for entities it cannot build)
-  behaviors/ MovementBehavior, ChaseBehavior, OrbitBehavior
+  behaviors/ MovementBehavior, ChaseBehavior, OrbitBehavior, ChargeBehavior,
+             MovementState (a behaviour's per-holder phase and clock)
 scenes/      the view — nodes, physics, rendering
   lobby.gd   the scene the game STARTS on; owns the roster and builds the run
   ui/        Hud, PlayerPanel, PlayerPalette, ShopScreen, ShopPanel, ShopLayout,
@@ -214,6 +218,7 @@ scenes/      the view — nodes, physics, rendering
   effects/   BlastFlash - what an explosion is DRAWN as, and the only view-side
              thing that knows a blast happened
   pickups/   Pickup - scrap lying on the floor, magnetised by PICKUP_RANGE
+  actors/    ActorTint - what "something is happening to this body" LOOKS like
 content/     authored .tres: characters/ (six + the set that lists them,
              plus test_character, which is main.tscn's own fallback),
              enemies, weapons/ (13 families x 4
@@ -1012,6 +1017,52 @@ regeneration. The `has_listeners` guard is not about the dispatch but about the
 PAYLOAD: seventy enemies would otherwise allocate a TickEvent every frame to
 hand it to nothing.
 
+**A CHARGE IS DODGED, NOT OUT-WALKED, AND THE WIND-UP IS WHAT MAKES IT ONE.**
+Every other enemy is answered by moving AWAY - it walks at you, keeps its
+distance or stands still. A charge is answered by moving ASIDE, and only if you
+saw it coming, which makes the telegraph the mechanic rather than its decoration.
+Without it something crosses 300 units in half a second with no warning and
+there was never a decision to make.
+
+THE STOP IS THE TELEGRAPH, and it needs no art: a thing that was moving and is
+suddenly not is the loudest signal a top-down game has. `ChargeBehavior` does it
+by returning nothing during the wind-up, which the speed-share rule above already
+made expressible. Everything the view adds only makes it louder.
+
+The dash is deliberately NOT re-aimed. A dash that tracks is a fast chase, and
+stepping aside would do nothing - which is the entire question this enemy asks.
+The aim is committed at the END of the wind-up, so it is what the player had the
+whole telegraph to read. `recover_time` is the punish window: a charge that can
+be repeated instantly is one you can only run from.
+
+MOVEMENT_SPEED is the DASH speed and the approach is a fraction of it, because a
+speed share is capped at 1 - a behaviour may never ask for more than its
+holder's stat. Authoring it the other way round would need a cap that lets a
+behaviour exceed its own speed, and a slow status would stop meaning what it says.
+
+**`MovementState` is to a behaviour what `EffectInstance` is to an effect.** A
+`MovementBehavior` is a `.tres` and Godot caches those globally, so a phase kept
+on the resource would have every charger in the wave winding up on one clock. The
+state is owned by the ENEMY, handed in per call, so a behaviour that keeps
+nothing costs nothing to give one to.
+
+**`ActorTint` is the one mechanism for "you should be able to see this".** The
+DRIVER sets `sustain` from whatever fact it has - a wind-up today, a boss phase
+or a status later - and the tint decides only what that looks like. The fact
+stays where it can be tested without a screen and the picture stays where it can
+be changed without touching the fact. It survives the art pass unchanged: the
+same number that lerps a drawn colour becomes a `modulate` on a sprite.
+
+There is no one-shot flash on it yet. "Flash white when hit" is the obvious next
+member and has no caller, and this repo has been bitten by machinery invented
+ahead of the content that needs it.
+
+**A TELEGRAPH MUST CONTRAST WITH THE BODY, NOT WITH THE BACKGROUND.** The accent
+started red, because red is what "about to hurt you" obviously means - and it was
+invisible, because the enemy placeholder is ALREADY red. The state line read
+`windup=2` and the screenshot showed nothing at all. Near-white now. That is the
+whole argument for reading the PNGs as well as the numbers, in one bug.
+
 **A MOVEMENT BEHAVIOUR STEERS *AND* THROTTLES.** The length of what
 `get_direction` returns is a speed share, capped at 1. It used to be documented
 as normalised and the view enforced that by normalising whatever came back, so a
@@ -1282,6 +1333,16 @@ x1.55, price x2.2 per step, every axis identical). Five classes exist - gun,
 blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
 `rapid` grants something at every count from one to six, `bouncy` nothing until
 three. Not one of the twelve needed a new effect class.
+
+SOMETHING HAS TO BE DODGED NOW. **Charger** closes, stops dead for 0.7s, and
+throws itself in a straight line it commits to before it starts - the ninth
+authored enemy and the first that is answered by stepping aside rather than by
+walking away. `ChargeBehavior` is the third movement resource and the first with
+STATE, which is what `MovementState` exists for.
+
+Measured at `--capture-wave=6 --capture-still`: `windup=` goes 0 -> 1 -> 2 -> 0
+as two of them commit and launch, and the pale bodies are visible in the frame
+against ordinary red ones.
 
 MONEY LIES ON THE FLOOR NOW. Killing something no longer pays anybody: it drops
 scrap through the spawn channel, and somebody has to walk out and collect it

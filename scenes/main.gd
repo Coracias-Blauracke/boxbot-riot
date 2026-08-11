@@ -594,6 +594,20 @@ func _on_pickup_collected(value: int) -> void:
 	_collected += 1
 	run.credit_pickup(value)
 
+## How many enemies are mid-telegraph right now.
+##
+## A wind-up is under a second and a screenshot between two of them looks exactly
+## like an enemy that never telegraphs at all - the same reason blasts= exists.
+## It is also the only proof the phase machine runs in the GAME rather than only
+## in the suite, since MovementState is created by the view.
+func _count_winding_up() -> int:
+	var total := 0
+	for child in _actors.get_children():
+		var enemy := child as Enemy
+		if enemy != null and enemy.movement_state.windup > 0.0:
+			total += 1
+	return total
+
 func _count_pickups() -> int:
 	return get_tree().get_nodes_in_group(Pickup.GROUP).size()
 
@@ -844,7 +858,8 @@ func _describe_state() -> String:
 
 	return (
 		"w%d %s t-%.0fs alive=%d/%d enemies=%d/%d gun=%.0f drift=%.0f blasts=%d/%d"
-		+ " gap=%.0f spawns=%d/%d scrap=%d/%d bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
+		+ " gap=%.0f windup=%d spawns=%d/%d scrap=%d/%d bleed=%d burn=%d shots=%d/%d"
+		+ " zoom=%.2f%s"
 	) % [
 		run.wave_number,
 		_phase_name(),
@@ -860,6 +875,7 @@ func _describe_state() -> String:
 		# The smallest distance between any two enemies. Without body collision a
 		# crowd converges until this reads 0 and a swarm draws as one dark blob.
 		_min_enemy_gap(),
+		_count_winding_up(),
 		_spawn_requests,
 		_spawned,
 		_count_pickups(),

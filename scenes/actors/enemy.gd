@@ -6,6 +6,12 @@ extends Actor
 
 var behavior: MovementBehavior
 
+## THIS enemy's copy of whatever its behaviour needs to remember - a charger's
+## phase and its clock. Owned here rather than by the behaviour, because the
+## behaviour is a .tres shared by every enemy carrying it: a phase kept there
+## would have the whole wave winding up together. Same split as EffectInstance.
+var movement_state := MovementState.new()
+
 ## Chosen from the players group rather than assigned once, because in local
 ## co-op there are up to four of them and they move apart.
 var target: Node2D
@@ -107,7 +113,9 @@ func _get_move_direction(delta: float) -> Vector2:
 	if behavior == null or target == null:
 		return Vector2.ZERO
 
-	var steer := behavior.get_direction(model, global_position, target.global_position, delta)
+	var steer := behavior.get_direction(
+		model, global_position, target.global_position, delta, movement_state
+	)
 	var combined := steer + _separation_direction() * _separation_weight
 	if combined.length() <= 0.001:
 		return Vector2.ZERO
@@ -196,6 +204,16 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_tick_effects(delta)
+
+	# ONE LINE, and it is the whole telegraph's picture: the behaviour says how
+	# far through committing it is, ActorTint says what that looks like. Any other
+	# enemy can drive the same tint from anything it knows - a boss phase, a
+	# status - without either side learning about the other.
+	#
+	# The MECHANIC is the enemy standing still, which ChargeBehavior does by
+	# returning nothing. That is what makes the attack readable with no art at
+	# all; this only makes it louder.
+	tint.sustain = movement_state.windup
 
 	_contact_timer -= delta
 	if _contact_timer <= 0.0 and not _touching.is_empty():

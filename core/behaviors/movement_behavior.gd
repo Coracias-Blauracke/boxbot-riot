@@ -23,4 +23,7 @@ extends Resource
 ## never modulate - so a skirmisher that retreats at full speed was not a tuning
 ## choice, it was the only thing expressible.
 
-@abstract func get_direction(host: Variant, self_position: Vector2, target_position: Vector2, delta: float) -> Vector2
+## `state` is this holder's own MovementState - never the resource's, because the
+## resource is shared by every enemy carrying it. A behaviour with no state to
+## keep simply ignores the argument.
+@abstract func get_direction(host: Variant, self_position: Vector2, target_position: Vector2, delta: float, state: MovementState) -> Vector2
