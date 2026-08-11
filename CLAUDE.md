@@ -1292,8 +1292,12 @@ the first enemy that attacks from outside contact range and therefore the first
 thing that gives the player's MOVEMENT_SPEED and RANGE something to do — until
 now every weapon in the game solved the same problem, something walking straight
 at you. It needed no new attack system: an enemy carries `WeaponData` on the
-same `WeaponModel`, aimed by the same `TargetSelector`. Eight enemies authored of
-the twelve in `docs/enemy_list.md`, plus the first boss.
+same `WeaponModel`, aimed by the same `TargetSelector`.
+
+**EIGHT of the TEN ordinary enemies are authored, and one of the two bosses** -
+Lurker, Warden and Colossus are what is left. Stated in two numbers rather than
+one because the list numbers its bosses 11 and 12, so "of the twelve" has meant
+both "including the bosses" and "not counting them" in this file already.
 
 BOSS WAVES HAPPEN. `spawn_boss` used to be rolled, stored, emitted and printed
 with nothing reading it, so a boss wave was announced and then played out
@@ -1371,7 +1375,7 @@ THE HORDE CAN MAKE MORE OF ITSELF. `EffectSpawn` (on death, or on a clock) plus
 `SpawnRequest` is the channel `core/` uses to ask for entities it cannot build,
 and it closed the third gap in `docs/enemy_list.md`. **Splitter** bursts into two
 swarmlings when killed and **Hive** releases two every five seconds while
-standing perfectly still - eight enemies authored of the twelve. The Queen's
+standing perfectly still. The Queen's
 other half, which the list has always described as "ranged spit AND spawns
 swarmlings", is now one authored effect away.
 
@@ -1382,7 +1386,7 @@ entities per request exactly as authored.
 AREA DAMAGE IS IN, and it is the first thing authored on both sides of the game
 at once. `BlastData` (how far, how hard, whose side) plus `EffectBlast` (on
 death, on a kill, on impact) covers every family either prose list asked for:
-**Popper** bursts when it dies and is the ninth authored enemy, **Chain
+**Popper** bursts when it dies, **Chain
 Detonator** detonates whatever you kill, **Shaped Charge** is +30% AREA_SIZE and
 +4 elemental damage with no code at all, and the **Slag Mortar** is the
 thirteenth weapon family - a lobbed charge whose explosion is 60% of the gun's
@@ -1505,6 +1509,11 @@ beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
 line. The 45 stat descriptions and the 8 character descriptions are hand-written
 and are the only authored player-facing prose in the game.
 
+**The validator refuses a charge that cannot be seen coming.** A `windup_time`
+of 0 loads, runs, and turns the one enemy that is answered by stepping aside
+into a cheap shot - and nothing at runtime would ever say so. Verified by
+setting it to 0 and watching it fail.
+
 **The validator refuses a pickup that pays nothing** and warns about one that
 attracts from further than it can travel. Both load fine and both are invisible
 at runtime: a value of 0 is a node that costs frames and credits nobody, and a
@@ -1605,7 +1614,7 @@ and extend it rather than starting a new one:
 |---|---|
 | `docs/weapon_list.md` | 12 families x 4 tiers, all authored |
 | `docs/character_list.md` | 8 chassis, all authored |
-| `docs/enemy_list.md` | 12 enemies + 2 bosses designed, **5 authored** |
+| `docs/enemy_list.md` | 10 ordinary + 2 bosses designed, **8 and 1 authored** - Lurker, Warden and Colossus left |
 
 Each ends with a section naming what it could NOT express, and those sections
 are the real backlog - every one of them has turned into a commit. The enemy

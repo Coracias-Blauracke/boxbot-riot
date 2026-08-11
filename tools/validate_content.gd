@@ -685,6 +685,37 @@ func _validate_character(path: String, character: CharacterData) -> void:
 		if character.starting_items[i] == null:
 			_errors.append("%s : starting_items[%d] is null (deleted item?)" % [path, i])
 
+## A charge that cannot be seen coming, or that never arrives.
+##
+## Both load, both run, and both are silent. The wind-up is not a flourish on
+## this enemy - it is the entire reason it is fair, because a charge is answered
+## by stepping ASIDE and you cannot step aside from something you were not shown.
+## At 0 it is a cheap shot rather than a hard enemy, and nothing at runtime would
+## ever say so.
+func _validate_movement(path: String, movement: MovementBehavior) -> void:
+	var charge := movement as ChargeBehavior
+	if charge == null:
+		return
+
+	if charge.windup_time <= 0.0:
+		_errors.append(
+			"%s : charges with a wind-up of %.2fs, so it cannot be seen coming"
+			% [path, charge.windup_time]
+		)
+
+	if charge.trigger_distance <= 0.0:
+		_errors.append(
+			"%s : commits at %.0f units, so it never charges at all"
+			% [path, charge.trigger_distance]
+		)
+
+	if charge.recover_time <= 0.0:
+		_warnings.append(
+			"%s : recovers instantly, so a charge can be repeated with no window"
+			% path
+			+ " to punish it - the player can only ever run"
+		)
+
 ## Something on the floor that pays nothing, or that cannot reach anybody.
 ##
 ## Both load fine and both are invisible at runtime: a pickup worth 0 is a node
@@ -721,6 +752,9 @@ func _validate_entity(path: String, entity: EntityData) -> void:
 
 	if entity is ProjectileData:
 		_validate_projectile_effects(path, entity as ProjectileData)
+
+	if entity is EnemyData:
+		_validate_movement(path, (entity as EnemyData).movement)
 
 
 ## A projectile runs its innate effects on IMPACT and only on impact.
