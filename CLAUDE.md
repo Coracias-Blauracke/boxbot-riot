@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 766 assertions across three suites, no editor, no game window
+# tests — 778 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -946,8 +946,19 @@ the first enemy that attacks from outside contact range and therefore the first
 thing that gives the player's MOVEMENT_SPEED and RANGE something to do — until
 now every weapon in the game solved the same problem, something walking straight
 at you. It needed no new attack system: an enemy carries `WeaponData` on the
-same `WeaponModel`, aimed by the same `TargetSelector`. Three enemies authored
-of the twelve in `docs/enemy_list.md`.
+same `WeaponModel`, aimed by the same `TargetSelector`. Five enemies authored of
+the twelve in `docs/enemy_list.md`, plus the first boss.
+
+BOSS WAVES HAPPEN. `spawn_boss` used to be rolled, stored, emitted and printed
+with nothing reading it, so a boss wave was announced and then played out
+identically to any other. `WaveTable.boss_entries` says what a boss wave puts
+down and `boss_every` says how often one comes - on the TABLE, because the only
+thing that ever set the flag was an effect no authored content used, which made
+a boss unreachable in a real run whatever the director did. The run seeds the
+cadence BEFORE `CALCULATE_WAVE`, so an effect can still only ever add a boss to
+a wave that was not going to have one. The boss arrives on the FIRST frame of
+its wave and costs no budget: a boss wave should be harder than the wave it
+replaces, and charging the budget for it would quietly empty the rest.
 
 A run can be PAUSED and RESTARTED: any device opens one shared menu with resume,
 restart and quit, and the same menu opens itself when the run ends, so a wipe no

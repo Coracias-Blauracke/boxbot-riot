@@ -5,6 +5,8 @@
 [ext_resource type="Resource" path="res://content/enemies/chaser.tres" id="3_chaser"]
 [ext_resource type="Resource" path="res://content/enemies/brute.tres" id="4_brute"]
 [ext_resource type="Resource" path="res://content/enemies/spitter.tres" id="9_spitter"]
+[ext_resource type="Resource" path="res://content/enemies/swarmling.tres" id="10_swarm"]
+[ext_resource type="Resource" path="res://content/enemies/queen.tres" id="11_queen"]
 [ext_resource type="Resource" path="res://content/spawn/ring.tres" id="5_ring"]
 [ext_resource type="Resource" path="res://content/spawn/ambush.tres" id="6_ambush"]
 [ext_resource type="Script" path="res://core/waves/wave_modifier.gd" id="7_modifier"]
@@ -40,9 +42,31 @@ cost = 3.0
 group_size = 2
 pattern = ExtResource("5_ring")
 
+[sub_resource type="Resource" id="Resource_swarm"]
+script = ExtResource("2_entry")
+enemy = ExtResource("10_swarm")
+min_wave = 1
+max_wave = 0
+weight = 2.5
+cost = 0.6
+group_size = 8
+pattern = ExtResource("5_ring")
+
+[sub_resource type="Resource" id="Resource_queen"]
+script = ExtResource("2_entry")
+enemy = ExtResource("11_queen")
+min_wave = 5
+max_wave = 0
+weight = 1.0
+cost = 0.0
+group_size = 1
+pattern = ExtResource("5_ring")
+
 [resource]
 script = ExtResource("1_table")
-entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes"), SubResource("Resource_spitters")])
+entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes"), SubResource("Resource_spitters"), SubResource("Resource_swarm")])
+boss_entries = Array[ExtResource("2_entry")]([SubResource("Resource_queen")])
+boss_every = 5
 total_waves = 20
 base_duration = 20.0
 duration_per_wave = 1.5

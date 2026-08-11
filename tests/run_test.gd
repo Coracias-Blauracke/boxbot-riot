@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_test_overrides_release()
 	_test_wave_loop()
 	_test_boss_chance_is_independent_per_player()
+	_test_a_boss_wave_actually_puts_a_boss_on_the_floor()
 	_test_run_length_comes_from_the_table()
 	_test_wave_table_curves()
 	_test_director_respects_availability()
@@ -286,6 +287,83 @@ func _boss_spawned(seed_value: int, player_count: int) -> bool:
 	# lost. That mistake made this test report a flat "no boss ever".
 	run.start_wave()
 	return run.spawn_boss_this_wave
+
+## The gap this closes: spawn_boss was rolled, stored on the run, carried by
+## wave_started and PRINTED by main.gd, and no spawner ever read it. A boss wave
+## was announced and then played out exactly like any other.
+func _test_a_boss_wave_actually_puts_a_boss_on_the_floor() -> void:
+	print("
+-- boss waves --")
+	var table := _make_table()
+	var boss := _make_enemy(400.0)
+	boss.display_key = "TEST_BOSS"
+	table.boss_entries = [_make_entry(boss, 1, 0.0, 1)]
+
+	var director := WaveDirector.new()
+	director.table = table
+	var rng := RunRandom.new(4242)
+
+	# An ordinary wave is unchanged - nothing about this may leak into the
+	# waves that did not roll one.
+	director.begin(3, 1, false)
+	var plain := director.advance(0.001, rng)
+	for group in plain:
+		_check_bool("an ordinary wave has no boss in it", group.enemy == boss, false)
+
+	# A boss wave puts it down on the FIRST frame: a boss that wandered in
+	# halfway through is a wave with a surprise in it.
+	director.begin(3, 1, true)
+	var opening := director.advance(0.001, rng)
+	var bosses := 0
+	for group in opening:
+		if group.enemy == boss:
+			bosses += 1
+			_check_int("and exactly one of it", group.count, 1)
+	_check_int("a boss wave opens with the boss", bosses, 1)
+
+	# Once, not once per frame.
+	var later := 0
+	for step in 200:
+		for group in director.advance(0.05, rng):
+			if group.enemy == boss:
+				later += 1
+	_check_int("and never again for the rest of the wave", later, 0)
+
+	# Gated by the same min_wave the ordinary entries use, so "the queen appears
+	# from wave 10" is authored rather than coded.
+	table.boss_entries = [_make_entry(boss, 9, 0.0, 1)]
+	director.begin(3, 1, true)
+	var too_early := director.advance(0.001, rng)
+	for group in too_early:
+		_check_bool("a boss not yet available does not appear", group.enemy == boss, false)
+
+	# And a boss rolled with nothing to be is a plain wave rather than an error.
+	table.boss_entries = []
+	director.begin(3, 1, true)
+	director.advance(0.001, rng)
+	_check_bool("an empty boss list simply runs the wave", true, true)
+
+	# The CADENCE, which is what makes a boss reachable at all. Before this the
+	# only thing that ever set spawn_boss was an effect no authored content
+	# used, so a boss could not appear in a real run however the director
+	# behaved.
+	var curve := _make_table()
+	curve.boss_every = 5
+	_check_bool("wave 4 is ordinary", curve.is_boss_wave(4), false)
+	_check_bool("wave 5 is a boss wave", curve.is_boss_wave(5), true)
+	_check_bool("and so is wave 10", curve.is_boss_wave(10), true)
+	curve.boss_every = 0
+	_check_bool("zero never is", curve.is_boss_wave(5), false)
+
+	# Seeded onto the event BEFORE the pipeline, so an effect can only ever add
+	# a boss to a wave that was not going to have one.
+	curve.boss_every = 2
+	var run := RunModel.new(1, null, curve)
+	run.add_player(EntityModel.new())
+	run.start_wave()
+	_check_bool("wave 1 has no boss", run.spawn_boss_this_wave, false)
+	run.start_wave()
+	_check_bool("wave 2 does", run.spawn_boss_this_wave, true)
 
 # --- wave director ---------------------------------------------------------
 

@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://core/data/enemy_data.gd" id="1_enemy"]
+[ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" path="res://core/behaviors/chase_behavior.gd" id="3_chase"]
+
+[sub_resource type="Resource" id="hp"]
+script = ExtResource("2_mod")
+stat = 0
+modifier_type = 0
+value = 9.0
+
+[sub_resource type="Resource" id="speed"]
+script = ExtResource("2_mod")
+stat = 14
+modifier_type = 0
+value = 150.0
+
+[sub_resource type="Resource" id="damage"]
+script = ExtResource("2_mod")
+stat = 5
+modifier_type = 0
+value = 3.0
+
+[sub_resource type="Resource" id="chase"]
+script = ExtResource("3_chase")
+stop_distance = 0.0
+
+[resource]
+script = ExtResource("1_enemy")
+display_key = "ENEMY_SWARMLING"
+collider_radius = 6.0
+base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("damage")])
+movement = SubResource("chase")
+separation_radius_scale = 1.8
+separation_weight = 0.6
+contact_damage_interval = 0.5
+currency_reward = 1

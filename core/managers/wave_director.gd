@@ -33,13 +33,21 @@ var _planned_events: int = 0
 var _next_event_at: float = 0.0
 var _finished: bool = false
 
-func begin(p_wave_number: int, p_player_count: int = 1) -> void:
+## Set at the start of a boss wave and cleared the moment the boss is handed
+## over. A flag rather than a count, because "one boss" is the whole rule.
+var _boss_pending: bool = false
+
+## `p_spawn_boss` is the answer the CALCULATE_WAVE pipeline came to. It used to
+## be rolled, stored, emitted and printed with nothing reading it, so a boss
+## wave was announced and then played out exactly like any other.
+func begin(p_wave_number: int, p_player_count: int = 1, p_spawn_boss: bool = false) -> void:
 	wave_number = p_wave_number
 	player_count = maxi(1, p_player_count)
 	elapsed = 0.0
 	_finished = false
 	active_modifiers = []
 	_max_entry_cost = 0.0
+	_boss_pending = p_spawn_boss
 
 	if table == null:
 		duration = 0.0
@@ -74,6 +82,15 @@ func advance(delta: float, rng: RunRandom) -> Array[SpawnGroup]:
 		return spawns
 
 	elapsed += delta
+
+	# The boss arrives FIRST, on the same frame the wave begins. A boss that
+	# wandered in halfway through is a wave with a surprise in it; a boss wave
+	# should be a boss wave from the first second.
+	if _boss_pending:
+		_boss_pending = false
+		var boss := _draw_boss(rng)
+		if boss != null:
+			spawns.append(boss)
 
 	# Spawning is spread across the whole wave rather than dumped at the start,
 	# so pressure builds instead of arriving all at once.
@@ -120,6 +137,32 @@ func _average_batch_cost() -> float:
 		total_weight += entry.weight
 
 	return weighted_cost / total_weight if total_weight > 0.0 else 1.0
+
+## One boss, weighted among whatever this wave allows. Costs no budget - see
+## WaveTable.boss_entries.
+func _draw_boss(rng: RunRandom) -> SpawnGroup:
+	var available := table.boss_entries_for(wave_number)
+	if available.is_empty():
+		return null
+
+	# Weighted through RunRandom like every other draw, on the SPAWNS stream:
+	# which boss turns up is a spawn decision, and giving it its own stream
+	# would make the boss roll shift every later spawn in the wave.
+	var options: Array = []
+	var weights := PackedFloat32Array()
+	for entry in available:
+		options.append(entry)
+		weights.append(maxf(0.0, entry.weight))
+
+	var chosen := rng.weighted_pick(RunRandom.Stream.SPAWNS, options, weights) as WaveEntry
+	if chosen == null:
+		return null
+
+	var group := SpawnGroup.new()
+	group.enemy = chosen.enemy
+	group.count = maxi(1, chosen.group_size)
+	group.pattern = chosen.pattern if chosen.pattern != null else table.default_pattern
+	return group
 
 func _run_spawn_event(rng: RunRandom) -> Array[SpawnGroup]:
 	var result: Array[SpawnGroup] = []

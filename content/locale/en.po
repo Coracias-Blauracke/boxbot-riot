@@ -74,6 +74,12 @@ msgstr "Gun"
 msgid "CLASS_RAPID"
 msgstr "Rapid"
 
+msgid "ENEMY_SWARMLING"
+msgstr "Swarmling"
+
+msgid "ENEMY_QUEEN"
+msgstr "Queen"
+
 msgid "ENEMY_SPITTER"
 msgstr "Spitter"
 
