@@ -170,6 +170,9 @@ func _initialize() -> void:
 	_test_a_bug_that_bursts_hurts_the_players_and_not_the_swarm()
 	_test_an_exploding_kill_goes_off_where_the_victim_was()
 	_test_a_second_copy_of_an_exploding_item_hits_harder()
+	_test_a_chain_does_not_spend_its_targets_on_corpses()
+	_test_the_authored_popper_bursts_on_death()
+	_test_the_authored_mortar_explodes_where_it_lands()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -3155,20 +3158,37 @@ func _test_a_blast_announces_itself_to_whoever_is_listening() -> void:
 	var player := _sided(Vector2(30.0, 0.0), WorldTypes.Faction.PLAYERS)
 	var census := _census_of([bug, player])
 
-	# A one-element Array rather than a plain local: a lambda captures by VALUE,
-	# so assigning to an outer local inside one is silently lost.
-	var seen: Array[BlastEvent] = []
-	bug.blast_resolved.connect(func(event: BlastEvent) -> void: seen.append(event))
+	# An Array rather than a plain local: a lambda captures by VALUE, so assigning
+	# to an outer local inside one is silently lost.
+	#
+	# What goes into it is COPIED OUT of the event and never the event itself.
+	# Keeping one closes the cycle model -> signal -> lambda -> event -> model,
+	# which RefCounted cannot collect - measured here at 48 leaked objects before
+	# this line looked like it does now. BlastFlash.setup copies out for the same
+	# reason, and it is the same rule that stops an effect caching a payload.
+	var seen: Array[Dictionary] = []
+	bug.blast_resolved.connect(
+		func(event: BlastEvent) -> void:
+			seen.append({
+				&"centre": event.centre,
+				&"radius": event.radius,
+				&"victims": event.victims.size(),
+			})
+	)
 
 	bug.detonate(_make_blast(5.0, 70.0), Vector2(12.0, 0.0))
 
 	# This signal IS the view's only hook. Everything drawn for an explosion in
 	# the running game comes off it, so a blast that resolves silently is an
 	# explosion nobody can see.
+	var centre: Vector2 = seen[0][&"centre"] if not seen.is_empty() else Vector2.ZERO
+	var reported_radius: float = seen[0][&"radius"] if not seen.is_empty() else 0.0
+	var caught: int = seen[0][&"victims"] if not seen.is_empty() else -1
+
 	_check_int("the view was told once", seen.size(), 1)
-	_check("where it went off", seen[0].centre.x, 12.0)
-	_check("how big it turned out", seen[0].radius, 70.0)
-	_check_int("and who it caught", seen[0].victims.size(), 1)
+	_check("where it went off", centre.x, 12.0)
+	_check("how big it turned out", reported_radius, 70.0)
+	_check_int("and who it caught", caught, 1)
 	_check_int("census untouched", census.count_alive(), 2)
 
 func _test_a_blast_with_nowhere_to_look_hurts_nobody() -> void:
@@ -3277,6 +3297,92 @@ func _test_a_blast_goes_through_the_targets_own_defences() -> void:
 	_check("armor halves it at the half point", armoured.current_hp, 80.0)
 	_check("and the event reports what LANDED", event.damage_dealt, 20.0)
 	_check_int("both alive", census.count_alive(), 2)
+
+func _test_a_chain_does_not_spend_its_targets_on_corpses() -> void:
+	var bug := _sided(Vector2.ZERO, WorldTypes.Faction.ENEMIES)
+	var already_dead := _sided(Vector2(10.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var still_standing := _sided(Vector2(30.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var census := _census_of([bug, already_dead, still_standing])
+
+	# The cache is built HERE, while all three are alive - and then one dies
+	# without it being invalidated, which is exactly the state a chain reaction is
+	# in. The census holds its answer for the whole frame, so every explosion
+	# after the first one in that frame is asking a stale question. Measured in a
+	# capture run as nine explosions reporting fifty victims between them.
+	_check_int("all three counted while alive", census.count_alive(), 3)
+	_hit(already_dead, 500.0)
+	_check_int("and the cache still says so", census.count_alive(), 3)
+
+	var blast := _make_blast(20.0)
+	blast.max_targets = 1
+	var event := bug.detonate(blast, Vector2.ZERO)
+
+	_check_int("the one target was not wasted on the corpse", event.victims.size(), 1)
+	_check("it went to the one still standing", still_standing.current_hp, 80.0)
+
+	census.invalidate()
+	_check_int("the census catches up on the next frame", census.count_alive(), 2)
+
+func _test_the_authored_popper_bursts_on_death() -> void:
+	print("\n-- the authored content --")
+	var data := load("res://content/enemies/popper.tres") as EnemyData
+	_check_bool("the popper loads", data != null, true)
+
+	var popper := EntityModel.new(data)
+	popper.faction = WorldTypes.Faction.ENEMIES
+	popper.world_position = Vector2.ZERO
+
+	var close := _sided(Vector2(20.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var far := _sided(Vector2(200.0, 0.0), WorldTypes.Faction.PLAYERS)
+	var swarm_mate := _sided(Vector2(20.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([popper, close, far, swarm_mate])
+
+	_hit(popper, 500.0)
+
+	# Asserted against the AUTHORED file rather than against numbers invented
+	# here: 12 damage at the centre, tapering to 45% at the authored 85 radius,
+	# so 12 * (1 - 0.55 * 20/85) twenty units out.
+	_check("the player next to it was hurt", close.current_hp, 100.0 - 10.4470588)
+	_check("the one across the arena was not", far.current_hp, 100.0)
+	_check("and the swarm is spared, as authored", swarm_mate.current_hp, 100.0)
+	_check_int("the popper is gone", census.count_alive(), 3)
+
+func _test_the_authored_mortar_explodes_where_it_lands() -> void:
+	var mortar := load("res://content/weapons/slag_mortar_1.tres") as WeaponData
+	var charge := load("res://content/projectiles/slag_charge.tres") as ProjectileData
+	_check_bool("the mortar and its charge load", mortar != null and charge != null, true)
+	_check_int("the charge carries exactly one effect", charge.innate_effects.size(), 1)
+
+	var gunner := _sided(Vector2.ZERO, WorldTypes.Faction.PLAYERS)
+	var bug := _sided(Vector2(300.0, 0.0), WorldTypes.Faction.ENEMIES)
+	var census := _census_of([gunner, bug])
+
+	var weapon := WeaponModel.new(mortar)
+	weapon.set_wielder(gunner)
+	weapon.rng = gunner.rng
+
+	# The mortar carries 5% crit of its own, and a crit doubles the explosion
+	# along with the shot - which is correct and would make this assertion flake
+	# one run in twenty. Crit has its own tests; this one is about the radius.
+	weapon.stats.add_modifier(
+		StatTypes.Stat.CRIT_CHANCE, StatTypes.Modifier.PERCENT, -1.0, &"test_no_crit"
+	)
+
+	# Exactly what Projectile._run_projectile_effects does on a hit: the effect
+	# is executed on the SHOOTER with the impact it was handed.
+	var impact := ImpactEvent.new()
+	impact.shooter = gunner
+	impact.position = bug.world_position
+	impact.snapshot = weapon.build_shot(mortar)
+
+	var effect := charge.innate_effects[0]
+	effect.execute(gunner, EffectInstance.new(effect, charge), impact)
+
+	# 60% of the weapon's 14 ranged damage, at the centre of an 80 radius. The
+	# tier scaling comes free: the share reads the WEAPON's damage, so tier IV
+	# explodes for its own 52 with not one number authored twice.
+	_check("the explosion landed on the bug", bug.current_hp, 100.0 - 8.4)
+	_check_int("nothing died", census.count_alive(), 2)
 
 func _test_neutral_is_nobody_s_ally_and_nobody_s_enemy() -> void:
 	var players := WorldTypes.Faction.PLAYERS

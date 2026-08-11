@@ -109,6 +109,16 @@ var _capture_pause_at: Array[float] = []
 ## Capture only, seconds from startup. 0 is off.
 var _capture_restart_at: float = 0.0
 
+## Capture only. Items handed to every player before the first wave, by res://
+## path, so an item's behaviour can be observed at all. 1 is the ordinary start.
+var _capture_items: PackedStringArray = []
+var _capture_start_wave: int = 1
+
+## Running tallies for the capture state line: how many explosions have gone off
+## and how many things they caught between them.
+var _blasts: int = 0
+var _blast_victims: int = 0
+
 ## How many times this process has restarted. STATIC because the whole point of
 ## a restart is that everything else is thrown away - an instance variable would
 ## come back as 0 and --capture-restart would reload for ever.
@@ -168,6 +178,17 @@ func _ready() -> void:
 			_capture_pause_at.append(float(arg.substr("--capture-pause=".length())))
 		elif arg.begins_with("--capture-restart="):
 			_capture_restart_at = float(arg.substr("--capture-restart=".length()))
+		elif arg.begins_with("--capture-item="):
+			# The same hole as --capture-shop-owned, one layer down: an item's
+			# BEHAVIOUR cannot be photographed at all, because the only way to
+			# hold one is to buy it and a scripted player never presses anything.
+			# Twenty-six authored items and not one of them observable in a run.
+			_capture_items.append(arg.substr("--capture-item=".length()))
+		elif arg.begins_with("--capture-wave="):
+			# Everything authored past wave 3 is unreachable in a capture: the
+			# run would have to be played for minutes, by nobody. This starts it
+			# at wave N with wave N's budget, curve and roster.
+			_capture_start_wave = maxi(1, int(arg.substr("--capture-wave=".length())))
 
 	run = RunModel.new(run_seed, world_data, wave_table)
 	run.death_rule = death_rule
@@ -206,6 +227,12 @@ func _ready() -> void:
 	_pause_screen.bind(run, inputs)
 	_pause_screen.restart_requested.connect(_restart)
 	_pause_screen.quit_requested.connect(_quit)
+
+	# Straight onto the model, because start_wave() increments it: the run then
+	# begins at wave N with wave N's budget, duration and entry list, rather than
+	# playing four minutes of wave 1 to reach anything authored later.
+	if _capture_start_wave > 1:
+		run.wave_number = _capture_start_wave - 1
 
 	run.start_wave()
 	print("wave %d started, boss=%s, duration=%.0fs, restarts=%d" % [
@@ -317,6 +344,15 @@ func _spawn_player(index: int) -> Character:
 		if item != null:
 			model.add_item(item)
 
+	# And whatever a capture run asked for, through the same door - so what is
+	# photographed is an item being HELD, not a special case pretending to be one.
+	for path in _capture_items:
+		var granted := load(path) as ItemData
+		if granted == null:
+			push_error("--capture-item: %s is not an ItemData" % path)
+			continue
+		model.add_item(granted)
+
 	# Same for the loadout, and from the CHARACTER rather than from an export on
 	# this scene. The rack in the hands follows the model, so nothing here has to
 	# tell the view about them.
@@ -415,6 +451,13 @@ func _draw_blasts_of(model: EntityModel) -> void:
 func _on_blast_resolved(event: BlastEvent) -> void:
 	if event == null or event.radius <= 0.0:
 		return
+
+	# Counted for the capture state line. An explosion is over in a third of a
+	# second, so a screenshot taken between two of them is indistinguishable from
+	# a build where nothing explodes at all - and both look completely fine.
+	_blasts += 1
+	_blast_victims += event.victims.size()
+
 	var flash := BlastFlash.new()
 	flash.setup(event)
 	_actors.add_child(flash)
@@ -595,7 +638,10 @@ func _describe_state() -> String:
 			entry.get_weapons().size(),
 		]
 
-	return "w%d %s t-%.0fs alive=%d/%d enemies=%d drift=%.0f bleed=%d burn=%d shots=%d zoom=%.2f%s" % [
+	return (
+		"w%d %s t-%.0fs alive=%d/%d enemies=%d drift=%.0f blasts=%d/%d bleed=%d burn=%d"
+		+ " shots=%d zoom=%.2f%s"
+	) % [
 		run.wave_number,
 		_phase_name(),
 		run.wave_time_remaining(),
@@ -603,6 +649,8 @@ func _describe_state() -> String:
 		players.size(),
 		_count_enemies(),
 		_max_position_drift(),
+		_blasts,
+		_blast_victims,
 		# Straight off the census, so a status that is not landing is visible in
 		# the numbers rather than only in a screenshot.
 		run.census.count_with_status(&"bleed"),

@@ -149,6 +149,14 @@ func _targets(
 ) -> Array[EntityModel]:
 	var found: Array[EntityModel] = []
 	for candidate in census.entities_within(at, reach_radius, source):
+		# The census answers from a cache held for the whole frame, which is what
+		# makes twenty questions cost one walk - but a CHAIN of explosions all
+		# happens inside one frame, so by the second one that answer already lists
+		# the dead. apply_damage refuses a corpse anyway, so the damage was never
+		# wrong; what was wrong is that a capped blast spent its three targets on
+		# things that were already gone.
+		if not candidate.is_alive:
+			continue
 		if _reaches(source, candidate):
 			found.append(candidate)
 

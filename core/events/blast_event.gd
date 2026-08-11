@@ -14,6 +14,12 @@ extends EventPayload
 ## fields out. The authored resource is already the answer to "what should this
 ## look like", exactly as EntityData.collider_radius is, and duplicating half of
 ## it here would be two places to keep in step.
+##
+## NOTHING MAY KEEP ONE. Like every payload it references entities, and an entity
+## owns the dispatcher and the signal connection that delivered this - so a
+## listener that stores the event closes a cycle RefCounted cannot collect.
+## Measured at 48 leaked objects, by a test that did exactly that. Copy out what
+## you need, which is what BlastFlash.setup does.
 
 var blast: BlastData = null
 

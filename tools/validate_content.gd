@@ -721,3 +721,39 @@ func _validate_effects(path: String, effects: Array) -> void:
 		for hook in hooks:
 			if not Hooks.KINDS.has(hook):
 				_errors.append("%s : effect[%d] declares an unknown hook (%d)" % [path, i, hook])
+
+		if effect is EffectBlast:
+			_validate_blast(path, "effect[%d]" % i, (effect as EffectBlast).blast)
+
+## An explosion that loads, prices, sells and goes off for nothing.
+##
+## Every failure here is silent at runtime: a blast with no radius catches
+## nobody, and a blast with no damage catches everybody and does nothing to them.
+## Neither logs anything, and both read as "the explosion is not working" long
+## after whoever authored it has moved on.
+func _validate_blast(path: String, label: String, blast: BlastData) -> void:
+	if blast == null:
+		_errors.append("%s : %s explodes with no BlastData at all" % [path, label])
+		return
+
+	if blast.radius <= 0.0:
+		_errors.append("%s : %s has a blast radius of %.1f, which reaches nobody"
+			% [path, label, blast.radius])
+
+	# An empty scaling table means "all of my own damage type", which is a real
+	# number for a player carrying elemental items and exactly zero for every
+	# authored enemy. Base damage of nothing on top of it is a blast that only
+	# works for half the things that can hold it.
+	if blast.base_damage <= 0.0 and blast.damage_scaling.is_empty():
+		_warnings.append(
+			"%s : %s has no base damage and no scaling, so it deals only whatever"
+			% [path, label]
+			+ " its source's own damage type happens to be"
+		)
+
+	for scaling in blast.damage_scaling:
+		if scaling == null:
+			_errors.append("%s : %s has a null entry in damage_scaling" % [path, label])
+		elif not StatTypes.Stat.values().has(scaling.stat):
+			_errors.append("%s : %s scales off a stat outside the enum (%d)"
+				% [path, label, scaling.stat])

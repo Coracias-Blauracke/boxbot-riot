@@ -74,8 +74,14 @@ msgstr "Gun"
 msgid "CLASS_RAPID"
 msgstr "Rapid"
 
-msgid "ENEMY_SWARMLING"
-msgstr "Swarmling"
+msgid "ENEMY_BRUTE"
+msgstr "Brute"
+
+msgid "ENEMY_CHASER"
+msgstr "Chaser"
+
+msgid "ENEMY_POPPER"
+msgstr "Popper"
 
 msgid "ENEMY_QUEEN"
 msgstr "Queen"
@@ -83,17 +89,8 @@ msgstr "Queen"
 msgid "ENEMY_SPITTER"
 msgstr "Spitter"
 
-msgid "PROJ_ACID_GLOB"
-msgstr "Acid Glob"
-
-msgid "WEAPON_ACID_SPIT"
-msgstr "Acid Spit"
-
-msgid "ENEMY_BRUTE"
-msgstr "Brute"
-
-msgid "ENEMY_CHASER"
-msgstr "Chaser"
+msgid "ENEMY_SWARMLING"
+msgstr "Swarmling"
 
 msgid "ITEM_BARBED_EDGE"
 msgstr "Barbed Edge"
@@ -103,6 +100,9 @@ msgstr "Bloodstone"
 
 msgid "ITEM_BLOOD_CONTAINER"
 msgstr "Blood Container"
+
+msgid "ITEM_CHAIN_DETONATOR"
+msgstr "Chain Detonator"
 
 msgid "ITEM_COLD_FIRE"
 msgstr "Cold Fire"
@@ -152,6 +152,9 @@ msgstr "Scrap Plating"
 msgid "ITEM_SERRATED_ROUNDS"
 msgstr "Serrated Rounds"
 
+msgid "ITEM_SHAPED_CHARGE"
+msgstr "Shaped Charge"
+
 msgid "ITEM_SHARP_BLADE"
 msgstr "Sharp Blade"
 
@@ -167,8 +170,14 @@ msgstr "Universal Doubler"
 msgid "ITEM_WHETSTONE"
 msgstr "Whetstone"
 
+msgid "PROJ_ACID_GLOB"
+msgstr "Acid Glob"
+
 msgid "PROJ_BULLET"
 msgstr "Bullet"
+
+msgid "PROJ_SLAG_CHARGE"
+msgstr "Slag Charge"
 
 msgid "STAT_AREA_SIZE"
 msgstr "Area Size"
@@ -276,7 +285,7 @@ msgid "STAT_ELEMENTAL_DAMAGE"
 msgstr "Elemental Damage"
 
 msgid "STAT_ELEMENTAL_DAMAGE_DESC"
-msgstr "Damage added to elemental weapons."
+msgstr "Damage added to explosions and to anything else that deals elemental damage."
 
 msgid "STAT_ENGINEERING"
 msgstr "Engineering"
@@ -449,6 +458,9 @@ msgstr "How many weapons you can carry at once."
 msgid "WAVE_MOD_HORDE"
 msgstr "Horde"
 
+msgid "WEAPON_ACID_SPIT"
+msgstr "Acid Spit"
+
 msgid "WEAPON_BOLT_DRIVER_I"
 msgstr "Bolt Driver I"
 
@@ -592,3 +604,15 @@ msgstr "Servo Fists III"
 
 msgid "WEAPON_SERVO_FISTS_IV"
 msgstr "Servo Fists IV"
+
+msgid "WEAPON_SLAG_MORTAR_I"
+msgstr "Slag Mortar I"
+
+msgid "WEAPON_SLAG_MORTAR_II"
+msgstr "Slag Mortar II"
+
+msgid "WEAPON_SLAG_MORTAR_III"
+msgstr "Slag Mortar III"
+
+msgid "WEAPON_SLAG_MORTAR_IV"
+msgstr "Slag Mortar IV"
