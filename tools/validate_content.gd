@@ -136,6 +136,8 @@ func _validate(path: String) -> void:
 		_validate_weapon_class_set(path, resource)
 	elif resource is CharacterSet:
 		_validate_character_set(path, resource)
+	elif resource is PickupData:
+		_validate_pickup(path, resource)
 	elif resource is CharacterData:
 		_validate_character(path, resource)
 	elif resource is EntityData:
@@ -682,6 +684,31 @@ func _validate_character(path: String, character: CharacterData) -> void:
 	for i in character.starting_items.size():
 		if character.starting_items[i] == null:
 			_errors.append("%s : starting_items[%d] is null (deleted item?)" % [path, i])
+
+## Something on the floor that pays nothing, or that cannot reach anybody.
+##
+## Both load fine and both are invisible at runtime: a pickup worth 0 is a node
+## that costs frames and quietly credits nothing, and a magnet that never moves
+## looks exactly like a player who did not walk close enough.
+func _validate_pickup(path: String, pickup: PickupData) -> void:
+	_validate_entity(path, pickup)
+
+	if pickup.value <= 0:
+		_errors.append("%s : pays %d, so collecting it does nothing" % [path, pickup.value])
+
+	if pickup.base_magnet < 0.0:
+		_warnings.append(
+			"%s : has a negative base_magnet (%.1f), which is clamped to nothing"
+			% [path, pickup.base_magnet]
+		)
+
+	# Reaching for something it cannot travel to. It is still collectable by
+	# walking onto it, which is exactly what makes this quiet rather than broken.
+	if pickup.base_magnet > 0.0 and pickup.magnet_speed <= 0.0:
+		_warnings.append(
+			"%s : attracts from %.0f units but moves at %.0f, so it never arrives"
+			% [path, pickup.base_magnet, pickup.magnet_speed]
+		)
 
 func _validate_entity(path: String, entity: EntityData) -> void:
 	if entity.display_key.is_empty():

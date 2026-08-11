@@ -1392,6 +1392,11 @@ beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
 line. The 45 stat descriptions and the 8 character descriptions are hand-written
 and are the only authored player-facing prose in the game.
 
+**The validator refuses a pickup that pays nothing** and warns about one that
+attracts from further than it can travel. Both load fine and both are invisible
+at runtime: a value of 0 is a node that costs frames and credits nobody, and a
+magnet with no speed looks exactly like a player who did not walk close enough.
+
 **The validator refuses an explosion that cannot work**: a blast with no radius
 reaches nobody and a blast with no damage catches everybody and does nothing to
 them, and neither logs a thing at runtime. It also refuses an effect on a
