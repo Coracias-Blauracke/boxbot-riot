@@ -324,7 +324,7 @@ func _on_wave_ended(_wave_number: int) -> void:
 		(node as Node).queue_free()
 	# Whatever nobody walked out for is gone. That is the decision the drop
 	# exists to pose, and sweeping it up here for free would remove it.
-	for node in get_tree().get_nodes_in_group(&"pickups"):
+	for node in get_tree().get_nodes_in_group(Pickup.GROUP):
 		(node as Node).queue_free()
 	print("wave %d ended, currency=%d" % [run.wave_number, player.model.get_currency() if is_instance_valid(player) else 0])
 
@@ -573,7 +573,6 @@ func _spawn_pickup(pickup_data: PickupData, at: Vector2) -> Pickup:
 	var node := Pickup.new()
 	node.setup(pickup_data)
 	node.position = at
-	node.add_to_group(&"pickups")
 	node.collected.connect(_on_pickup_collected)
 	_actors.add_child(node)
 	return node
@@ -586,7 +585,7 @@ func _on_pickup_collected(value: int) -> void:
 	run.credit_pickup(value)
 
 func _count_pickups() -> int:
-	return get_tree().get_nodes_in_group(&"pickups").size()
+	return get_tree().get_nodes_in_group(Pickup.GROUP).size()
 
 func _count_enemies() -> int:
 	var total := 0
