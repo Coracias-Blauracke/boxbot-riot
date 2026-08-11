@@ -219,11 +219,11 @@ scenes/      the view — nodes, physics, rendering
              thing that knows a blast happened
   pickups/   Pickup - scrap lying on the floor, magnetised by PICKUP_RANGE
   actors/    ActorTint - what "something is happening to this body" LOOKS like
-content/     authored .tres: characters/ (six + the set that lists them,
+content/     authored .tres: characters/ (eight + the set that lists them,
              plus test_character, which is main.tscn's own fallback),
-             enemies, weapons/ (13 families x 4
-             tiers, + classes/), items, projectiles,
-             waves, worlds, spawn/ (patterns), shop/ (pool and rules),
+             enemies (ten + the Queen), weapons/ (13 families x 4
+             tiers, + classes/), items, projectiles, pickups/ (three tiers of
+             scrap), waves, worlds, spawn/ (patterns), shop/ (pool and rules),
              locale/en.po (every authored key, loaded by project.godot),
              stats/ (StatMetadata + the StatSheet reading order),
              statuses/ (bleed, poison, burn, slow)
@@ -768,9 +768,11 @@ possible — it hands the camera rectangle and the player positions over as bare
 
 The pattern lives on `WaveEntry`, not on the wave, because it is a property of
 the ENEMY: a lurker should ambush and a chaser should walk in from off screen,
-whichever wave they turn up in. Four exist: `SpawnRing` (walked in from off
-screen), `SpawnInView` (already here), `SpawnNearPlayer` (ambush) and
-`SpawnEdge` (from the arena wall, a long slow approach).
+whichever wave they turn up in. FIVE exist: `SpawnRing` (walked in from off
+screen), `SpawnInView` (already here), `SpawnNearPlayer` (ambush), `SpawnEdge`
+(from the arena wall, a long slow approach) and `SpawnScatter` (around whoever
+ASKED - the one a spawn request wants, and the only one that reads
+`SpawnContext.anchor`).
 
 **Every pattern that can place near a player enforces a clearance, on every
 member, against every player.** Both halves of that were got wrong here first. A
@@ -1514,7 +1516,7 @@ three families with one class because the only thing separating them is where
 the centre is: a bug that bursts when it dies, an item that detonates whatever
 you kill, and a projectile that goes off where it lands.
 
-**The game reads in ENGLISH now.** `content/locale/en.po` translates all 204
+**The game reads in ENGLISH now.** `content/locale/en.po` translates all 212
 authored keys - every stat name and its description, every item, all 52 weapons,
 the classes, the enemies and the eight characters - and `project.godot` loads it
 directly by `res://` path. That last part is the reason it is a `.po` and not a
