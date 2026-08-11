@@ -85,7 +85,7 @@ Damage and health are rough and get tuned against play. `group` is the
 | 4 | **Spitter** | orbit at ~220 | RANGED weapon | edge | 2 | **AUTHORED** |
 | 5 | **Charger** | charge: pause, telegraph, dash | contact on the dash | ring | 2 | **AUTHORED** |
 | 6 | **Popper** | chase | contact, and explodes on death | near-player | 4 | **AUTHORED** |
-| 7 | **Lurker** | chase, fast | contact, high burst | near-player | 3 | |
+| 7 | **Lurker** | chase, fast | contact, high burst | near-player | 3 | **AUTHORED** |
 
 - **Spitter** is the whole reason the engine has to change at all. It is the
   first enemy that attacks from outside contact range, which is what makes
@@ -95,20 +95,34 @@ Damage and health are rough and get tuned against play. `group` is the
 - **Popper** punishes killing things at your feet, which is exactly the habit a
   melee build forms.
 - **Lurker** is what `SpawnNearPlayer` was written for, and the clearance rule
-  in `SpawnPattern._push_clear_of_players` is what keeps it fair.
+  in `SpawnPattern._push_clear_of_players` is what keeps it fair. Authored fast
+  (185, quicker than anything else in the horde and slower than a standard
+  player) and hard-hitting (20 a touch, above the brute), so it is the one enemy
+  answered by watching your own back rather than by watching the front.
 
 ### Late (waves 12+)
 
 | # | enemy | movement | attack | spawn | group | |
 |---|---|---|---|---|---|---|
 | 8 | **Splitter** | chase | contact, splits in two on death | ring | 2 | **AUTHORED** |
-| 9 | **Warden** | chase, slow | contact, armoured | edge | 1 | |
+| 9 | **Warden** | chase, slow | contact, armoured | edge | 1 | **AUTHORED** |
 | 10 | **Hive** | stands still, ignores players | spawns swarmlings on a timer | in view | 1 | **AUTHORED** |
 
 - **Splitter** turns one kill into two problems, which is the first enemy where
   killing the wrong thing first is a mistake.
 - **Warden** is the enemy `ARMOR` on the player's side has an answer to and the
   enemy that answers `PIERCING`: a wall that a fast weak weapon cannot chew.
+
+  AUTHORING IT EXPOSED THAT `ARMOR` ALONE CANNOT DO THAT. The stat takes a
+  PERCENTAGE - `armor / (armor + 15)` - so it costs a 5-damage hit and a
+  40-damage hit exactly the same share. It makes a thing tough and cares nothing
+  for what is shooting it. `EffectFlatArmor` is the other half and is what the
+  sentence above actually describes: a flat amount off every hit, which costs a
+  fast weak weapon most of its damage and a slow heavy one almost none.
+
+  It needed no new machinery. `EntityModel.apply_damage` already takes armor as a
+  share of what REMAINS after absorption, and its comment names "an effect that
+  already absorbed a flat 10" as the reason - a door built and never opened.
 - **Hive** does not chase at all. It is a spawner that has to be prioritised,
   and it is the first enemy that makes a player leave a safe corner.
 
@@ -241,10 +255,18 @@ makes crowding the horde together valuable, and it is also very hard to balance
 blind. Turning it on is now cheap enough to try the moment somebody wants to
 measure it, which is the right shape for a question nobody can answer yet.
 
-**2. Is Warden's toughness ARMOR or just health?** Armour makes fast weak
-weapons bad against it specifically, which is the interesting version; raw
-health just takes longer. Armour on an enemy uses the same formula the player
-has, so it costs nothing to try.
+**2. Is Warden's toughness ARMOR or just health?** ANSWERED: BOTH, and neither
+was the interesting half on its own.
+
+`ARMOR` is a percentage, so it does NOT make fast weak weapons bad against it -
+that was the assumption in this entry and it was wrong. It scales every hit by
+the same share. The property the entry actually wanted needs a FLAT absorb, so
+the Warden carries 6 armour AND 3 flat through `EffectFlatArmor`: the armour
+makes it tough, the plating decides which weapons struggle.
+
+Measured against the authored file: a 5-damage hit lands 1.4 and a 40-damage hit
+lands 26.4, so eight small hits are worth far less than one heavy one of the same
+total.
 
 **3. How many enemy types should a single wave mix?** `WaveTable` can express
 anything; nobody has decided whether wave 10 is one type or four. This is a

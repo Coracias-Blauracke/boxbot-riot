@@ -11,6 +11,9 @@
 [ext_resource type="Resource" path="res://content/enemies/splitter.tres" id="13_splitter"]
 [ext_resource type="Resource" path="res://content/enemies/hive.tres" id="14_hive"]
 [ext_resource type="Resource" path="res://content/enemies/charger.tres" id="16_charger"]
+[ext_resource type="Resource" path="res://content/enemies/lurker.tres" id="17_lurker"]
+[ext_resource type="Resource" path="res://content/enemies/warden.tres" id="18_warden"]
+[ext_resource type="Resource" path="res://content/spawn/edge.tres" id="19_edge"]
 [ext_resource type="Resource" path="res://content/spawn/in_view.tres" id="15_in_view"]
 [ext_resource type="Resource" path="res://content/spawn/ring.tres" id="5_ring"]
 [ext_resource type="Resource" path="res://content/spawn/ambush.tres" id="6_ambush"]
@@ -97,6 +100,26 @@ cost = 3.0
 group_size = 2
 pattern = ExtResource("5_ring")
 
+[sub_resource type="Resource" id="Resource_lurkers"]
+script = ExtResource("2_entry")
+enemy = ExtResource("17_lurker")
+min_wave = 6
+max_wave = 0
+weight = 1.5
+cost = 3.0
+group_size = 3
+pattern = ExtResource("6_ambush")
+
+[sub_resource type="Resource" id="Resource_wardens"]
+script = ExtResource("2_entry")
+enemy = ExtResource("18_warden")
+min_wave = 12
+max_wave = 0
+weight = 1.0
+cost = 7.0
+group_size = 1
+pattern = ExtResource("19_edge")
+
 [sub_resource type="Resource" id="Resource_queen"]
 script = ExtResource("2_entry")
 enemy = ExtResource("11_queen")
@@ -109,7 +132,7 @@ pattern = ExtResource("5_ring")
 
 [resource]
 script = ExtResource("1_table")
-entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes"), SubResource("Resource_spitters"), SubResource("Resource_swarm"), SubResource("Resource_poppers"), SubResource("Resource_splitters"), SubResource("Resource_hives"), SubResource("Resource_chargers")])
+entries = Array[ExtResource("2_entry")]([SubResource("Resource_chasers"), SubResource("Resource_brutes"), SubResource("Resource_spitters"), SubResource("Resource_swarm"), SubResource("Resource_poppers"), SubResource("Resource_splitters"), SubResource("Resource_hives"), SubResource("Resource_chargers"), SubResource("Resource_lurkers"), SubResource("Resource_wardens")])
 boss_entries = Array[ExtResource("2_entry")]([SubResource("Resource_queen")])
 boss_every = 5
 total_waves = 20
