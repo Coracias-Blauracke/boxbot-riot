@@ -838,6 +838,20 @@ one respect.
 answer "what is within 90 units of this corpse" without ever seeing a Node -
 the same trick `SpawnContext` uses. `core/` never writes it.
 
+`Actor._publish_position()` is that write and the ONLY one. It ran nowhere at
+all until the area-damage work needed it: the field was declared, documented,
+read by `WorldCensus` and written exclusively by a unit test, so in the running
+game every entity sat at the origin. "Within 90 units" was therefore true of the
+whole arena, and burn spread off a corpse to three arbitrary enemies at any
+distance. Measured as `drift` in the capture state line - 1146-1241 units before,
+0 after, same seed, same run.
+
+That the suite was green throughout is the lesson, not the bug: `core_test`
+assigns `world_position` itself, which is exactly the shape CLAUDE.md already
+warns about under readiness - **a test that follows the correct path cannot
+catch a caller that never walks it at all.** The guard is the capture line, so
+the number is in front of a person on every run.
+
 **Crit is rolled ONCE per shot** into a shared `ShotSnapshot`, so all shotgun
 pellets crit together and a piercing shot keeps critting through every enemy.
 

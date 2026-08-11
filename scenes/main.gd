@@ -397,6 +397,25 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	_actors.add_child(node)
 	return node
 
+## Largest gap between where an actor IS and where its model says it is.
+##
+## The number that says whether core/ can do geometry at all. Everything spatial
+## in core/ - the census, a status spreading off a corpse, an explosion - reads
+## EntityModel.world_position, and nothing in the running game wrote it: every
+## entity sat at the origin, so "within 90 units" was true of the whole arena and
+## burn spread to three arbitrary enemies at any distance. A screenshot cannot
+## show that and neither can a count, because both look exactly right.
+##
+## 0 means the view is publishing. Anything else is the old bug returning.
+func _max_position_drift() -> float:
+	var worst := 0.0
+	for child in _actors.get_children():
+		var actor := child as Actor
+		if actor == null or actor.model == null:
+			continue
+		worst = maxf(worst, actor.global_position.distance_to(actor.model.world_position))
+	return worst
+
 func _count_enemies() -> int:
 	var total := 0
 	for child in _actors.get_children():
@@ -554,13 +573,14 @@ func _describe_state() -> String:
 			entry.get_weapons().size(),
 		]
 
-	return "w%d %s t-%.0fs alive=%d/%d enemies=%d bleed=%d burn=%d shots=%d zoom=%.2f%s" % [
+	return "w%d %s t-%.0fs alive=%d/%d enemies=%d drift=%.0f bleed=%d burn=%d shots=%d zoom=%.2f%s" % [
 		run.wave_number,
 		_phase_name(),
 		run.wave_time_remaining(),
 		run.living_player_count(),
 		players.size(),
 		_count_enemies(),
+		_max_position_drift(),
 		# Straight off the census, so a status that is not landing is visible in
 		# the numbers rather than only in a screenshot.
 		run.census.count_with_status(&"bleed"),

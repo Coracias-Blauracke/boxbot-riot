@@ -72,9 +72,24 @@ func _ready() -> void:
 		var circle := CircleShape2D.new()
 		circle.radius = data.collider_radius
 		_shape.shape = circle
+	# Before the first frame, because a spawner sets `position` before add_child
+	# and something can already ask where this is on the frame it appears.
+	_publish_position()
 	queue_redraw()
 
+## THE ONE WRITE of the model's position, and the whole reason core/ can answer
+## "what is within 90 units of here" without ever seeing a node.
+##
+## It is written from OUTSIDE the alive check on purpose: a corpse still has a
+## place in the world, and an explosion centred on whatever was just killed reads
+## the position off the model rather than off a node that may already be freed.
+func _publish_position() -> void:
+	if model != null:
+		model.world_position = global_position
+
 func _physics_process(delta: float) -> void:
+	_publish_position()
+
 	if model == null or not model.is_alive:
 		return
 
@@ -87,6 +102,11 @@ func _physics_process(delta: float) -> void:
 
 	if world != null:
 		global_position = world.clamp_to_bounds(global_position)
+
+	# Again, AFTER the move. The call at the top is what keeps a corpse honest;
+	# this one is what keeps a runner honest, and statuses tick below it - a
+	# status reaching outwards must not measure from where its carrier was.
+	_publish_position()
 
 	# Each actor advances its own statuses. RunModel.tick() exists for headless
 	# tests; calling both would tick players twice.
