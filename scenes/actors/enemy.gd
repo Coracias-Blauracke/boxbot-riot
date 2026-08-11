@@ -29,12 +29,9 @@ func _ready() -> void:
 	placeholder_color = Color(1.0, 0.42, 0.36)
 	super()
 
-	# Weapons find their targets through this group.
-	add_to_group(&"enemies")
-	# And a bug that carries one shoots the other way - see Actor.hostile_group.
-	hostile_group = &"players"
-	attack_layer = LAYER_ENEMY_HITBOX
-	attack_mask = LAYER_PLAYER_HURTBOX
+	# The group weapons find targets through, the group a bug that carries one
+	# shoots at, its attack layers and its model's side - see Actor._join_faction.
+	_join_faction(WorldTypes.Faction.ENEMIES)
 
 	var radius: float = data.collider_radius if data != null else 8.0
 	var enemy_data := data as EnemyData

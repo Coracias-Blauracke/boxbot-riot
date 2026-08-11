@@ -41,9 +41,17 @@ func _init(data: EntityData = null) -> void:
 	super()
 	# ATTACK_SPEED and PROJECTILE_SPEED need no line here any more: EntityModel
 	# seeds every multiplicative stat with its neutral, and for those two the
-	# neutral IS the default. This is +1.0 ON TOP of that neutral, so a weapon
-	# that says nothing about crits still does double damage on one.
-	stats.add_modifier(StatTypes.Stat.CRIT_MULTIPLIER, StatTypes.Modifier.BASE, 1.0, &"weapon_base")
+	# neutral IS the default. This is what is left ON TOP of that neutral, so a
+	# weapon that says nothing about crits still does double damage on one.
+	#
+	# The 2.0 itself belongs to the game and not to weapons - see
+	# StatTypes.DEFAULT_CRIT_MULTIPLIER, which a blast reads for the same reason.
+	stats.add_modifier(
+		StatTypes.Stat.CRIT_MULTIPLIER,
+		StatTypes.Modifier.BASE,
+		StatTypes.DEFAULT_CRIT_MULTIPLIER - StatTypes.neutral_of(StatTypes.Stat.CRIT_MULTIPLIER),
+		&"weapon_base"
+	)
 
 	if data != null:
 		setup_from_data(data)
@@ -192,13 +200,9 @@ func build_shot(data: WeaponData) -> ShotSnapshot:
 	if holder != null:
 		holder.pipeline(Hooks.Hook.CALCULATE_DAMAGE, shot)
 
-	shot.is_crit = rng.chance(RunRandom.Stream.COMBAT, shot.crit_chance)
-	if shot.is_crit:
-		shot.amount *= shot.crit_multiplier
-		counters.add(CounterTypes.Counter.CRITS_LANDED)
-		if holder != null:
-			holder.counters.add(CounterTypes.Counter.CRITS_LANDED)
-			holder.notify(Hooks.Hook.ON_CRIT, shot)
+	# The roll itself lives on the snapshot, because a blast has to make exactly
+	# the same one and neither of them may drift from the other.
+	shot.roll_crit(rng, self, holder)
 
 	damage_scale = 1.0
 	return shot

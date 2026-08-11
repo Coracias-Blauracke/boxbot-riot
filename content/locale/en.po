@@ -170,6 +170,12 @@ msgstr "Whetstone"
 msgid "PROJ_BULLET"
 msgstr "Bullet"
 
+msgid "STAT_AREA_SIZE"
+msgstr "Area Size"
+
+msgid "STAT_AREA_SIZE_DESC"
+msgstr "How wide your explosions reach. A multiplier on every blast radius, so 1.0 is the authored size."
+
 msgid "STAT_ARMOR"
 msgstr "Armor"
 

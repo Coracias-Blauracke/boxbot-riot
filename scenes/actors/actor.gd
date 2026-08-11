@@ -26,10 +26,15 @@ var world: WorldModel
 ## sweep and a projectile's collision. That single constant is what stopped an
 ## enemy from ever holding a weapon, since it would have shot the other bugs.
 ##
-## Set by the subclass: a Character shoots enemies, an Enemy shoots players.
-## Anything that carries a weapon and forgets to say hits nothing, which is a
-## great deal louder than hitting its own side.
+## Derived from the faction the subclass joins: a Character shoots enemies, an
+## Enemy shoots players. Anything that carries a weapon and forgets to join a
+## faction hits nothing, which is a great deal louder than hitting its own side.
 var hostile_group: StringName = &""
+
+## Which side this actor is on, in the vocabulary core/ understands. The other
+## three - the group it joins, the group it hunts, the layers its attacks use -
+## are all derived from this one line by _join_faction.
+var faction: WorldTypes.Faction = WorldTypes.Faction.NEUTRAL
 
 ## The physics layers named in project.godot, spelled once.
 ##
@@ -47,6 +52,56 @@ const LAYER_ENEMY_HITBOX := 64
 ## split as hostile_group, for the half of the engine that speaks in layers.
 var attack_layer: int = LAYER_PLAYER_HITBOX
 var attack_mask: int = LAYER_ENEMY_HURTBOX
+
+## The three vocabularies of "whose side", keyed by the one that decides them.
+## Tables rather than a match, so adding a third faction is three entries and no
+## new branches anywhere.
+const GROUP_FOR: Dictionary = {
+	WorldTypes.Faction.PLAYERS: &"players",
+	WorldTypes.Faction.ENEMIES: &"enemies",
+}
+const HITBOX_LAYER_FOR: Dictionary = {
+	WorldTypes.Faction.PLAYERS: LAYER_PLAYER_HITBOX,
+	WorldTypes.Faction.ENEMIES: LAYER_ENEMY_HITBOX,
+}
+const HURTBOX_LAYER_FOR: Dictionary = {
+	WorldTypes.Faction.PLAYERS: LAYER_PLAYER_HURTBOX,
+	WorldTypes.Faction.ENEMIES: LAYER_ENEMY_HURTBOX,
+}
+
+## ONE declaration of whose side this is, from which everything else follows:
+## the group enemies search, the group this side's weapons hunt, the layers its
+## attacks live on and look for, and the faction its MODEL carries so that core/
+## can reason about sides with no nodes in sight.
+##
+## They used to be set one at a time in each subclass. Four facts saying the same
+## thing in four places is four chances for them to disagree, and the way they
+## disagree is a bug that hits its own side.
+func _join_faction(p_faction: WorldTypes.Faction) -> void:
+	faction = p_faction
+	if model != null:
+		model.faction = p_faction
+	if not GROUP_FOR.has(p_faction):
+		return
+
+	var opponent := (
+		WorldTypes.Faction.ENEMIES
+		if p_faction == WorldTypes.Faction.PLAYERS
+		else WorldTypes.Faction.PLAYERS
+	)
+
+	# Typed locals rather than assigning a Dictionary read straight into a typed
+	# field: that read is a Variant, and the warning it raises is treated as an
+	# error, which skips the whole file rather than failing one line.
+	var own_group: StringName = GROUP_FOR[p_faction]
+	var enemy_group: StringName = GROUP_FOR[opponent]
+	var layer: int = HITBOX_LAYER_FOR[p_faction]
+	var mask: int = HURTBOX_LAYER_FOR[opponent]
+
+	add_to_group(own_group)
+	hostile_group = enemy_group
+	attack_layer = layer
+	attack_mask = mask
 
 var placeholder_color: Color = Color.WHITE
 

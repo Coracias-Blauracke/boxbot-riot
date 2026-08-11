@@ -16,6 +16,14 @@ signal died
 signal revived
 signal hp_changed(current: float, maximum: float)
 
+## An area attack this entity set off, once its damage has landed.
+##
+## The view's ONE hook for every explosion in the game, and the mirror of
+## world_position: the view writes where things are, the model says what happened
+## there. Nothing in core/ listens, and core/ works identically when nothing
+## does - which is what keeps a headless test and a running game the same code.
+signal blast_resolved(event: BlastEvent)
+
 var stats: StatsManager
 var counters: CounterManager
 var effects: EffectDispatcher
@@ -31,6 +39,15 @@ var is_alive: bool = true
 ## trick SpawnContext uses. core/ never writes this; it is a read-only fact
 ## handed down from the view.
 var world_position: Vector2 = Vector2.ZERO
+
+## Which side this entity is on, written by its Actor when it joins one.
+##
+## Read-only data handed down from the view, exactly like world_position and for
+## exactly the same reason: it is what lets core/ answer "does this explosion
+## hurt that one" without ever seeing a SceneTree group or a physics layer.
+## core/ never writes it, and NEUTRAL is the honest default - a weapon model and
+## the arena model are entities too, and neither is on anybody's side.
+var faction: WorldTypes.Faction = WorldTypes.Faction.NEUTRAL
 
 ## Weak, set by WorldCensus.register. Lets an effect reaching outwards - fire
 ## spreading off a corpse - ask what is nearby at the moment it fires, when
@@ -379,6 +396,32 @@ func apply_status(
 
 func tick_statuses(delta: float) -> void:
 	statuses.tick(self, delta)
+
+# --- area attacks ----------------------------------------------------------
+
+## Sets off an area attack centred on `at`, and announces it.
+##
+## THE ONE DOOR for area damage, exactly as add_currency is the one door for
+## money: a bug bursting, an item detonating a corpse and a grenade landing all
+## arrive here, so none of them has to remember to tell the view and none of them
+## can forget. The arithmetic belongs to the DATA - see BlastData.resolve - and
+## this is only the entity's half: whose explosion it is, and saying so.
+##
+## Returns the event even when nothing was in range, because "it went off and
+## caught nobody" is a real answer and the view still has a flash to draw.
+func detonate(
+	blast: BlastData,
+	at: Vector2,
+	weapon: WeaponModel = null,
+	inherited: ShotSnapshot = null,
+	power: float = 1.0
+) -> BlastEvent:
+	if blast == null:
+		return null
+
+	var event := blast.resolve(self, at, weapon, inherited, power)
+	blast_resolved.emit(event)
+	return event
 
 # --- health and damage -----------------------------------------------------
 

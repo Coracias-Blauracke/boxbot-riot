@@ -293,6 +293,8 @@ func _spawn_player(index: int) -> Character:
 	model.weapon_classes = weapon_classes
 	run.add_player(model)
 
+	_draw_blasts_of(model)
+
 	var node := CHARACTER_SCENE.instantiate() as Character
 	# bind() before add_child(): _ready() sizes the colliders from the data.
 	node.bind(model, character, run.world)
@@ -383,6 +385,7 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	# Registered where it is created. There is no unregister and there cannot be
 	# one forgotten: the census holds weakrefs and prunes itself.
 	run.census.register(model)
+	_draw_blasts_of(model)
 
 	var node := ENEMY_SCENE.instantiate() as Enemy
 	# No target assigned: the enemy picks the nearest living player itself, and
@@ -396,6 +399,25 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	node.position = at
 	_actors.add_child(node)
 	return node
+
+## Gives one model's explosions somewhere to be seen.
+##
+## Wired HERE rather than inside Actor, because this file is already the only
+## place that knows how a model is paired with a node - and an actor that has to
+## know what an explosion looks like is an actor that has to be taught again for
+## every new kind of area effect. It listens to the model, so an explosion whose
+## owner has already been freed still draws.
+func _draw_blasts_of(model: EntityModel) -> void:
+	model.blast_resolved.connect(_on_blast_resolved)
+
+## Parented to the actor layer rather than to whoever set it off: a flash must
+## outlive the bug that burst, and a bug that bursts is freed the same frame.
+func _on_blast_resolved(event: BlastEvent) -> void:
+	if event == null or event.radius <= 0.0:
+		return
+	var flash := BlastFlash.new()
+	flash.setup(event)
+	_actors.add_child(flash)
 
 ## Largest gap between where an actor IS and where its model says it is.
 ##

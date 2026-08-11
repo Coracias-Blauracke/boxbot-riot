@@ -23,10 +23,9 @@ func _ready() -> void:
 	placeholder_color = PlayerPalette.color_for(player_index)
 	super()
 
-	# What enemies search when picking whom to chase.
-	add_to_group(&"players")
-	# What this side shoots at - see Actor.hostile_group.
-	hostile_group = &"enemies"
+	# One line for all four: the group enemies chase, the group this side shoots
+	# at, the layers its attacks use, and the faction its model carries.
+	_join_faction(WorldTypes.Faction.PLAYERS)
 
 	# The hurtbox is what enemy hitboxes look for; it mirrors the body radius.
 	var circle := CircleShape2D.new()
