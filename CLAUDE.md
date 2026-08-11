@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 917 assertions across three suites, no editor, no game window
+# tests — 912 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -1360,22 +1360,19 @@ by watching your own back, and what `SpawnNearPlayer` was written for. **Warden*
 walks in from the arena wall alone and slowly, and is the first enemy that a
 particular KIND of weapon struggles with rather than simply taking longer.
 
-AUTHORING THE WARDEN FOUND THAT `ARMOR` COULD NOT DO WHAT IT WAS FOR. The stat is
-a percentage - `armor / (armor + 15)` - so it costs a 5-damage hit and a
-40-damage hit the same share, which makes a thing tough and cares nothing for
-what is shooting it. "A wall a fast weak weapon cannot chew" needs a FLAT absorb,
-so `EffectFlatArmor` is the sixteenth effect class and the Warden carries both:
-6 armour for toughness, 3 flat for which weapons struggle.
+**THE WARDEN IS TOUGH, NOT SELECTIVE, AND THAT IS THE DECISION.** It carries 15
+`ARMOR`, which is exactly half by `armor / (armor + 15)`, so everything that
+reaches it is worth half - a 5-damage hit and a 40-damage hit alike.
 
-It needed no new machinery - `apply_damage` already takes armor as a share of
-what REMAINS after absorption, and its comment names "an effect that already
-absorbed a flat 10" as the reason. A door built and never opened. It works on a
-player unchanged, so "you take 2 less from every hit" is the same class with a
-different number.
+Worth writing down because the design note in `docs/enemy_list.md` describes it
+as "a wall a fast weak weapon cannot chew", and ARMOR cannot express that: it is
+a SHARE, so eight small hits are worth exactly one heavy hit of the same total.
+Making a weapon KIND struggle needs a flat absorb per hit, which is a different
+mechanic. It was built, measured and then deliberately dropped - the Warden is a
+thing that takes twice as long to kill, and nothing about which gun you brought.
 
-Measured against the authored file: a 5-damage hit lands 1.4 and a 40-damage one
-lands 26.4, so eight small hits are worth far less than one heavy hit of the same
-total.
+`apply_damage` still takes armor as a share of what REMAINS after absorption, so
+the door for a flat absorber stays open if that enemy is ever wanted.
 
 SOMETHING HAS TO BE DODGED NOW. **Charger** closes, stops dead for 0.7s, and
 throws itself in a straight line it commits to before it starts - the ninth
@@ -1502,11 +1499,11 @@ ready for them, but nothing positive exists yet.
 DAMAGE under Current state. The puddle half of that old entry is what is left,
 and it is a different mechanic rather than the rest of the same one.)*
 
-The effect library is **sixteen classes**. It was four when the item list was
-written, and the twelve added since each cover a FAMILY rather than an item:
+The effect library is **fifteen classes**. It was four when the item list was
+written, and the eleven added since each cover a FAMILY rather than an item:
 apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
-double-status-stacks, stat-per-world-count, price-modifier, blast, spawn,
-flat-armor, and the three status kinds. That ratio is the point - sixteen of the twenty-six authored items
+double-status-stacks, stat-per-world-count, price-modifier, blast, spawn, and
+the three status kinds. That ratio is the point - sixteen of the twenty-six authored items
 and six of the eight authored characters needed no new code at all.
 
 `EffectPriceModifier` closed the last gap the character list found — nothing in
@@ -1534,11 +1531,6 @@ beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
 (`WEAPON_BOLT_DRIVER_I` -> "Bolt Driver I"), so a new weapon needs one obvious
 line. The 45 stat descriptions and the 8 character descriptions are hand-written
 and are the only authored player-facing prose in the game.
-
-**The validator refuses plating that absorbs nothing**, and warns about plating
-that names no damage types - because damage over time arrives in small ticks, so
-an absorb of 3 against a bleed of 2 makes the holder immune to bleeding outright
-and nothing at runtime would ever say so.
 
 **The validator refuses a charge that cannot be seen coming.** A `windup_time`
 of 0 loads, runs, and turns the one enemy that is answered by stepping aside

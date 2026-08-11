@@ -113,16 +113,20 @@ Damage and health are rough and get tuned against play. `group` is the
 - **Warden** is the enemy `ARMOR` on the player's side has an answer to and the
   enemy that answers `PIERCING`: a wall that a fast weak weapon cannot chew.
 
-  AUTHORING IT EXPOSED THAT `ARMOR` ALONE CANNOT DO THAT. The stat takes a
-  PERCENTAGE - `armor / (armor + 15)` - so it costs a 5-damage hit and a
-  40-damage hit exactly the same share. It makes a thing tough and cares nothing
-  for what is shooting it. `EffectFlatArmor` is the other half and is what the
-  sentence above actually describes: a flat amount off every hit, which costs a
-  fast weak weapon most of its damage and a slow heavy one almost none.
+  THE SENTENCE ABOVE IS NOT WHAT IT SHIPPED AS, and that is deliberate. `ARMOR`
+  takes a PERCENTAGE - `armor / (armor + 15)` - so it costs a 5-damage hit and a
+  40-damage hit exactly the same share: eight small hits are worth precisely one
+  heavy hit of the same total. It makes a thing tough and cares nothing for what
+  is shooting it.
 
-  It needed no new machinery. `EntityModel.apply_damage` already takes armor as a
-  share of what REMAINS after absorption, and its comment names "an effect that
-  already absorbed a flat 10" as the reason - a door built and never opened.
+  A flat absorb per hit is what "a wall a fast weak weapon cannot chew" would
+  need. It was built and measured and then dropped on purpose: the Warden is
+  authored at 15 armour, which is half of everything, and it is a wall by taking
+  twice the killing rather than by filtering weapons.
+
+  The door stays open - `apply_damage` takes armor as a share of what REMAINS
+  after absorption, so a flat absorber slots in whenever an enemy actually wants
+  that property.
 - **Hive** does not chase at all. It is a spawner that has to be prioritised,
   and it is the first enemy that makes a player leave a safe corner.
 
@@ -255,18 +259,15 @@ makes crowding the horde together valuable, and it is also very hard to balance
 blind. Turning it on is now cheap enough to try the moment somebody wants to
 measure it, which is the right shape for a question nobody can answer yet.
 
-**2. Is Warden's toughness ARMOR or just health?** ANSWERED: BOTH, and neither
-was the interesting half on its own.
+**2. Is Warden's toughness ARMOR or just health?** ANSWERED: ARMOR, at 15, which
+is exactly half by `armor / (armor + 15)`.
 
-`ARMOR` is a percentage, so it does NOT make fast weak weapons bad against it -
-that was the assumption in this entry and it was wrong. It scales every hit by
-the same share. The property the entry actually wanted needs a FLAT absorb, so
-the Warden carries 6 armour AND 3 flat through `EffectFlatArmor`: the armour
-makes it tough, the plating decides which weapons struggle.
-
-Measured against the authored file: a 5-damage hit lands 1.4 and a 40-damage hit
-lands 26.4, so eight small hits are worth far less than one heavy one of the same
-total.
+With one correction to the premise of the question. Armour does NOT make fast
+weak weapons bad against it - it is a share, so it takes the same half off every
+hit whatever the size, and eight small hits come to precisely one heavy one. That
+property needs a flat absorb per hit and is a different mechanic; it was tried
+and dropped, because "takes twice the killing" is enough of an enemy and the
+roster did not need a weapon-type filter to also exist.
 
 **3. How many enemy types should a single wave mix?** `WaveTable` can express
 anything; nobody has decided whether wave 10 is one type or four. This is a

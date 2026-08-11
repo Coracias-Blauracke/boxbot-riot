@@ -3,7 +3,6 @@
 [ext_resource type="Script" path="res://core/data/enemy_data.gd" id="1_enemy"]
 [ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
 [ext_resource type="Script" path="res://core/behaviors/chase_behavior.gd" id="3_chase"]
-[ext_resource type="Script" path="res://core/effects/library/effect_flat_armor.gd" id="4_plating"]
 [ext_resource type="Script" path="res://core/effects/library/effect_spawn.gd" id="5_spawn"]
 [ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="6_base"]
 [ext_resource type="Resource" path="res://content/pickups/scrap_medium.tres" id="7_drop"]
@@ -30,12 +29,7 @@ value = 16.0
 script = ExtResource("2_mod")
 stat = 3
 modifier_type = 0
-value = 6.0
-
-[sub_resource type="Resource" id="plating"]
-script = ExtResource("4_plating")
-absorb = 3.0
-damage_types = Array[int]([0, 1, 2])
+value = 15.0
 
 [sub_resource type="Resource" id="drop"]
 script = ExtResource("5_spawn")
@@ -52,7 +46,7 @@ script = ExtResource("1_enemy")
 display_key = "ENEMY_WARDEN"
 collider_radius = 16.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("melee"), SubResource("armor")])
-innate_effects = Array[ExtResource("6_base")]([SubResource("plating"), SubResource("drop")])
+innate_effects = Array[ExtResource("6_base")]([SubResource("drop")])
 movement = SubResource("chase")
 separation_radius_scale = 1.8
 separation_weight = 0.4

@@ -177,8 +177,7 @@ func _initialize() -> void:
 	_test_a_charge_stops_before_it_commits()
 	_test_a_dash_does_not_follow_you()
 	_test_two_chargers_keep_separate_clocks()
-	_test_flat_armor_costs_a_weak_hit_more_than_a_heavy_one()
-	_test_the_authored_warden_is_a_wall_a_fast_weapon_cannot_chew()
+	_test_the_authored_warden_halves_what_reaches_it()
 	_test_a_dying_thing_can_ask_for_more_of_them()
 	_test_a_timer_asks_once_per_interval_and_keeps_the_remainder()
 	_test_two_holders_of_one_spawn_effect_keep_separate_clocks()
@@ -3672,58 +3671,29 @@ func _test_two_chargers_keep_separate_clocks() -> void:
 	var stateless := shared.get_direction(null, Vector2(400.0, 0.0), target, 0.1, null)
 	_check("no state means it just walks", stateless.length(), 0.4)
 
-# --- plating ----------------------------------------------------------------
+# --- the armoured enemy -----------------------------------------------------
 
-func _test_flat_armor_costs_a_weak_hit_more_than_a_heavy_one() -> void:
+func _test_the_authored_warden_halves_what_reaches_it() -> void:
 	print("
--- plating --")
-	var plated := _living(1000.0)
-	var plating := EffectFlatArmor.new()
-	plating.absorb = 3.0
-	plated.effects.register(EffectInstance.new(plating, &"plating"))
-
-	# THE WHOLE POINT, and the thing percentage ARMOR cannot do: a share takes
-	# the same fraction off every hit and cares nothing for what is shooting.
-	_check("a weak hit loses most of itself", _hit(plated, 5.0), 2.0)
-	_check("a heavy one barely notices", _hit(plated, 40.0), 37.0)
-
-	# And it can take a hit to nothing at all, which is what "a wall a fast weak
-	# weapon cannot chew" means - and the danger the export documents.
-	_check("under the absorb it does nothing", _hit(plated, 2.0), 0.0)
-
-	# Stacks, so the same class is an item that says "you take 2 less per hit".
-	var doubled := _living(1000.0)
-	doubled.effects.register(EffectInstance.new(plating, &"plating", 2))
-	_check("two copies absorb twice", _hit(doubled, 20.0), 14.0)
-
-func _test_the_authored_warden_is_a_wall_a_fast_weapon_cannot_chew() -> void:
+-- the warden --")
 	var data := load("res://content/enemies/warden.tres") as EnemyData
 	_check_bool("the warden loads", data != null, true)
 
 	var warden := EntityModel.new(data)
-	var opening := warden.current_hp
 
-	# Authored: 3 absorbed flat, then 6 ARMOR takes 6/21 of what is left. The
-	# order is the one apply_damage documents - armor never charges twice for
-	# damage an effect already removed.
-	var fast := _hit(warden, 5.0)
-	var slow := _hit(warden, 40.0)
-	_check("a 5-damage hit lands 1.4", fast, 2.0 * (1.0 - 6.0 / 21.0))
-	_check("a 40-damage hit lands 26.4", slow, 37.0 * (1.0 - 6.0 / 21.0))
+	# Authored at 15 ARMOR, and armor / (armor + 15) is exactly 0.5 there. The
+	# stat is a SHARE, so it takes the same half off every hit whatever the size.
+	_check("a heavy hit is halved", _hit(warden, 40.0), 20.0)
+	_check("and so is a light one", _hit(warden, 5.0), 2.5)
 
-	# Same TOTAL damage delivered in eight small hits against one big one. The
-	# design claim is that the small ones are worth much less, and this is it in
-	# one number rather than in prose.
-	var chewed := warden.current_hp
-	for i in 7:
-		_hit(warden, 5.0)
-	var eight_small := opening - warden.current_hp - slow
-	_check_bool(
-		"eight small hits do less than one heavy one of the same total",
-		eight_small < slow, true
-	)
-	_check_bool("and the warden is still standing", warden.is_alive, true)
-	_check_bool("having lost less than half", warden.current_hp > chewed * 0.5, true)
+	# Worth asserting rather than assuming, because it is the property that
+	# decides what the Warden is: it is tough against EVERYTHING equally, so it
+	# takes longer to kill and does not care what is shooting it.
+	var eight_small := 0.0
+	for i in 8:
+		eight_small += _hit(warden, 5.0)
+	_check("eight small hits are worth exactly one heavy one", eight_small, 20.0)
+	_check_bool("and it is still standing", warden.is_alive, true)
 
 func _test_neutral_is_nobody_s_ally_and_nobody_s_enemy() -> void:
 	var players := WorldTypes.Faction.PLAYERS
