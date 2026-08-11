@@ -60,6 +60,17 @@ func dispatch(host: EntityModel, hook: Hooks.Hook, event: EventPayload) -> Event
 
 	return event
 
+## Whether anything at all would run for this hook.
+##
+## Exists so a CALLER can decide not to build a payload. Everything else in the
+## game raises events on occasions - a hit, a death, a purchase - and allocating
+## one payload for one occasion is free. ON_TICK is the exception: it fires on a
+## schedule, so every enemy on screen would allocate one every frame to hand it
+## to nothing at all. Seventy enemies at sixty frames is a lot of garbage to
+## produce for the handful that are actually on a timer.
+func has_listeners(hook: Hooks.Hook) -> bool:
+	return _by_hook.has(hook) and not (_by_hook[hook] as Array).is_empty()
+
 func get_instances() -> Array[EffectInstance]:
 	return _instances.duplicate()
 

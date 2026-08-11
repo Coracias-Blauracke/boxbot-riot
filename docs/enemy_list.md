@@ -85,11 +85,11 @@ Damage and health are rough and get tuned against play. `group` is the
 
 ### Late (waves 12+)
 
-| # | enemy | movement | attack | spawn | group |
-|---|---|---|---|---|---|
-| 8 | **Splitter** | chase | contact, splits in two on death | ring | 2 |
-| 9 | **Warden** | chase, slow | contact, armoured | edge | 1 |
-| 10 | **Hive** | drift, ignores players | spawns swarmlings on a timer | in view | 1 |
+| # | enemy | movement | attack | spawn | group | |
+|---|---|---|---|---|---|---|
+| 8 | **Splitter** | chase | contact, splits in two on death | ring | 2 | **AUTHORED** |
+| 9 | **Warden** | chase, slow | contact, armoured | edge | 1 | |
+| 10 | **Hive** | stands still, ignores players | spawns swarmlings on a timer | in view | 1 | **AUTHORED** |
 
 - **Splitter** turns one kill into two problems, which is the first enemy where
   killing the wrong thing first is a mistake.
@@ -97,6 +97,11 @@ Damage and health are rough and get tuned against play. `group` is the
   enemy that answers `PIERCING`: a wall that a fast weak weapon cannot chew.
 - **Hive** does not chase at all. It is a spawner that has to be prioritised,
   and it is the first enemy that makes a player leave a safe corner.
+
+  Authored with NO movement resource rather than with a drift behaviour and a
+  speed of zero. "It does not move" is then one statement instead of two that
+  could disagree, and a wandering drift needs per-holder STATE - which is gap 5's
+  problem and belongs with the Charger, not here.
 
 ### Bosses
 
@@ -129,11 +134,15 @@ seventh gap turned up later, from asking what a real boss fight is made of:
    spawner reads it. A boss wave is announced and then plays out identically to
    any other. `WaveTable` needs a boss entry and `WaveDirector` needs to emit it.
 
-3. **Nothing can spawn anything on death or on a timer.** Splitter and Hive both
-   need "put two of these here", which `core/` cannot do because it has no
-   nodes. The shape that fits what already exists: an effect fills a REQUEST on
-   the run, and the scene layer drains it the same frame - the mirror of
-   `EntityModel.world_position`, which the view writes and core reads.
+3. ~~**Nothing can spawn anything on death or on a timer.**~~ **DONE**, and
+   built in the shape this entry predicted, with one correction: the request is
+   emitted as a SIGNAL on the entity rather than queued on the run, because an
+   effect firing on a dying enemy has no reference to the run and must not be
+   given one. `EffectSpawn` says when, `SpawnRequest` says what and how many,
+   and `main.gd` is the only thing that turns either into a node.
+
+   Splitter and Hive are authored. The channel carries `EntityData` rather than
+   enemies, so `SUMMON` delivery, turrets and dropped pickups ride it unchanged.
 
 4. ~~**No area damage.**~~ **DONE.** `BlastData` says how far, how hard and
    whose side; `EffectBlast` says on what occasion. Popper is authored and bursts

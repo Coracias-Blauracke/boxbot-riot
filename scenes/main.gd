@@ -94,6 +94,11 @@ var player: Character
 ## never say why.
 var _fallback_pattern: SpawnPattern = SpawnRing.new()
 
+## Used when a SPAWN REQUEST names no pattern of its own. Scatter rather than
+## ring, because a request has an anchor and a wave does not: something splitting
+## belongs where it split, while a wave belongs off screen.
+var _request_pattern: SpawnPattern = SpawnScatter.new()
+
 ## Capture only. 0 leaves RunModel's own value alone.
 var _forced_intermission: float = 0.0
 var _capture_shop_owned: bool = false
@@ -119,6 +124,12 @@ var _capture_start_wave: int = 1
 ## and how many things they caught between them.
 var _blasts: int = 0
 var _blast_victims: int = 0
+
+## And how many spawn REQUESTS were drained, against how many entities they put
+## down. A hive is otherwise indistinguishable from an ordinary wave arrival:
+## both just make the enemy count climb.
+var _spawn_requests: int = 0
+var _spawned: int = 0
 
 ## How many times this process has restarted. STATIC because the whole point of
 ## a restart is that everything else is thrown away - an instance variable would
@@ -333,6 +344,7 @@ func _spawn_player(index: int) -> Character:
 	run.add_player(model)
 
 	_draw_blasts_of(model)
+	_build_spawns_of(model)
 
 	var node := CHARACTER_SCENE.instantiate() as Character
 	# bind() before add_child(): _ready() sizes the colliders from the data.
@@ -434,6 +446,7 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	# one forgotten: the census holds weakrefs and prunes itself.
 	run.census.register(model)
 	_draw_blasts_of(model)
+	_build_spawns_of(model)
 
 	var node := ENEMY_SCENE.instantiate() as Enemy
 	# No target assigned: the enemy picks the nearest living player itself, and
@@ -473,6 +486,46 @@ func _on_blast_resolved(event: BlastEvent) -> void:
 	var flash := BlastFlash.new()
 	flash.setup(event)
 	_actors.add_child(flash)
+
+## Gives one model's spawn requests somewhere to land.
+##
+## Separate from _draw_blasts_of, and separate on purpose: a blast has already
+## happened and this only draws it, while a spawn HAS NOT HAPPENED until
+## something here builds it. Folding the two into one "wire up the view" helper
+## would hide that difference behind a name that suggests neither.
+func _build_spawns_of(model: EntityModel) -> void:
+	model.spawn_requested.connect(_on_spawn_requested)
+
+## Where a request stops being data and becomes nodes.
+##
+## THE ONLY PLACE that knows a SpawnRequest turns into a scene, which is what
+## lets core/ ask for entities without ever naming one. The dispatch is on the
+## DATA type rather than on anything the request carries, so a pickup or a turret
+## arriving here later is a branch in this function and nothing else anywhere.
+func _on_spawn_requested(request: SpawnRequest) -> void:
+	if request == null or request.data == null or request.count <= 0:
+		return
+
+	var enemy_data := request.data as EnemyData
+	if enemy_data == null:
+		push_error(
+			"SpawnRequest for %s, which nothing here knows how to build"
+			% request.data.display_key
+		)
+		return
+
+	# Placed by the same axis a wave is - see SpawnPattern. The context is the
+	# ordinary one with the requester's position filled in, so a request can be
+	# authored to arrive on a ring or as an ambush instead with no code here.
+	_spawn_requests += 1
+	_spawned += request.count
+
+	var context := _spawn_context()
+	context.anchor = request.origin
+
+	var pattern := request.pattern if request.pattern != null else _request_pattern
+	for point in pattern.positions(context, request.count, run.rng):
+		_spawn_enemy(enemy_data, point)
 
 ## Largest gap between where an actor IS and where its model says it is.
 ##
@@ -740,7 +793,7 @@ func _describe_state() -> String:
 
 	return (
 		"w%d %s t-%.0fs alive=%d/%d enemies=%d/%d gun=%.0f drift=%.0f blasts=%d/%d"
-		+ " gap=%.0f bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
+		+ " gap=%.0f spawns=%d/%d bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
 	) % [
 		run.wave_number,
 		_phase_name(),
@@ -756,6 +809,8 @@ func _describe_state() -> String:
 		# The smallest distance between any two enemies. Without body collision a
 		# crowd converges until this reads 0 and a swarm draws as one dark blob.
 		_min_enemy_gap(),
+		_spawn_requests,
+		_spawned,
 		# Straight off the census, so a status that is not landing is visible in
 		# the numbers rather than only in a screenshot.
 		run.census.count_with_status(&"bleed"),
