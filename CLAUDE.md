@@ -1535,6 +1535,11 @@ beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
 line. The 45 stat descriptions and the 8 character descriptions are hand-written
 and are the only authored player-facing prose in the game.
 
+**The validator refuses plating that absorbs nothing**, and warns about plating
+that names no damage types - because damage over time arrives in small ticks, so
+an absorb of 3 against a bleed of 2 makes the holder immune to bleeding outright
+and nothing at runtime would ever say so.
+
 **The validator refuses a charge that cannot be seen coming.** A `windup_time`
 of 0 loads, runs, and turns the one enemy that is answered by stepping aside
 into a cheap shot - and nothing at runtime would ever say so. Verified by

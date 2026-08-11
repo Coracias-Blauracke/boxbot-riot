@@ -821,6 +821,24 @@ func _validate_effects(path: String, effects: Array) -> void:
 		if effect is EffectBlast:
 			_validate_blast(path, "effect[%d]" % i, (effect as EffectBlast).blast)
 
+		var plating := effect as EffectFlatArmor
+		if plating != null:
+			if plating.absorb <= 0.0:
+				_errors.append(
+					"%s : effect[%d] absorbs %.1f from every hit, which is nothing"
+					% [path, i, plating.absorb]
+				)
+			# Damage over time arrives in small ticks, so plating that does not
+			# say which kinds it stops will usually stop those outright - a bleed
+			# of 2 against an absorb of 3 makes the holder immune to bleeding, and
+			# nothing at runtime would ever say so.
+			elif plating.damage_types.is_empty():
+				_warnings.append(
+					"%s : effect[%d] absorbs EVERY damage type, so it will swallow"
+					% [path, i]
+					+ " status ticks whole - name the types it should stop"
+				)
+
 		var spawn := effect as EffectSpawn
 		if spawn != null:
 			if spawn.data == null:
