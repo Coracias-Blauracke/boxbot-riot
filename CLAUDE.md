@@ -505,13 +505,15 @@ who were playing stay who they were and nobody re-joins after every death.
 `main.gd` falls back to `reload_current_scene()` when nothing is connected,
 which is what keeps `main.tscn` independently launchable. That fallback is only
 honest because nothing stateful outlives the scene: every model hangs off the
-`RunModel` built in `_ready`, and the single autoload (`EventBus`) holds signals
-and no state — nothing emits or connects to it today.
+`RunModel` built in `_ready`, and THERE ARE NO AUTOLOADS.
 
-(An earlier version of this section said "no autoloads". There is one. It has
-been declared since before the run model existed and three files mention it only
-to say they deliberately do not use it, so the conclusion held while the reason
-given for it did not.)
+(This has now been true, then false, then true again, so it is worth saying how.
+An `EventBus` autoload was declared before the run model existed, and nothing
+ever emitted or connected to a single one of its ten signals - three files
+mentioned it only to say they deliberately did not use it. It was deleted rather
+than kept warm on the chance: `RunModel` emits its own signals for what genuinely
+belongs to the whole run, the scene layer listens to those directly, and a bus
+gets built the day something needs one.)
 
 `get_tree().paused` is the one flag that survives either path, because it lives
 on the TREE rather than the scene, so a restart clears it first or the fresh run
