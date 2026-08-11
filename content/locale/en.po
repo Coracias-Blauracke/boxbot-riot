@@ -176,6 +176,15 @@ msgstr "Universal Doubler"
 msgid "ITEM_WHETSTONE"
 msgstr "Whetstone"
 
+msgid "PICKUP_SCRAP_LARGE"
+msgstr "Salvage Core"
+
+msgid "PICKUP_SCRAP_MEDIUM"
+msgstr "Scrap Bundle"
+
+msgid "PICKUP_SCRAP_SMALL"
+msgstr "Scrap"
+
 msgid "PROJ_ACID_GLOB"
 msgstr "Acid Glob"
 

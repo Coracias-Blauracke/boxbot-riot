@@ -64,5 +64,15 @@ extends EntityData
 ## SHOWS is a property of the creature, not of the weapon.
 @export var weapons_visible: bool = false
 
-@export_group("Rewards")
-@export var currency_reward: int = 1
+# --- rewards ---------------------------------------------------------------
+#
+# NOTHING HERE ANY MORE, and that is the point.
+#
+# An enemy used to pay its killer directly the instant it died. It now DROPS,
+# through an ordinary EffectSpawn in innate_effects pointing at a PickupData -
+# so what a corpse is worth, how many pieces it comes in and how far they
+# scatter are all authored on the same axis as everything else, and an item that
+# makes things drop more is content rather than a special case in the payout.
+#
+# The reward is on the PICKUP because that is what the player picks up. Keeping
+# a number here as well would be two answers to one question.

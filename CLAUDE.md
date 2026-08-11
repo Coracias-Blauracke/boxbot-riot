@@ -18,7 +18,7 @@ is the half that also breaks fonts and encodings.
 Godot lives at `C:\Godot\Godot_v4.7.1-stable_win64_console.exe`.
 
 ```bash
-# tests — 880 assertions across three suites, no editor, no game window
+# tests — 893 assertions across three suites, no editor, no game window
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/core_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/run_test.gd
 "C:\Godot\Godot_v4.7.1-stable_win64_console.exe" --headless --path . --script res://tests/weapon_test.gd
@@ -132,7 +132,10 @@ The state line carries several measurements that exist because a screenshot
 cannot show any of them. `enemies=T/A` splits the total from the ARMED, and
 `shots=T/I` splits every projectile from the INCOMING ones - one number for both
 was useless the first time somebody said the screen was full of acid, because a
-player circling a horde puts up dozens of its own. `spawns=N/M` is how many spawn requests were drained and how many entities they
+player circling a horde puts up dozens of its own. `scrap=N/M` is how many pickups are lying about against how many have been walked
+over - the number that says whether the loop works, because scrap nobody collects
+is currency the run silently never paid out. `spawns=N/M` is how many spawn
+requests were drained and how many entities they
 put down - a hive is otherwise indistinguishable from an ordinary wave arrival,
 because both simply make the enemy count climb. `gap=` is the smallest distance
 between any two enemies, which is the one number
@@ -184,7 +187,8 @@ core/        pure logic — RefCounted, ZERO Node/SceneTree/autoload dependencie
   enums/     StatTypes, CounterTypes, Hooks, WorldTypes (shape, phase, FACTION),
              RunTypes (APPEND-ONLY)
   data/      .tres schemas: BlastData (one area attack: how far, how hard,
-             whose side), ShopEntryData (the base every purchasable shares),
+             whose side), PickupData (what a corpse leaves on the floor),
+             ShopEntryData (the base every purchasable shares),
              EntityData, CharacterData, CharacterSet (the roster a lobby offers),
              EnemyData, WeaponData, ItemData,
              StatScaling (which stat feeds a weapon, and how much),
@@ -209,6 +213,7 @@ scenes/      the view — nodes, physics, rendering
              DeviceJoiner (watches devices that have NOT joined)
   effects/   BlastFlash - what an explosion is DRAWN as, and the only view-side
              thing that knows a blast happened
+  pickups/   Pickup - scrap lying on the floor, magnetised by PICKUP_RANGE
 content/     authored .tres: characters/ (six + the set that lists them,
              plus test_character, which is main.tscn's own fallback),
              enemies, weapons/ (13 families x 4
@@ -936,6 +941,37 @@ and the walls are `world.clamp_to_bounds()` in code. No body in the game
 collided with any other, and the only reason it showed on the Queen is that her
 collider is 26 against a chaser's 9.
 
+**AN ENEMY DOES NOT PAY YOU; IT DROPS.** `EnemyData.currency_reward` is gone and
+`Enemy` no longer overrides death at all. A corpse leaves scrap through an
+ordinary `EffectSpawn` pointing at a `PickupData`, so what it is worth, how many
+pieces it comes in and how far they scatter are authored on the axis everything
+else uses - and "enemies drop more" becomes an item rather than a special case in
+the payout. It is also the first proof the spawn channel is general: one death
+now sends TWO requests of different KINDS, and nothing in `core/` knows which.
+
+**UNCOLLECTED SCRAP IS LOST at the end of a wave.** That is the decision the drop
+exists to pose - walking out for it under fire has to cost something, and a wave
+end that swept the floor for free would make PICKUP_RANGE and the whole detour
+meaningless. Measured with two players kiting: 26 of 48 pieces collected, 22 gone.
+
+**A PICKUP CARRIES ITS OWN MAGNET, and the stat is the upgrade on top.** At
+PICKUP_RANGE 0 a player has to pass within their own collider of every piece,
+which left 8 of 48 on the floor and quietly cut wave-one income by two thirds.
+`PickupData.base_magnet` is the reach that makes the loop work at all; the stat
+adds to it. It sits on the PICKUP rather than on eight character files because it
+also says something per tier - a salvage core is worth noticing from further off
+than a chip of scrap.
+
+**WHOSE SCRAP IT IS is a RUN rule, and it is a ROUND ROBIN.**
+`RunModel.credit_pickup` pays the next living player in rotation rather than
+whoever walked over it. Currency is a per-player counter with a per-player shop,
+so paying the collector is the obvious reading - and on a couch it turns every
+drop into a scramble, with the fastest chassis funding itself while a slower one
+falls behind every wave. Rotating pays everybody the same without anybody having
+to be fair about it, and somebody still has to go and get it. The dead are
+skipped, and payment goes through `add_currency`, so CURRENCY_GAIN belongs to
+whoever's TURN it is rather than to whoever bent down.
+
 **CORE ASKS FOR ENTITIES; THE VIEW BUILDS THEM.** `EntityModel.request_spawn`
 fills a `SpawnRequest` and emits it, `main.gd` drains it into nodes. That is the
 exact mirror of `world_position` - the view writes where things are so `core/`
@@ -1208,6 +1244,28 @@ blade, rapid, bouncy, bloody - with deliberately different threshold shapes:
 `rapid` grants something at every count from one to six, `bouncy` nothing until
 three. Not one of the twelve needed a new effect class.
 
+MONEY LIES ON THE FLOOR NOW. Killing something no longer pays anybody: it drops
+scrap through the spawn channel, and somebody has to walk out and collect it
+before the wave ends or it is gone. Three tiers are authored, PICKUP_RANGE is
+wired, and the payout ROTATES through the living players rather than going to
+whoever got there first.
+
+Measured, two players kiting, same seed: without a base magnet, 8 of 48 pieces
+collected and $4 each; with the authored magnet, 26 of 48 and $13 each, 22 left
+behind.
+
+THE HORDE CAN MAKE MORE OF ITSELF. `EffectSpawn` (on death, or on a clock) plus
+`SpawnRequest` is the channel `core/` uses to ask for entities it cannot build,
+and it closed the third gap in `docs/enemy_list.md`. **Splitter** bursts into two
+swarmlings when killed and **Hive** releases two every five seconds while
+standing perfectly still - eight enemies authored of the twelve. The Queen's
+other half, which the list has always described as "ranged spit AND spawns
+swarmlings", is now one authored effect away.
+
+Measured, same seed, --capture-circle: at wave 3, before either is in the table,
+`spawns=0/0` throughout; at wave 12, `spawns=2/4` climbing to `5/10`, two
+entities per request exactly as authored.
+
 AREA DAMAGE IS IN, and it is the first thing authored on both sides of the game
 at once. `BlastData` (how far, how hard, whose side) plus `EffectBlast` (on
 death, on a kill, on impact) covers every family either prose list asked for:
@@ -1301,11 +1359,11 @@ ready for them, but nothing positive exists yet.
 DAMAGE under Current state. The puddle half of that old entry is what is left,
 and it is a different mechanic rather than the rest of the same one.)*
 
-The effect library is **fourteen classes**. It was four when the item list was
-written, and the ten added since each cover a FAMILY rather than an item:
+The effect library is **fifteen classes**. It was four when the item list was
+written, and the eleven added since each cover a FAMILY rather than an item:
 apply-a-status-on-hit, damage-versus-status, heal-when-hitting-status,
-double-status-stacks, stat-per-world-count, price-modifier, blast, and the three
-status kinds. That ratio is the point - sixteen of the twenty-six authored items
+double-status-stacks, stat-per-world-count, price-modifier, blast, spawn, and
+the three status kinds. That ratio is the point - sixteen of the twenty-six authored items
 and six of the eight authored characters needed no new code at all.
 
 `EffectPriceModifier` closed the last gap the character list found — nothing in
@@ -1454,8 +1512,12 @@ that same pattern with different numbers.
 
 | state | stats |
 |---|---|
-| **read by something** | 42 of 46 |
-| **needs a whole system** | PICKUP_RANGE, LUCK, HARVESTING, ENGINEERING — no pickups, no luck rolls, no harvesting, no turrets |
+| **read by something** | 43 of 46 |
+| **needs a whole system** | LUCK, HARVESTING, ENGINEERING — no luck rolls, no harvesting, no turrets |
+
+PICKUP_RANGE left that list with the drop system: `Pickup` reads it off the
+player every frame and adds it to the scrap's own magnet, so an item widening it
+works with nothing else wired.
 
 ELEMENTAL_DAMAGE left that list with area damage, and it cost nothing to wire:
 `BlastData.damage_scaling` follows the rule `WeaponData` already had, where an

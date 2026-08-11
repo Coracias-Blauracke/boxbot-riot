@@ -107,6 +107,54 @@ func add_player(player: EntityModel) -> int:
 func shop_for(index: int) -> ShopManager:
 	return shops[index] if index >= 0 and index < shops.size() else null
 
+# --- picking things up -----------------------------------------------------
+#
+# WHOSE SCRAP IS IT is a run rule, not a property of the thing on the floor, so
+# it lives here beside the death rule rather than on the pickup or in the view.
+
+## Whose turn it is next. Survives a player going down and coming back, because
+## it is an index into the roster rather than a reference to anybody.
+var _pickup_turn: int = 0
+
+## Credits one collected pickup, and hands the turn on.
+##
+## ROUND ROBIN rather than "whoever walked over it". Currency is a per-player
+## counter and each player has their own shop, so paying the collector would be
+## the obvious reading - and on a couch it turns every drop into a scramble, with
+## the fastest chassis quietly funding itself while a slower one falls behind
+## every wave. Rotating pays everybody the same without anybody having to be
+## fair about it, and somebody still has to go and get it.
+##
+## Paid through add_currency, the one door, so CURRENCY_GAIN applies. Note what
+## that means and is meant to mean: the bonus belongs to whoever's TURN it is,
+## not to whoever picked it up.
+func credit_pickup(amount: int) -> EntityModel:
+	if amount <= 0:
+		return null
+
+	var taker := _next_collector()
+	if taker == null:
+		return null
+
+	taker.add_currency(amount)
+	return taker
+
+## The next LIVING player in the rotation, or null when there is nobody left.
+##
+## The dead are skipped rather than paid: under PERMANENT they can never spend it
+## again, and under REVIVE_NEXT_WAVE handing a corpse every fourth drop would
+## quietly tax the survivors for the rest of the wave.
+func _next_collector() -> EntityModel:
+	if players.is_empty():
+		return null
+
+	for offset in players.size():
+		var index := (_pickup_turn + offset) % players.size()
+		if players[index].is_alive:
+			_pickup_turn = (index + 1) % players.size()
+			return players[index]
+	return null
+
 # --- death and the end of the run ------------------------------------------
 
 func living_player_count() -> int:

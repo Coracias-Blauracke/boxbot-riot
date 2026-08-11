@@ -131,6 +131,11 @@ var _blast_victims: int = 0
 var _spawn_requests: int = 0
 var _spawned: int = 0
 
+## Pickups actually walked over. Against how many are lying about, it is the
+## number that says whether the loop works: scrap nobody collects is currency
+## the run silently never paid out.
+var _collected: int = 0
+
 ## How many times this process has restarted. STATIC because the whole point of
 ## a restart is that everything else is thrown away - an instance variable would
 ## come back as 0 and --capture-restart would reload for ever.
@@ -316,6 +321,10 @@ func _physics_process(delta: float) -> void:
 ## than left for the player to hunt down one straggler at a time.
 func _on_wave_ended(_wave_number: int) -> void:
 	for node in get_tree().get_nodes_in_group(&"enemies"):
+		(node as Node).queue_free()
+	# Whatever nobody walked out for is gone. That is the decision the drop
+	# exists to pose, and sweeping it up here for free would remove it.
+	for node in get_tree().get_nodes_in_group(&"pickups"):
 		(node as Node).queue_free()
 	print("wave %d ended, currency=%d" % [run.wave_number, player.model.get_currency() if is_instance_valid(player) else 0])
 
@@ -506,26 +515,37 @@ func _on_spawn_requested(request: SpawnRequest) -> void:
 	if request == null or request.data == null or request.count <= 0:
 		return
 
-	var enemy_data := request.data as EnemyData
-	if enemy_data == null:
-		push_error(
-			"SpawnRequest for %s, which nothing here knows how to build"
-			% request.data.display_key
-		)
-		return
+	_spawn_requests += 1
+	_spawned += request.count
 
 	# Placed by the same axis a wave is - see SpawnPattern. The context is the
 	# ordinary one with the requester's position filled in, so a request can be
 	# authored to arrive on a ring or as an ambush instead with no code here.
-	_spawn_requests += 1
-	_spawned += request.count
-
 	var context := _spawn_context()
 	context.anchor = request.origin
 
 	var pattern := request.pattern if request.pattern != null else _request_pattern
-	for point in pattern.positions(context, request.count, run.rng):
-		_spawn_enemy(enemy_data, point)
+	var points := pattern.positions(context, request.count, run.rng)
+
+	# THE ONE BRANCH the channel has, and it is on the DATA TYPE. Everything
+	# above this line - the effect, the request, the placement - is the same code
+	# for a splitter's children and for the scrap a corpse leaves behind.
+	var enemy_data := request.data as EnemyData
+	if enemy_data != null:
+		for point in points:
+			_spawn_enemy(enemy_data, point)
+		return
+
+	var pickup_data := request.data as PickupData
+	if pickup_data != null:
+		for point in points:
+			_spawn_pickup(pickup_data, point)
+		return
+
+	push_error(
+		"SpawnRequest for %s, which nothing here knows how to build"
+		% request.data.display_key
+	)
 
 ## Largest gap between where an actor IS and where its model says it is.
 ##
@@ -545,6 +565,28 @@ func _max_position_drift() -> float:
 			continue
 		worst = maxf(worst, actor.global_position.distance_to(actor.model.world_position))
 	return worst
+
+## Scrap on the floor. Grouped so the end of a wave can sweep away what nobody
+## collected - uncollected currency is LOST, which is the entire reason walking
+## out to get it is a decision.
+func _spawn_pickup(pickup_data: PickupData, at: Vector2) -> Pickup:
+	var node := Pickup.new()
+	node.setup(pickup_data)
+	node.position = at
+	node.add_to_group(&"pickups")
+	node.collected.connect(_on_pickup_collected)
+	_actors.add_child(node)
+	return node
+
+## Routed through the RUN, which owns the rule about whose it is. The pickup
+## reports a value and nothing else; who gets paid is not a property of a thing
+## lying on the floor.
+func _on_pickup_collected(value: int) -> void:
+	_collected += 1
+	run.credit_pickup(value)
+
+func _count_pickups() -> int:
+	return get_tree().get_nodes_in_group(&"pickups").size()
 
 func _count_enemies() -> int:
 	var total := 0
@@ -793,7 +835,7 @@ func _describe_state() -> String:
 
 	return (
 		"w%d %s t-%.0fs alive=%d/%d enemies=%d/%d gun=%.0f drift=%.0f blasts=%d/%d"
-		+ " gap=%.0f spawns=%d/%d bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
+		+ " gap=%.0f spawns=%d/%d scrap=%d/%d bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
 	) % [
 		run.wave_number,
 		_phase_name(),
@@ -811,6 +853,8 @@ func _describe_state() -> String:
 		_min_enemy_gap(),
 		_spawn_requests,
 		_spawned,
+		_count_pickups(),
+		_collected,
 		# Straight off the census, so a status that is not landing is visible in
 		# the numbers rather than only in a screenshot.
 		run.census.count_with_status(&"bleed"),

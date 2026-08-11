@@ -3549,9 +3549,27 @@ func _test_the_authored_splitter_and_hive_ask_for_swarmlings() -> void:
 	splitter.world_position = Vector2(10.0, 10.0)
 	var split_seen := _collect_requests(splitter)
 	_hit(splitter, 500.0)
-	_check_int("the splitter asks once", split_seen.size(), 1)
-	_check_int("for the authored two", split_seen[0].count, 2)
-	_check_bool("and they are swarmlings", split_seen[0].data == swarmling, true)
+
+	# TWO requests from one corpse, and they are different KINDS: the children it
+	# breaks into, and the scrap every enemy leaves. That is the whole argument
+	# for the channel carrying EntityData rather than enemies - one death, one
+	# mechanism, two payloads, and nothing in core/ knows the difference.
+	_check_int("the splitter asks twice", split_seen.size(), 2)
+
+	var children: SpawnRequest = null
+	var scrap: SpawnRequest = null
+	for request in split_seen:
+		if request.data is PickupData:
+			scrap = request
+		else:
+			children = request
+
+	_check_bool("one of them is swarmlings", children != null and children.data == swarmling, true)
+	_check_int("two of them, as authored", children.count if children != null else 0, 2)
+	_check_bool("the other is scrap", scrap != null, true)
+	_check_int("three pieces of it", scrap.count if scrap != null else 0, 3)
+	# Both come out of the same place, because both are things the corpse left.
+	_check("and both where it died", scrap.origin.x if scrap != null else 0.0, 10.0)
 
 	var hive := EntityModel.new(hive_data)
 	var hive_seen := _collect_requests(hive)
