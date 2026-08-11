@@ -85,6 +85,7 @@ accident:
 | `--capture-grid=CxR` | overrides the rack's columns and visible rows, so M x N is A/B-able one variable at a time |
 | `--capture-roster=N` | builds N throwaway characters, so the rack can be photographed at fifty before fifty are authored |
 | `--capture-shop-menu` | parks the cursor on the owned strip AND opens the tile menu on it |
+| `--capture-shop-tile=N` | parks it on the Nth owned tile, so an ITEM can be read and not only the first weapon |
 | `--capture-item=res://...` | hands every player that item before the first wave, so an item's BEHAVIOUR can be observed at all |
 | `--capture-wave=N` | starts the run at wave N, with wave N's budget, curve and roster |
 

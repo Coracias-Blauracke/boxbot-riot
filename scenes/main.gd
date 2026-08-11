@@ -98,6 +98,7 @@ var _fallback_pattern: SpawnPattern = SpawnRing.new()
 var _forced_intermission: float = 0.0
 var _capture_shop_owned: bool = false
 var _capture_shop_menu: bool = false
+var _capture_shop_tile: int = 0
 
 ## Capture only, in seconds from startup.
 ##
@@ -161,6 +162,12 @@ func _ready() -> void:
 			# Parks the cursor AND opens the tile menu on it.
 			_capture_shop_owned = true
 			_capture_shop_menu = true
+		elif arg.begins_with("--capture-shop-tile="):
+			# Which tile in the owned strip to park on. Without it only the FIRST
+			# one is ever photographed, and the first one is always a weapon - so
+			# no item's derived description has ever been looked at on screen.
+			_capture_shop_owned = true
+			_capture_shop_tile = maxi(0, int(arg.substr("--capture-shop-tile=".length())))
 		elif arg == "--capture-shop-owned":
 			# A UI state that needs input cannot otherwise be photographed at
 			# all, which is a real hole in how this repo verifies the scene
@@ -217,7 +224,7 @@ func _ready() -> void:
 	_hud.bind(run, models)
 	_shop_screen.bind(run, players, stat_sheet)
 	if _capture_shop_owned:
-		_shop_screen.park_cursor_on_owned(_capture_shop_menu)
+		_shop_screen.park_cursor_on_owned(_capture_shop_menu, _capture_shop_tile)
 
 	# Every device, because the pause menu is one menu for the whole couch - see
 	# PauseScreen for why it is not owned by whoever opened it.
