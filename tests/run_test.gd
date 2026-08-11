@@ -55,6 +55,9 @@ func _initialize() -> void:
 	_test_shop_layout_divides_the_screen()
 	_test_readiness_only_counts_when_it_goes_through_the_run()
 	_test_the_shop_waits_by_default()
+	_test_a_pickup_pays_the_players_in_turn()
+	_test_the_rotation_skips_whoever_is_down()
+	_test_a_pickup_goes_through_the_currency_door()
 
 	print("\n=== RESULT: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -1044,6 +1047,85 @@ func _test_shop_layout_divides_the_screen() -> void:
 	_check_bool("a quarter screen is not compact", ShopLayout.is_compact(ShopLayout.rect_for(0, 4, screen)), false)
 
 # --- assertions ------------------------------------------------------------
+
+# --- pickups ---------------------------------------------------------------
+#
+# WHOSE SCRAP IT IS is a run rule, so it is asserted here rather than in the
+# scene layer. What the pickup NODE does - lying there, being magnetised, being
+# swept up at the end of a wave - is measured by a capture run instead.
+
+func _test_a_pickup_pays_the_players_in_turn() -> void:
+	print("
+-- pickups --")
+	var run := RunModel.new(7)
+	var first := EntityModel.new()
+	var second := EntityModel.new()
+	var third := EntityModel.new()
+	for player in [first, second, third]:
+		run.add_player(player as EntityModel)
+
+	for i in 4:
+		run.credit_pickup(10)
+
+	# ROUND ROBIN, not "whoever walked over it". Four drops across three players
+	# is 2 / 1 / 1, and the fifth would start the cycle again.
+	_check_int("player one took the first and the fourth", first.get_currency(), 20)
+	_check_int("player two took one", second.get_currency(), 10)
+	_check_int("player three took one", third.get_currency(), 10)
+
+func _test_the_rotation_skips_whoever_is_down() -> void:
+	var run := RunModel.new(7)
+	var alive := EntityModel.new()
+	var downed := EntityModel.new()
+	var other := EntityModel.new()
+	for player in [alive, downed, other]:
+		# Given health explicitly: a model built with no data starts at 0 current
+		# HP, and set_hp() early-returns when the value does not change - so it
+		# would take the blow and stay standing.
+		var body := player as EntityModel
+		body.stats.add_modifier(
+			StatTypes.Stat.MAX_HP, StatTypes.Modifier.BASE, 50.0, &"test_body"
+		)
+		body.set_hp(50.0)
+		run.add_player(body)
+
+	var lethal := DamageEvent.new()
+	lethal.amount = 9999.0
+	downed.apply_damage(lethal)
+	_check_bool("one of them is down", downed.is_alive, false)
+
+	for i in 4:
+		run.credit_pickup(5)
+
+	# A corpse is skipped rather than paid: under PERMANENT it can never spend
+	# again, and under REVIVE_NEXT_WAVE paying it would tax the survivors for the
+	# rest of the wave.
+	_check_int("the down one got nothing", downed.get_currency(), 0)
+	_check_int("and the four went two each", alive.get_currency(), 10)
+	_check_int("to the two still standing", other.get_currency(), 10)
+
+func _test_a_pickup_goes_through_the_currency_door() -> void:
+	var run := RunModel.new(7)
+	var greedy := EntityModel.new()
+	run.add_player(greedy)
+
+	# CURRENCY_GAIN applies, because credit_pickup pays through add_currency -
+	# the one door. Note what that means and is meant to mean: the bonus belongs
+	# to whoever's TURN it is, not to whoever bent down.
+	greedy.stats.add_modifier(
+		StatTypes.Stat.CURRENCY_GAIN, StatTypes.Modifier.BASE, 0.5, &"prospector"
+	)
+	run.credit_pickup(10)
+	_check_int("the stat reached the scrap", greedy.get_currency(), 15)
+
+	# And the lifetime tally moves with it, so "for every 500 earned" counts what
+	# was picked up rather than only what a kill would have paid.
+	_check_int(
+		"earnings are tallied too",
+		greedy.counters.get_value(CounterTypes.Counter.CURRENCY_EARNED), 15
+	)
+
+	_check_bool("nothing is credited for nothing", run.credit_pickup(0) == null, true)
 
 func _check(label: String, actual: float, expected: float) -> void:
 	if is_equal_approx(actual, expected):

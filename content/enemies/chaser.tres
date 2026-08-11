@@ -1,5 +1,8 @@
 [gd_resource type="Resource" script_class="EnemyData" format=3]
 
+[ext_resource type="Script" path="res://core/effects/library/effect_spawn.gd" id="90_spawnfx"]
+[ext_resource type="Script" path="res://core/effects/dynamic_effect.gd" id="90_effectbase"]
+[ext_resource type="Resource" path="res://content/pickups/scrap_small.tres" id="90_drop"]
 [ext_resource type="Script" path="res://core/data/enemy_data.gd" id="1_enemy"]
 [ext_resource type="Script" path="res://core/data/stat_modifier.gd" id="2_mod"]
 [ext_resource type="Script" path="res://core/behaviors/chase_behavior.gd" id="3_chase"]
@@ -26,8 +29,15 @@ value = 8.0
 script = ExtResource("3_chase")
 stop_distance = 0.0
 
+[sub_resource type="Resource" id="drop"]
+script = ExtResource("90_spawnfx")
+data = ExtResource("90_drop")
+count = 1
+trigger = 0
+
 [resource]
 script = ExtResource("1_enemy")
+innate_effects = Array[ExtResource("90_effectbase")]([SubResource("drop")])
 display_key = "ENEMY_CHASER"
 collider_radius = 9.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("Resource_hp"), SubResource("Resource_speed"), SubResource("Resource_damage")])
@@ -35,4 +45,3 @@ movement = SubResource("Resource_chase")
 separation_radius_scale = 2.6
 separation_weight = 0.9
 contact_damage_interval = 0.6
-currency_reward = 1

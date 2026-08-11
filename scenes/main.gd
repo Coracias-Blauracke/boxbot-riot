@@ -131,6 +131,11 @@ var _blast_victims: int = 0
 var _spawn_requests: int = 0
 var _spawned: int = 0
 
+## Pickups actually walked over. Against how many are lying about, it is the
+## number that says whether the loop works: scrap nobody collects is currency
+## the run silently never paid out.
+var _collected: int = 0
+
 ## How many times this process has restarted. STATIC because the whole point of
 ## a restart is that everything else is thrown away - an instance variable would
 ## come back as 0 and --capture-restart would reload for ever.
@@ -317,6 +322,10 @@ func _physics_process(delta: float) -> void:
 func _on_wave_ended(_wave_number: int) -> void:
 	for node in get_tree().get_nodes_in_group(&"enemies"):
 		(node as Node).queue_free()
+	# Whatever nobody walked out for is gone. That is the decision the drop
+	# exists to pose, and sweeping it up here for free would remove it.
+	for node in get_tree().get_nodes_in_group(Pickup.GROUP):
+		(node as Node).queue_free()
 	print("wave %d ended, currency=%d" % [run.wave_number, player.model.get_currency() if is_instance_valid(player) else 0])
 
 ## The corpses stay on the floor - clearing them would undo the whole point of
@@ -343,8 +352,7 @@ func _spawn_player(index: int) -> Character:
 	model.weapon_classes = weapon_classes
 	run.add_player(model)
 
-	_draw_blasts_of(model)
-	_build_spawns_of(model)
+	_watch(model)
 
 	var node := CHARACTER_SCENE.instantiate() as Character
 	# bind() before add_child(): _ready() sizes the colliders from the data.
@@ -445,8 +453,7 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	# Registered where it is created. There is no unregister and there cannot be
 	# one forgotten: the census holds weakrefs and prunes itself.
 	run.census.register(model)
-	_draw_blasts_of(model)
-	_build_spawns_of(model)
+	_watch(model)
 
 	var node := ENEMY_SCENE.instantiate() as Enemy
 	# No target assigned: the enemy picks the nearest living player itself, and
@@ -461,15 +468,36 @@ func _spawn_enemy(enemy_data: EnemyData, at: Vector2) -> Enemy:
 	_actors.add_child(node)
 	return node
 
-## Gives one model's explosions somewhere to be seen.
+## THE ONE DOOR a model comes through to be seen and heard by this scene.
+##
+## Every path that builds a model hands it here - the player spawner, the enemy
+## spawner, and whatever spawns things next - so "what the view has to know about
+## a model" is stated once instead of remembered at each site.
+##
+## The failure this exists to prevent is not somebody unplugging a signal, which
+## would be visible. It is a NEW way of putting something into the world - a
+## second scene hosting a run, a save being restored, an enemy placed by hand -
+## that quietly does not wire it. Everything still runs; enemies simply stop
+## dropping anything and the run's income falls with no error anywhere.
 ##
 ## Wired HERE rather than inside Actor, because this file is already the only
-## place that knows how a model is paired with a node - and an actor that has to
-## know what an explosion looks like is an actor that has to be taught again for
-## every new kind of area effect. It listens to the model, so an explosion whose
-## owner has already been freed still draws.
-func _draw_blasts_of(model: EntityModel) -> void:
+## place that knows how a model is paired with a node, and an actor that has to
+## know what an explosion looks like has to be taught again for every new kind of
+## area effect. Both connections listen to the MODEL, so an explosion or a drop
+## whose owner has already been freed still lands.
+##
+## (This replaces two separate helpers, one per signal. They were split because a
+## blast has already happened while a spawn has not - which is a real difference
+## and is still written down where each is handled. It is not a difference worth
+## two things to remember at every call site.)
+##
+## CENSUS REGISTRATION IS DELIBERATELY NOT HERE. That is a model fact with its
+## own homes - RunModel.add_player for players, _spawn_enemy for enemies - and
+## doing it here as well would register a player TWICE, which puts them in the
+## census twice and lets one explosion hit them twice.
+func _watch(model: EntityModel) -> void:
 	model.blast_resolved.connect(_on_blast_resolved)
+	model.spawn_requested.connect(_on_spawn_requested)
 
 ## Parented to the actor layer rather than to whoever set it off: a flash must
 ## outlive the bug that burst, and a bug that bursts is freed the same frame.
@@ -487,15 +515,6 @@ func _on_blast_resolved(event: BlastEvent) -> void:
 	flash.setup(event)
 	_actors.add_child(flash)
 
-## Gives one model's spawn requests somewhere to land.
-##
-## Separate from _draw_blasts_of, and separate on purpose: a blast has already
-## happened and this only draws it, while a spawn HAS NOT HAPPENED until
-## something here builds it. Folding the two into one "wire up the view" helper
-## would hide that difference behind a name that suggests neither.
-func _build_spawns_of(model: EntityModel) -> void:
-	model.spawn_requested.connect(_on_spawn_requested)
-
 ## Where a request stops being data and becomes nodes.
 ##
 ## THE ONLY PLACE that knows a SpawnRequest turns into a scene, which is what
@@ -506,26 +525,37 @@ func _on_spawn_requested(request: SpawnRequest) -> void:
 	if request == null or request.data == null or request.count <= 0:
 		return
 
-	var enemy_data := request.data as EnemyData
-	if enemy_data == null:
-		push_error(
-			"SpawnRequest for %s, which nothing here knows how to build"
-			% request.data.display_key
-		)
-		return
+	_spawn_requests += 1
+	_spawned += request.count
 
 	# Placed by the same axis a wave is - see SpawnPattern. The context is the
 	# ordinary one with the requester's position filled in, so a request can be
 	# authored to arrive on a ring or as an ambush instead with no code here.
-	_spawn_requests += 1
-	_spawned += request.count
-
 	var context := _spawn_context()
 	context.anchor = request.origin
 
 	var pattern := request.pattern if request.pattern != null else _request_pattern
-	for point in pattern.positions(context, request.count, run.rng):
-		_spawn_enemy(enemy_data, point)
+	var points := pattern.positions(context, request.count, run.rng)
+
+	# THE ONE BRANCH the channel has, and it is on the DATA TYPE. Everything
+	# above this line - the effect, the request, the placement - is the same code
+	# for a splitter's children and for the scrap a corpse leaves behind.
+	var enemy_data := request.data as EnemyData
+	if enemy_data != null:
+		for point in points:
+			_spawn_enemy(enemy_data, point)
+		return
+
+	var pickup_data := request.data as PickupData
+	if pickup_data != null:
+		for point in points:
+			_spawn_pickup(pickup_data, point)
+		return
+
+	push_error(
+		"SpawnRequest for %s, which nothing here knows how to build"
+		% request.data.display_key
+	)
 
 ## Largest gap between where an actor IS and where its model says it is.
 ##
@@ -545,6 +575,27 @@ func _max_position_drift() -> float:
 			continue
 		worst = maxf(worst, actor.global_position.distance_to(actor.model.world_position))
 	return worst
+
+## Scrap on the floor. Grouped so the end of a wave can sweep away what nobody
+## collected - uncollected currency is LOST, which is the entire reason walking
+## out to get it is a decision.
+func _spawn_pickup(pickup_data: PickupData, at: Vector2) -> Pickup:
+	var node := Pickup.new()
+	node.setup(pickup_data)
+	node.position = at
+	node.collected.connect(_on_pickup_collected)
+	_actors.add_child(node)
+	return node
+
+## Routed through the RUN, which owns the rule about whose it is. The pickup
+## reports a value and nothing else; who gets paid is not a property of a thing
+## lying on the floor.
+func _on_pickup_collected(value: int) -> void:
+	_collected += 1
+	run.credit_pickup(value)
+
+func _count_pickups() -> int:
+	return get_tree().get_nodes_in_group(Pickup.GROUP).size()
 
 func _count_enemies() -> int:
 	var total := 0
@@ -793,7 +844,7 @@ func _describe_state() -> String:
 
 	return (
 		"w%d %s t-%.0fs alive=%d/%d enemies=%d/%d gun=%.0f drift=%.0f blasts=%d/%d"
-		+ " gap=%.0f spawns=%d/%d bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
+		+ " gap=%.0f spawns=%d/%d scrap=%d/%d bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
 	) % [
 		run.wave_number,
 		_phase_name(),
@@ -811,6 +862,8 @@ func _describe_state() -> String:
 		_min_enemy_gap(),
 		_spawn_requests,
 		_spawned,
+		_count_pickups(),
+		_collected,
 		# Straight off the census, so a status that is not landing is visible in
 		# the numbers rather than only in a screenshot.
 		run.census.count_with_status(&"bleed"),

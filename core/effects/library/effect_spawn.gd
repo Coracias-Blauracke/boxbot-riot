@@ -82,4 +82,7 @@ func describe(inst: EffectInstance) -> String:
 	var total := count * inst.stacks
 	if trigger == Trigger.ON_INTERVAL:
 		return "releases %d every %.0fs" % [total, interval]
-	return "breaks into %d when killed" % total
+	# Neutral on purpose. The same class drops scrap and splits a bug in two, and
+	# "breaks into 3" is wrong prose for a corpse leaving money behind. What is
+	# true of both is that something is left where it died.
+	return "leaves %d behind when killed" % total

@@ -228,11 +228,7 @@ func _on_hitbox_area_exited(area: Area2D) -> void:
 	if actor != null:
 		_touching.erase(actor)
 
-## Pays out to whoever landed the killing blow. The model records its last
-## attacker, so kill credit survives the projectile that did it being freed.
-func _on_model_died() -> void:
-	var enemy_data := data as EnemyData
-	var killer := model.get_last_attacker()
-	if enemy_data != null and killer != null:
-		killer.add_currency(enemy_data.currency_reward)
-	super()
+# NO _on_model_died OVERRIDE. It existed only to pay the killer on the spot, and
+# an enemy no longer pays anybody: it drops, through an EffectSpawn on ON_DEATH
+# like any other death effect, and the scrap on the floor is what carries the
+# currency. Actor.queue_free() is the whole of what happens now.
