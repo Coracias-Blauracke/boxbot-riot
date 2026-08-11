@@ -43,10 +43,30 @@ var faction: WorldTypes.Faction = WorldTypes.Faction.NEUTRAL
 ## on" has to be answered twice, in two different vocabularies. Both answers
 ## live here so they cannot drift apart, and so no scene file has to carry a
 ## bare 32 that nobody can read.
+const LAYER_ENVIRONMENT := 1
+const LAYER_PLAYER_BODY := 2
+const LAYER_ENEMY_BODY := 4
 const LAYER_PLAYER_HURTBOX := 8
 const LAYER_ENEMY_HURTBOX := 16
 const LAYER_PLAYER_HITBOX := 32
 const LAYER_ENEMY_HITBOX := 64
+
+## A PLAYER'S BODY DELIBERATELY COLLIDES WITH NOTHING BUT THE WORLD.
+##
+## Touching an enemy hurts, and that is an Area2D question - ContactHitbox
+## against Hurtbox - rather than a physics one. Making the two bodies solid as
+## well would let a horde pin a player against the arena wall with no move that
+## helps, which is the same unfairness SpawnPattern's clearance rule exists to
+## prevent, arriving through a different door.
+##
+## It reads oddly at the boss, because standing inside a 26-unit circle looks
+## like a bug even when it is a rule. That is a rendering problem with a
+## placeholder, and the answer is art rather than physics.
+##
+## This was NOT a decision until somebody noticed it in play: both bodies simply
+## masked Environment and nothing else, and Environment has no geometry in it at
+## all - the arena is drawn by Arena._draw and its walls are enforced by
+## world.clamp_to_bounds(). No body in this game collided with any other.
 
 ## Which layer this actor's attacks live on, and which they look for. The same
 ## split as hostile_group, for the half of the engine that speaks in layers.

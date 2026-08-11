@@ -40,6 +40,7 @@ func _ready() -> void:
 		_contact_interval = enemy_data.contact_damage_interval
 		_separation_radius = radius * enemy_data.separation_radius_scale
 		_separation_weight = enemy_data.separation_weight
+		_apply_body_solidity(enemy_data.collides_with_enemies)
 
 	var hit_shape := CircleShape2D.new()
 	hit_shape.radius = radius
@@ -73,6 +74,24 @@ func _ready() -> void:
 		model.weapons_changed.connect(_on_weapons_changed)
 		_on_weapons_changed()
 
+## Solid to the rest of the horde, or not part of that argument at all.
+##
+## BOTH SIDES of it, which is why the LAYER moves and not only the mask: clearing
+## the mask alone would let this one walk through the swarm while the swarm still
+## piled against it, and something that blocks what it cannot see is how bodies
+## end up wedged inside each other.
+##
+## The layer is used for nothing else - the player masks Environment only, and
+## projectiles find their targets through hurtboxes - so dropping it is safe and
+## costs one less body in every other enemy's broadphase.
+func _apply_body_solidity(solid: bool) -> void:
+	if solid:
+		collision_layer |= LAYER_ENEMY_BODY
+		collision_mask |= LAYER_ENEMY_BODY
+	else:
+		collision_layer &= ~LAYER_ENEMY_BODY
+		collision_mask &= ~LAYER_ENEMY_BODY
+
 func _on_weapons_changed() -> void:
 	($WeaponMount as WeaponMount).sync(self)
 
@@ -90,7 +109,21 @@ func _get_move_direction(delta: float) -> Vector2:
 
 	var steer := behavior.get_direction(model, global_position, target.global_position, delta)
 	var combined := steer + _separation_direction() * _separation_weight
-	return combined.normalized() if combined.length() > 0.001 else Vector2.ZERO
+	if combined.length() <= 0.001:
+		return Vector2.ZERO
+
+	# The behaviour's LENGTH is how much of its speed it is asking for - see
+	# MovementBehavior. Normalising it away, which is what this line used to do,
+	# meant every enemy moved flat out in whatever direction it was pointed: a
+	# skirmisher backed off exactly as fast as it closed in, and no amount of
+	# authoring could say otherwise.
+	#
+	# A behaviour asking for nothing at all still gets moved by crowd separation,
+	# at full speed, exactly as before - otherwise an enemy that decides to stand
+	# still could never be pushed out of a pile.
+	var steer_length := steer.length()
+	var share := 1.0 if steer_length <= 0.001 else minf(1.0, steer_length)
+	return combined.normalized() * share
 
 ## Nearest LIVING player. A dead one must stop attracting the horde, or in co-op
 ## the swarm would pile onto a corpse while the survivors are ignored.
