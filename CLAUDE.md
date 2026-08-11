@@ -1230,6 +1230,15 @@ beside `ITEM_WHETSTONE` makes a playtest into a lookup exercise.
 line. The 45 stat descriptions and the 8 character descriptions are hand-written
 and are the only authored player-facing prose in the game.
 
+**The validator refuses an explosion that cannot work**: a blast with no radius
+reaches nobody and a blast with no damage catches everybody and does nothing to
+them, and neither logs a thing at runtime. It also refuses an effect on a
+PROJECTILE that does not declare `ON_IMPACT` - `Projectile._run_projectile_effects`
+calls `execute()` directly rather than through a dispatcher, so it never consults
+`get_hooks()` and an effect authored for any other occasion would simply fire at
+the wrong moment for ever. Verified by breaking `slag_charge.tres` on purpose and
+watching it fire.
+
 **The validator fails a key with no English behind it.** A missing entry renders
 as the key itself and nothing errors - which is exactly how the whole game read
 until this existed, and exactly what adding the forty-ninth weapon would do. The

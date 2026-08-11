@@ -692,6 +692,29 @@ func _validate_entity(path: String, entity: EntityData) -> void:
 	_validate_modifiers(path, entity.base_stats)
 	_validate_effects(path, entity.innate_effects)
 
+	if entity is ProjectileData:
+		_validate_projectile_effects(path, entity as ProjectileData)
+
+## A projectile runs its innate effects on IMPACT and only on impact.
+##
+## Projectile._run_projectile_effects calls execute() directly rather than going
+## through a dispatcher, so it never looks at get_hooks() - which means an effect
+## authored here for any other occasion loads, validates against every other
+## check, and then fires at the wrong moment for the rest of the game. There is
+## no dispatcher on a projectile to catch it, because a projectile deliberately
+## has no EntityModel of its own.
+func _validate_projectile_effects(path: String, projectile: ProjectileData) -> void:
+	for i in projectile.innate_effects.size():
+		var effect: DynamicEffect = projectile.innate_effects[i]
+		if effect == null:
+			continue
+		if not effect.get_hooks().has(Hooks.Hook.ON_IMPACT):
+			_errors.append(
+				"%s : effect[%d] does not declare ON_IMPACT, but a projectile runs"
+				% [path, i]
+				+ " its effects on impact regardless - it would fire at the wrong time"
+			)
+
 func _validate_modifiers(path: String, modifiers: Array) -> void:
 	var valid_stats := StatTypes.Stat.values()
 	var valid_types := StatTypes.Modifier.values()
