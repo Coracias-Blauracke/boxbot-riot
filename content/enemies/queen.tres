@@ -50,6 +50,7 @@ display_key = "ENEMY_QUEEN"
 collider_radius = 26.0
 base_stats = Array[ExtResource("2_mod")]([SubResource("hp"), SubResource("speed"), SubResource("damage"), SubResource("armor"), SubResource("attack_speed")])
 movement = SubResource("orbit")
+collides_with_enemies = false
 separation_radius_scale = 1.4
 separation_weight = 0.3
 contact_damage_interval = 0.7

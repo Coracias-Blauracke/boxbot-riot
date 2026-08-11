@@ -40,6 +40,7 @@ func _ready() -> void:
 		_contact_interval = enemy_data.contact_damage_interval
 		_separation_radius = radius * enemy_data.separation_radius_scale
 		_separation_weight = enemy_data.separation_weight
+		_apply_body_solidity(enemy_data.collides_with_enemies)
 
 	var hit_shape := CircleShape2D.new()
 	hit_shape.radius = radius
@@ -72,6 +73,24 @@ func _ready() -> void:
 	if model != null:
 		model.weapons_changed.connect(_on_weapons_changed)
 		_on_weapons_changed()
+
+## Solid to the rest of the horde, or not part of that argument at all.
+##
+## BOTH SIDES of it, which is why the LAYER moves and not only the mask: clearing
+## the mask alone would let this one walk through the swarm while the swarm still
+## piled against it, and something that blocks what it cannot see is how bodies
+## end up wedged inside each other.
+##
+## The layer is used for nothing else - the player masks Environment only, and
+## projectiles find their targets through hurtboxes - so dropping it is safe and
+## costs one less body in every other enemy's broadphase.
+func _apply_body_solidity(solid: bool) -> void:
+	if solid:
+		collision_layer |= LAYER_ENEMY_BODY
+		collision_mask |= LAYER_ENEMY_BODY
+	else:
+		collision_layer &= ~LAYER_ENEMY_BODY
+		collision_mask &= ~LAYER_ENEMY_BODY
 
 func _on_weapons_changed() -> void:
 	($WeaponMount as WeaponMount).sync(self)

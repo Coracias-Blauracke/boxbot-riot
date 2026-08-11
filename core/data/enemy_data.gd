@@ -7,6 +7,24 @@ extends EntityData
 @export var movement: MovementBehavior
 
 @export_group("Separation")
+## Whether this one's BODY is solid to other enemies.
+##
+## Separation below is steering and keeps a swarm spread out at a distance; this
+## is the hard floor underneath it that stops two things occupying one spot when
+## steering is not enough - which is what makes a crowd read as a crowd rather
+## than as one dark blob.
+##
+## FALSE takes it out of enemy-to-enemy collision in BOTH directions: it neither
+## blocks nor is blocked. That is for the big ones. A boss that can be stopped by
+## the swarmlings it arrived with spends the fight shouldering through its own
+## horde and does a fraction of what it was authored to do - and asymmetric
+## collision, where it passes through them but they pile against it, is the
+## version that produces "why is this thing stuck" bugs nobody can reproduce.
+##
+## It never affects the player: a player's body collides with nothing - see
+## Actor, where that is now a decision rather than an oversight.
+@export var collides_with_enemies: bool = true
+
 ## Keeps a swarm from collapsing into a single point. Deliberately a property of
 ## the enemy rather than of its MovementBehavior - otherwise every new behaviour
 ## would have to reimplement crowd handling.

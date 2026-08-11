@@ -740,7 +740,7 @@ func _describe_state() -> String:
 
 	return (
 		"w%d %s t-%.0fs alive=%d/%d enemies=%d/%d gun=%.0f drift=%.0f blasts=%d/%d"
-		+ " bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
+		+ " gap=%.0f bleed=%d burn=%d shots=%d/%d zoom=%.2f%s"
 	) % [
 		run.wave_number,
 		_phase_name(),
@@ -753,6 +753,9 @@ func _describe_state() -> String:
 		_max_position_drift(),
 		_blasts,
 		_blast_victims,
+		# The smallest distance between any two enemies. Without body collision a
+		# crowd converges until this reads 0 and a swarm draws as one dark blob.
+		_min_enemy_gap(),
 		# Straight off the census, so a status that is not landing is visible in
 		# the numbers rather than only in a screenshot.
 		run.census.count_with_status(&"bleed"),

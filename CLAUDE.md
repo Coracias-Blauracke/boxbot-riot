@@ -132,7 +132,8 @@ The state line carries several measurements that exist because a screenshot
 cannot show any of them. `enemies=T/A` splits the total from the ARMED, and
 `shots=T/I` splits every projectile from the INCOMING ones - one number for both
 was useless the first time somebody said the screen was full of acid, because a
-player circling a horde puts up dozens of its own. `gun=` is the distance to the
+player circling a horde puts up dozens of its own. `gap=` is the smallest distance between any two enemies, which is the one number
+that says whether a crowd is a crowd or a blob. `gun=` is the distance to the
 nearest thing that shoots, which is a different question from the nearest thing
 at all: a melee player standing in a crowd reads 0 while the skirmisher actually
 killing them sits 200 units away. `drift` is the largest gap between where an actor is and where its
@@ -903,6 +904,33 @@ so the moment anything other than a gun rolled a crit it read the entity's own
 CRIT_MULTIPLIER, found the neutral 1.0, and crit for nothing. The neutral cannot
 simply BE 2.0 - `combined_stat` shares only a holder's deviation from neutral,
 so that would compound to x4 on every weapon.
+
+**A PLAYER'S BODY COLLIDES WITH NOTHING; ENEMY BODIES COLLIDE WITH EACH OTHER.**
+Touching an enemy hurts, and that is an Area2D question - `ContactHitbox`
+against `Hurtbox` - rather than a physics one. Solid bodies on both sides would
+let a horde pin a player against the arena wall with no move that helps, which
+is the same unfairness `SpawnPattern`'s clearance rule exists to prevent,
+arriving through a different door.
+
+Between enemies it is the opposite: crowd separation is STEERING and keeps them
+spread out at a distance, and body collision is the hard floor underneath it for
+when steering is not enough. Without it a swarm converges until it draws as one
+dark blob - measured at 45-66 enemies, the closest pair sat 5 units apart with a
+radius of 6 each, which is two bodies overlapping by more than half. With it the
+same run reads 12, exactly two radii, touching and never inside each other.
+
+`EnemyData.collides_with_enemies` turns it off for the big ones, in BOTH
+directions - the layer moves, not just the mask. A boss that its own swarmlings
+can stop spends the fight shouldering through them; and the asymmetric version,
+where it passes through them while they pile against it, is what produces
+"why is this thing stuck" bugs nobody can reproduce.
+
+NONE OF THIS WAS A DECISION until somebody watched a play-test and saw a player
+standing inside the boss. Both bodies masked `Environment` and nothing else, and
+Environment has no geometry in it at all: `Arena` is a `Node2D` that only draws,
+and the walls are `world.clamp_to_bounds()` in code. No body in the game
+collided with any other, and the only reason it showed on the Queen is that her
+collider is 26 against a chaser's 9.
 
 **A MOVEMENT BEHAVIOUR STEERS *AND* THROTTLES.** The length of what
 `get_direction` returns is a speed share, capped at 1. It used to be documented
